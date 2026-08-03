@@ -8,7 +8,21 @@ import { MapContext, type MapViewState } from './MapContext';
 interface MapCanvasProps {
   basemapId: string;
   children?: React.ReactNode;
+  /** Debounced camera reports, for persisting where the user was working. */
+  onViewChange?: (view: MapViewState) => void;
+  /**
+   * A camera to jump to, set when a *different* document is opened.
+   *
+   * Passed as a ref rather than a prop value so that opening a file whose view
+   * happens to equal the current one still moves the map — and, more
+   * importantly, so the map is never driven from state that it also writes to.
+   * That loop is how a map ends up fighting the user mid-pan.
+   */
+  pendingViewRef?: React.RefObject<MapViewState | null>;
 }
+
+/** One op per gesture, not one per frame. */
+const VIEW_DEBOUNCE_MS = 400;
 
 /**
  * Owns the MapLibre instance.
@@ -18,9 +32,19 @@ interface MapCanvasProps {
  * pointer capture mid-drag, and (once drawing lands) drop editing state. Anything
  * that needs the instance gets it through MapContext rather than by remounting.
  */
-export function MapCanvas({ basemapId, children }: MapCanvasProps) {
+export function MapCanvas({
+  basemapId,
+  children,
+  onViewChange,
+  pendingViewRef,
+}: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const viewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Held in a ref so the map's `move` handler — bound once, for the lifetime of
+  // the map — always calls the current callback without rebinding.
+  const onViewChangeRef = useRef(onViewChange);
+  onViewChangeRef.current = onViewChange;
   const [map, setMap] = useState<maplibregl.Map | null>(null);
   const [view, setView] = useState<MapViewState>({
     center: [-98.5795, 39.8283], // geographic center of the contiguous US
@@ -56,18 +80,26 @@ export function MapCanvas({ basemapId, children }: MapCanvasProps) {
     });
 
     instance.on('move', () => {
-      setView({
+      const next: MapViewState = {
         center: instance.getCenter().toArray() as [number, number],
         zoom: instance.getZoom(),
         bearing: instance.getBearing(),
         pitch: instance.getPitch(),
-      });
+      };
+      // Chrome readouts follow every frame; the document does not.
+      setView(next);
+
+      if (viewTimerRef.current) clearTimeout(viewTimerRef.current);
+      viewTimerRef.current = setTimeout(() => {
+        onViewChangeRef.current?.(next);
+      }, VIEW_DEBOUNCE_MS);
     });
 
     mapRef.current = instance;
     setMap(instance);
 
     return () => {
+      if (viewTimerRef.current) clearTimeout(viewTimerRef.current);
       instance.remove();
       mapRef.current = null;
       setMap(null);
@@ -82,6 +114,24 @@ export function MapCanvas({ basemapId, children }: MapCanvasProps) {
     if (!instance) return;
     instance.setStyle(styleForBasemap(basemapById(basemapId)));
   }, [basemapId]);
+
+  /*
+   * Jump to a document's saved camera when one is opened or restored.
+   *
+   * `jumpTo` rather than `flyTo`: opening a file should present the course, not
+   * perform a several-second animation across the globe from wherever the
+   * previous document happened to be.
+   *
+   * The ref is consumed (set back to null) so this fires once per document
+   * rather than re-running on unrelated renders.
+   */
+  useEffect(() => {
+    const instance = mapRef.current;
+    const pending = pendingViewRef?.current;
+    if (!instance || !pending) return;
+    instance.jumpTo(pending);
+    if (pendingViewRef) pendingViewRef.current = null;
+  });
 
   return (
     <MapContext.Provider value={{ map, view }}>

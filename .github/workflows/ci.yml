@@ -1,13 +1,24 @@
 name: CI
 
 on:
+  # Deliberately every branch, not just main.
+  #
+  # With `branches: [main]` plus `pull_request`, a push to a feature branch with
+  # no open PR matched neither trigger and ran no checks at all. That happened:
+  # a fix was pushed after its PR had merged, sat completely unverified, and was
+  # very nearly reported as landed. The concurrency group below cancels the
+  # duplicate run when a PR is open, so the cost is a queued job, not a wasted one.
   push:
-    branches: [main]
   pull_request:
 
 # A newer push makes an in-flight run irrelevant.
+#
+# Keyed on the branch name rather than github.ref, because a push and a pull
+# request on the same branch report different refs (`refs/heads/x` versus
+# `refs/pull/N/merge`). Using the raw ref would put them in separate groups and
+# run both — head_ref covers the PR case, ref_name the push.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
