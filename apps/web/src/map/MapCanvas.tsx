@@ -87,7 +87,23 @@ export function MapCanvas({ basemapId, children }: MapCanvasProps) {
     <MapContext.Provider value={{ map, view }}>
       <div
         ref={containerRef}
-        className="absolute inset-0 bg-surface-canvas"
+        /*
+         * h-full/w-full are load-bearing, not belt-and-braces.
+         *
+         * MapLibre adds a `maplibregl-map` class to this element at runtime, and
+         * its stylesheet declares `.maplibregl-map { position: relative }`. That
+         * selector and Tailwind's `.absolute` have identical specificity, so the
+         * winner is decided by bundle order — and MapLibre's CSS lands after
+         * Tailwind's. `position` reverts to relative, `inset-0` stops sizing
+         * anything, and the container collapses to zero height while the canvas
+         * falls back to its intrinsic 300px.
+         *
+         * The failure is silent: tiles still download, there is just nothing to
+         * draw them into, which looks identical to a basemap that failed to
+         * load. Explicit sizing is correct under either `position` value, so it
+         * does not depend on winning an ordering race.
+         */
+        className="absolute inset-0 h-full w-full bg-surface-canvas"
         // The canvas is a real focus target: every map shortcut is scoped to it,
         // and keyboard users need to be able to reach it without a mouse.
         tabIndex={0}
