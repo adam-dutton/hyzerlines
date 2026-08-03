@@ -1,7 +1,4 @@
-import { shortcutFor, type ThemeName } from '@hyzerlines/design';
-
-const iconButton =
-  'grid h-8 w-8 place-items-center rounded-md text-text-secondary transition-colors duration-fast hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring';
+import { IconButton, Panel, ChromeLayer, TextField, type ThemeName } from '@hyzerlines/design';
 
 /** The wordmark. Inline SVG — a logo request is not worth a network round trip. */
 function Mark() {
@@ -22,6 +19,51 @@ function Mark() {
   );
 }
 
+function SunIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
+      <circle cx="7.5" cy="7.5" r="3" fill="currentColor" />
+      <path
+        d="M7.5 1v1.5M7.5 12.5V14M14 7.5h-1.5M2.5 7.5H1M12.1 2.9l-1 1M3.9 11.1l-1 1M12.1 12.1l-1-1M3.9 3.9l-1-1"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
+      <path d="M13 9.3A6 6 0 0 1 5.7 2 6 6 0 1 0 13 9.3z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function KeyboardIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
+      <rect
+        x="1.2"
+        y="3.5"
+        width="12.6"
+        height="8"
+        rx="1.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
+      <path
+        d="M4 6h.01M6.5 6h.01M9 6h.01M11 6h.01M4.5 9h6"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function TopBar({
   courseName,
   onCourseNameChange,
@@ -36,75 +78,39 @@ export function TopBar({
   onShowShortcuts: () => void;
 }) {
   return (
-    <div
-      className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-4"
-      style={{ zIndex: 'var(--hz-z-chrome)' }}
-    >
-      <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-border-default bg-surface-overlay py-1.5 pl-2.5 pr-1.5 shadow-float backdrop-blur-md">
+    <ChromeLayer className="inset-x-0 top-0 flex items-start justify-between p-4">
+      <Panel className="flex items-center gap-2 py-1.5 pl-2.5 pr-1.5">
         <Mark />
         {/* The title edits in place. A course name is not important enough to
             deserve a dialog, and inline editing keeps the map unobstructed. */}
-        <input
+        <TextField
+          label="Course name"
+          variant="bare"
+          size="sm"
           value={courseName}
           onChange={(e) => onCourseNameChange(e.target.value)}
-          aria-label="Course name"
           spellCheck={false}
-          className="w-48 rounded bg-transparent px-1.5 py-0.5 text-sm font-medium text-text-primary outline-none transition-colors duration-fast hover:bg-surface-hover focus:bg-surface-inset focus:ring-2 focus:ring-focus-ring"
+          className="w-48 font-medium"
         />
-      </div>
+      </Panel>
 
-      <div className="pointer-events-auto flex items-center gap-0.5 rounded-lg border border-border-default bg-surface-overlay p-1 shadow-float backdrop-blur-md">
-        <button
-          type="button"
-          className={iconButton}
+      <Panel className="flex items-center gap-0.5">
+        <IconButton
+          label={theme === 'dark' ? 'Light theme' : 'Dark theme'}
+          command="view.toggleTheme"
           onClick={onToggleTheme}
-          title={`${theme === 'dark' ? 'Light' : 'Dark'} theme  ${shortcutFor('view.toggleTheme')}`}
-          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
         >
-          {theme === 'dark' ? (
-            <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
-              <circle cx="7.5" cy="7.5" r="3" fill="currentColor" />
-              <path
-                d="M7.5 1v1.5M7.5 12.5V14M14 7.5h-1.5M2.5 7.5H1M12.1 2.9l-1 1M3.9 11.1l-1 1M12.1 12.1l-1-1M3.9 3.9l-1-1"
-                stroke="currentColor"
-                strokeWidth="1.3"
-                strokeLinecap="round"
-              />
-            </svg>
-          ) : (
-            <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
-              <path d="M13 9.3A6 6 0 0 1 5.7 2 6 6 0 1 0 13 9.3z" fill="currentColor" />
-            </svg>
-          )}
-        </button>
+          {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+        </IconButton>
 
-        <button
-          type="button"
-          className={iconButton}
+        <IconButton
+          label="Keyboard shortcuts"
+          command="help.shortcuts"
           onClick={onShowShortcuts}
-          title={`Keyboard shortcuts  ${shortcutFor('help.shortcuts')}`}
-          aria-label="Keyboard shortcuts"
         >
-          <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
-            <rect
-              x="1.2"
-              y="3.5"
-              width="12.6"
-              height="8"
-              rx="1.5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.2"
-            />
-            <path
-              d="M4 6h.01M6.5 6h.01M9 6h.01M11 6h.01M4.5 9h6"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
-      </div>
-    </div>
+          <KeyboardIcon />
+        </IconButton>
+      </Panel>
+    </ChromeLayer>
   );
 }

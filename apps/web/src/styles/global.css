@@ -6,10 +6,15 @@
  * as a utility in this app traces back to packages/design.
  */
 @import '@hyzerlines/design/theme.css';
+@import '@hyzerlines/design/styles.css';
 @import 'tailwindcss';
 
-/* Tailwind scans these for class usage. */
+/* Tailwind scans these for class usage. Components live in the design package,
+   so their classes are only discoverable if that source is scanned too —
+   without the second line every component style silently vanishes from the
+   build while looking correct in dev. */
 @source "../**/*.{ts,tsx}";
+@source "../../../../packages/design/src/**/*.{ts,tsx}";
 
 @layer base {
   html,

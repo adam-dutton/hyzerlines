@@ -1,0 +1,102 @@
+/*
+ * Component styles for @hyzerlines/design.
+ *
+ * Only what can't be expressed as utilities lives here: keyframes, and
+ * transitions keyed off the `data-state` attributes Radix manages.
+ *
+ * Every duration below references a motion token, so the reduced-motion rule in
+ * the generated theme zeroes these too — there is no animation in the system
+ * that opts out of that.
+ */
+
+@keyframes hz-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes hz-pop-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes hz-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes hz-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* Tooltips and popovers: scale from the anchor edge. */
+.hz-pop[data-state='delayed-open'],
+.hz-pop[data-state='open'] {
+  animation: hz-pop-in var(--duration-fast) var(--ease-enter);
+  transform-origin: var(--radix-tooltip-content-transform-origin, center);
+}
+
+.hz-pop[data-state='closed'] {
+  animation: hz-pop-out var(--duration-fast) var(--ease-exit);
+}
+
+/* Dialog scrim. */
+.hz-scrim[data-state='open'] {
+  animation: hz-fade-in var(--duration-normal) var(--ease-enter);
+}
+
+.hz-scrim[data-state='closed'] {
+  animation: hz-fade-out var(--duration-fast) var(--ease-exit);
+}
+
+/* Dialog panel. Slightly larger travel than a tooltip — it's a bigger surface
+   and the extra distance reads as "arriving" rather than "blinking". */
+@keyframes hz-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes hz-dialog-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+.hz-dialog[data-state='open'] {
+  animation: hz-dialog-in var(--duration-normal) var(--ease-enter);
+}
+
+.hz-dialog[data-state='closed'] {
+  animation: hz-dialog-out var(--duration-fast) var(--ease-exit);
+}

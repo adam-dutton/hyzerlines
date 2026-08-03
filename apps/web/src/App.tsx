@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { applyTheme, resolveInitialTheme, type ThemeName } from '@hyzerlines/design';
+import {
+  TooltipProvider,
+  applyTheme,
+  resolveInitialTheme,
+  type ThemeName,
+} from '@hyzerlines/design';
 
 import { MapCanvas } from './map/MapCanvas';
 import { basemaps, DEFAULT_BASEMAP } from './map/basemaps';
@@ -52,35 +57,39 @@ export function App() {
     'view.toggleChrome': () => setChromeHidden((v) => !v),
     'help.shortcuts': () => setShowShortcuts((v) => !v),
     'edit.cancel': () => {
-      // Escape unwinds one layer at a time, outermost first.
-      if (showShortcuts) setShowShortcuts(false);
-      else if (showSearch) setShowSearch(false);
+      // Escape unwinds one layer at a time, outermost first. The shortcuts
+      // dialog is absent here on purpose: Radix handles Escape inside a modal
+      // and closes it before this ever runs. Duplicating it would close two
+      // layers on one keypress.
+      if (showSearch) setShowSearch(false);
       else if (chromeHidden) setChromeHidden(false);
     },
   });
 
   return (
-    <div className="relative h-dvh w-screen overflow-hidden bg-surface-canvas">
-      <MapCanvas basemapId={basemapId}>
-        {!chromeHidden && (
-          <>
-            <TopBar
-              courseName={courseName}
-              onCourseNameChange={setCourseName}
-              theme={theme}
-              onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              onShowShortcuts={() => setShowShortcuts(true)}
-            />
-            <StatusBar basemapId={basemapId} units={units} onUnitsChange={changeUnits} />
-            <MapControls basemapId={basemapId} onBasemapChange={setBasemapId} />
-          </>
-        )}
+    <TooltipProvider>
+      <div className="relative h-dvh w-screen overflow-hidden bg-surface-canvas">
+        <MapCanvas basemapId={basemapId}>
+          {!chromeHidden && (
+            <>
+              <TopBar
+                courseName={courseName}
+                onCourseNameChange={setCourseName}
+                theme={theme}
+                onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                onShowShortcuts={() => setShowShortcuts(true)}
+              />
+              <StatusBar basemapId={basemapId} units={units} onUnitsChange={changeUnits} />
+              <MapControls basemapId={basemapId} onBasemapChange={setBasemapId} />
+            </>
+          )}
 
-        {showSearch && !chromeHidden && (
-          <LocationSearch onDismiss={() => setShowSearch(false)} />
-        )}
-        {showShortcuts && <ShortcutsOverlay onClose={() => setShowShortcuts(false)} />}
-      </MapCanvas>
-    </div>
+          {showSearch && !chromeHidden && (
+            <LocationSearch onDismiss={() => setShowSearch(false)} />
+          )}
+          <ShortcutsOverlay open={showShortcuts} onOpenChange={setShowShortcuts} />
+        </MapCanvas>
+      </div>
+    </TooltipProvider>
   );
 }
