@@ -1,0 +1,71 @@
+/*
+ * Global styles.
+ *
+ * The token layer is imported before Tailwind so that `@theme` is populated
+ * from generated tokens rather than Tailwind's defaults. Everything available
+ * as a utility in this app traces back to packages/design.
+ */
+@import '@hyzerlines/design/theme.css';
+@import 'tailwindcss';
+
+/* Tailwind scans these for class usage. */
+@source "../**/*.{ts,tsx}";
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--hz-surface-canvas);
+    color: var(--hz-text-primary);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    -webkit-font-smoothing: antialiased;
+    /* The map owns all gestures. Browser overscroll and pinch-zoom fight it. */
+    overscroll-behavior: none;
+    touch-action: none;
+  }
+
+  /* Focus is never invisible. The offset ring is what keeps focus legible when
+     the focused element sits directly on satellite imagery. */
+  :focus-visible {
+    outline: 2px solid var(--hz-focus-ring);
+    outline-offset: 2px;
+  }
+
+  /* Measurements must not shift width as digits change. */
+  kbd,
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /*
+   * MapLibre ships opinionated chrome. We suppress the parts we replace rather
+   * than restyling them, so there is exactly one visual language in the app.
+   */
+  .maplibregl-ctrl-attrib,
+  .maplibregl-ctrl-logo {
+    display: none !important;
+  }
+
+  .maplibregl-canvas:focus {
+    outline: none;
+  }
+
+  /* Cursor is a mode indicator: grab for pan, crosshair once a draw tool is
+     active (PR 3). Keeping it here means one place to reason about it. */
+  .maplibregl-canvas-container.maplibregl-interactive {
+    cursor: grab;
+  }
+
+  .maplibregl-canvas-container.maplibregl-interactive:active {
+    cursor: grabbing;
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@hyzerlines/design",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tokens": "./src/tokens/index.ts",
+    "./theme.css": "./dist/theme.css"
+  },
+  "scripts": {
+    "build": "tsx scripts/build-tokens.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
