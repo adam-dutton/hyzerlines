@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+import { viewSchema, type View } from './geo.js';
+import { featureSchema } from './features.js';
+
 /**
  * The course document.
  *
@@ -8,37 +11,10 @@ import { z } from 'zod';
  * boundary where data enters the app from somewhere untrusted — IndexedDB and
  * `.hyzer` files both count, because both can hold something written by an
  * older version, a different version, or a corrupted write.
- *
- * GEOMETRY IS ALWAYS METRIC AND ALWAYS [lng, lat]. Not [lat, lng]. GeoJSON and
- * MapLibre both use lng-first, and a document that disagreed with them would
- * put a silent transposition between the model and everything that draws it.
  */
 
 /** Bumped whenever a change requires migrating existing documents. */
 export const DOCUMENT_VERSION = 1;
-
-export const positionSchema = z.tuple([
-  z.number().min(-180).max(180), // longitude
-  z.number().min(-90).max(90), // latitude
-]);
-
-export type Position = z.infer<typeof positionSchema>;
-
-/**
- * The saved camera.
- *
- * Part of the document rather than a user preference: reopening a course should
- * put you back over the land you were working on, and a course shared with
- * someone else should open framed on the property rather than on the whole US.
- */
-export const viewSchema = z.object({
-  center: positionSchema,
-  zoom: z.number().min(0).max(24),
-  bearing: z.number(),
-  pitch: z.number().min(0).max(85),
-});
-
-export type View = z.infer<typeof viewSchema>;
 
 export const courseSchema = z.object({
   /** Format version of this document, for migration on load. */
@@ -50,12 +26,9 @@ export const courseSchema = z.object({
   view: viewSchema,
   basemapId: z.string().min(1),
 
-  /*
-   * Reserved for the drawing tools. Declared now because the schema is the data
-   * contract, and PR 3 should extend a shape that already exists rather than
-   * introduce one — that keeps the first migration honest.
-   */
-  features: z.array(z.unknown()).default([]),
+  features: z.array(featureSchema).default([]),
+
+  /* Reserved for the hole workflow in PR 4. */
   holes: z.array(z.unknown()).default([]),
 });
 
