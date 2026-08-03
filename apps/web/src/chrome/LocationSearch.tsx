@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { TextField } from '@hyzerlines/design';
+
 import { useMap } from '../map/MapContext';
 
 interface Place {
@@ -141,16 +143,16 @@ export function LocationSearch({ onDismiss }: { onDismiss: () => void }) {
         </p>
 
         <div className="relative mt-5">
-          <input
+          <TextField
             ref={inputRef}
+            label="Search for a location"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && results[0]) goTo(results[0]);
             }}
             placeholder="Kaposia Park, South St Paul"
-            aria-label="Search for a location"
-            className="w-full rounded-lg border border-border-default bg-surface-inset px-3.5 py-2.5 text-base text-text-primary placeholder:text-text-muted focus:border-border-accent focus:outline-none focus:ring-2 focus:ring-focus-ring/40"
+            className="w-full"
           />
           {status === 'loading' && (
             <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-text-muted">

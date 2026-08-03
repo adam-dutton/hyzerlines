@@ -1,4 +1,6 @@
 import { useMemo } from 'react';
+import { ChromeLayer, Panel, Tooltip } from '@hyzerlines/design';
+
 import { useMap } from '../map/MapContext';
 import { basemapById } from '../map/basemaps';
 import { formatDistance, type UnitSystem } from '../units';
@@ -61,11 +63,8 @@ export function StatusBar({
   );
 
   return (
-    <div
-      className="pointer-events-none absolute bottom-4 left-4 flex flex-col gap-2"
-      style={{ zIndex: 'var(--hz-z-chrome)' }}
-    >
-      <div className="pointer-events-auto flex items-center gap-3 rounded-lg border border-border-default bg-surface-overlay px-2.5 py-1.5 shadow-float backdrop-blur-md">
+    <ChromeLayer className="bottom-4 left-4 flex flex-col gap-2">
+      <Panel padding="comfortable" className="flex items-center gap-3">
         {/* Scale bar. Ticked at both ends so the extent is unambiguous. */}
         <div className="flex items-center gap-2">
           <div className="relative h-2" style={{ width: `${bar.widthPx}px` }}>
@@ -82,21 +81,23 @@ export function StatusBar({
 
         {/* Units. A toggle rather than a setting buried in preferences — it gets
             flipped often enough (US clubs quoting feet, everyone else meters). */}
-        <button
-          type="button"
-          onClick={() => onUnitsChange(units === 'imperial' ? 'metric' : 'imperial')}
-          title="Toggle units"
-          className="rounded px-1.5 py-0.5 font-mono text-2xs text-text-muted transition-colors duration-fast hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-        >
-          {units === 'imperial' ? 'ft' : 'm'}
-        </button>
+        <Tooltip label={`Switch to ${units === 'imperial' ? 'meters' : 'feet'}`} side="top">
+          <button
+            type="button"
+            onClick={() => onUnitsChange(units === 'imperial' ? 'metric' : 'imperial')}
+            aria-label={`Switch to ${units === 'imperial' ? 'meters' : 'feet'}`}
+            className="rounded px-1.5 py-0.5 font-mono text-2xs text-text-muted transition-colors duration-fast hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+          >
+            {units === 'imperial' ? 'ft' : 'm'}
+          </button>
+        </Tooltip>
 
         <span className="h-4 w-px bg-border-subtle" aria-hidden="true" />
 
         <span className="font-mono text-2xs tabular-nums text-text-muted">
           {view.center[1].toFixed(5)}, {view.center[0].toFixed(5)}
         </span>
-      </div>
+      </Panel>
 
       <div className="pointer-events-auto flex max-w-md flex-wrap items-center gap-x-2 text-2xs leading-4 text-text-muted">
         {/* Attribution strings are compile-time constants in basemaps.ts, never
@@ -122,6 +123,6 @@ export function StatusBar({
           </a>
         </span>
       </div>
-    </div>
+    </ChromeLayer>
   );
 }

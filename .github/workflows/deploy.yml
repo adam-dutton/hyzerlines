@@ -1,0 +1,80 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+# Never let two deploys write the gh-pages branch at once — concurrent pushes to
+# the same branch race and one silently loses. Not cancel-in-progress: a half
+# finished deploy would leave the published site in a torn state.
+concurrency:
+  group: deploy-pages
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Where this build will be served from. Pages serves the repo at
+      # /hyzerlines/, and previews live in a subdirectory under it.
+      - name: Resolve base path
+        id: paths
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "base=/hyzerlines/pr-${{ github.event.number }}/" >> "$GITHUB_OUTPUT"
+            echo "dir=pr-${{ github.event.number }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=/hyzerlines/" >> "$GITHUB_OUTPUT"
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        env:
+          VITE_BASE: ${{ steps.paths.outputs.base }}
+        run: pnpm build
+
+      # Pages has no server, so a deep link would 404. Serving index.html as the
+      # 404 page makes client-side routing work once there are routes to route.
+      - name: Add SPA fallback
+        run: cp apps/web/dist/index.html apps/web/dist/404.html
+
+      - name: Publish
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: apps/web/dist
+          destination_dir: ${{ steps.paths.outputs.dir }}
+          # Required in both directions: without it a main deploy wipes every
+          # PR preview, and a preview deploy wipes the main site.
+          keep_files: true
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com
+          commit_message: "Deploy ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.number) || 'main' }} (${{ github.sha }})"
+
+      - name: Summary
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            URL="https://adam-dutton.github.io/hyzerlines/pr-${{ github.event.number }}/"
+          else
+            URL="https://adam-dutton.github.io/hyzerlines/"
+          fi
+          echo "### Deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "$URL" >> "$GITHUB_STEP_SUMMARY"
