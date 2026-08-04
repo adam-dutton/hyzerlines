@@ -7,55 +7,28 @@ import {
   holeName,
   measureHole,
   suggestPar,
-  SKILL_LEVELS,
-  SKILL_LEVEL_INFO,
   type Course,
+  type Finding,
   type Hole,
   type Op,
-  type SkillLevel,
 } from '@hyzerlines/core';
 
 import { formatDistance, type UnitSystem } from '../units';
+import { FindingsList } from './FindingsList';
 
 /**
- * The scorecard.
+ * The course: its holes, in order, and what is wrong with it.
  *
  * A course is a sequence, not a bag of shapes, and this is the only place that
- * reads as one. It doubles as navigation: selecting a hole frames it, which is
+ * reads as one. It doubles as navigation — selecting a hole frames it, which is
  * how you move around a course once there are eighteen of them.
- */
-
-/**
- * Who the course is built for.
  *
- * Sits in this panel rather than the top bar because it is not a course-wide
- * setting in the way a name is — it is the input to every par on screen. A 700
- * ft hole is a par 4 for Gold and a par 5 for Red, and putting the control next
- * to the numbers it changes is what makes that legible instead of mysterious.
+ * Docked to the left edge as a single column rather than two floating cards.
+ * The findings used to sit in the bottom-right corner, which put them next to
+ * the zoom controls and nowhere near the holes they were about; here they are
+ * beneath the list they annotate, and the count is readable without opening
+ * anything.
  */
-function SkillLevelPicker({
-  value,
-  onChange,
-}: {
-  value: SkillLevel;
-  onChange: (level: SkillLevel) => void;
-}) {
-  return (
-    <select
-      aria-label="Skill level this course is designed for"
-      title={`Par bands and length ranges follow the PDGA tables for ${SKILL_LEVEL_INFO[value].label} (${SKILL_LEVEL_INFO[value].ratingDescription} rated players).`}
-      value={value}
-      onChange={(e) => onChange(e.target.value as SkillLevel)}
-      className="rounded bg-transparent py-0.5 pl-0.5 pr-1 text-2xs text-text-secondary transition-colors duration-fast hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-    >
-      {SKILL_LEVELS.map((level) => (
-        <option key={level} value={level}>
-          {SKILL_LEVEL_INFO[level].label}
-        </option>
-      ))}
-    </select>
-  );
-}
 
 function ParCell({
   course,
@@ -79,7 +52,7 @@ function ParCell({
    *
    * A par number with no visible basis is either accepted blindly or ignored
    * entirely; neither is useful. The tooltip carries why, and says plainly when
-   * the call is close enough to a boundary to be arguable.
+   * the call is close enough to a band boundary to be arguable.
    */
   const why = suggestion
     ? [
@@ -128,20 +101,26 @@ function ParCell({
   );
 }
 
-export function HolePanel({
+export function LeftPanel({
   course,
   units,
+  findings,
   selectedHoleId,
   onSelectHole,
   onOp,
   onAddHole,
+  onRevealFinding,
+  onDismissRule,
 }: {
   course: Course;
   units: UnitSystem;
+  findings: readonly Finding[];
   selectedHoleId: string | null;
   onSelectHole: (id: string | null) => void;
   onOp: (op: Op) => void;
   onAddHole: () => void;
+  onRevealFinding: (finding: Finding) => void;
+  onDismissRule: (ruleId: string) => void;
 }) {
   // Playing order, not creation order.
   const holes = useMemo(
@@ -154,26 +133,31 @@ export function HolePanel({
 
   return (
     <div
-      className="pointer-events-none absolute left-20 top-20 w-60"
+      /*
+       * Bounded to the viewport and scrolling internally, so a 27-hole course
+       * cannot push the findings off the bottom of the screen. The gap at the
+       * bottom clears the tool rail.
+       */
+      className="pointer-events-none absolute bottom-28 left-4 top-20 flex w-64 flex-col gap-2 overflow-hidden"
       style={{ zIndex: 'var(--hz-z-chrome)' }}
     >
-      <Panel elevation="raised" padding="none" className="overflow-hidden">
-        <header className="flex items-center justify-between border-b border-border-subtle px-3 py-2">
+      <Panel
+        as="section"
+        elevation="raised"
+        padding="none"
+        className="flex min-h-0 flex-col overflow-hidden"
+        aria-label="Holes"
+      >
+        <header className="flex shrink-0 items-center justify-between border-b border-border-subtle px-3 py-2">
           <div className="min-w-0">
-            <div className="flex items-baseline gap-1">
-              <p className="text-sm font-medium text-text-primary">Holes</p>
-              <SkillLevelPicker
-                value={course.skillLevel}
-                onChange={(skillLevel) => onOp({ type: 'setSkillLevel', skillLevel })}
-              />
-            </div>
+            <p className="text-sm font-medium text-text-primary">Holes</p>
             {holes.length > 0 && (
               <p className="font-mono text-2xs tabular-nums text-text-muted">
-                Par {totalPar} · {formatDistance(totalLength, units)}
+                {holes.length} · Par {totalPar} · {formatDistance(totalLength, units)}
               </p>
             )}
           </div>
-          <IconButton label="Add hole" size="sm" tooltipSide="left" onClick={onAddHole}>
+          <IconButton label="Add hole" size="sm" tooltipSide="right" onClick={onAddHole}>
             <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
               <path
                 d="M6 2v8M2 6h8"
@@ -190,7 +174,7 @@ export function HolePanel({
             Draw a tee and a basket, then add a hole to measure between them.
           </p>
         ) : (
-          <ul className="max-h-72 overflow-y-auto">
+          <ul className="min-h-0 flex-1 overflow-y-auto">
             {holes.map((hole) => {
               const measurement = measureHole(course, hole);
               const selected = hole.id === selectedHoleId;
@@ -230,6 +214,12 @@ export function HolePanel({
           </ul>
         )}
       </Panel>
+
+      <FindingsList
+        findings={findings}
+        onReveal={onRevealFinding}
+        onDismissRule={onDismissRule}
+      />
     </div>
   );
 }

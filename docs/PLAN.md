@@ -40,7 +40,7 @@ current as PRs land.
 | **2**   | Document model, zod schemas, `applyOp` store, undo/redo, IndexedDB, `.hyzer` files | ✅ done |
 | **3**   | Drawing engine, full feature palette, schema-driven inspector                      | ✅ done |
 | **4**   | Hole workflow, distances, PDGA par and advisory checks                             | ✅ done |
-| **4.5** | UI/UX refinement pass across everything shipped so far                             | next    |
+| **4.5** | UI/UX: navigation, docked panels, layout, camera framing                           | ✅ done |
 | **5**   | Terrain: DEM sampling, elevation profiles, hillshade                               |         |
 | **6**   | Parametric flight model, shot editor, disc database                                |         |
 | **7**   | Safety: dispersion envelopes, overlap and proximity rules                          |         |
@@ -101,6 +101,107 @@ is generated from it, so it cannot go stale.
 land, the map flies there. Geocoding is Photon (keyless, CORS-enabled), and
 pasted coordinates work without any network call, so search failure never
 blocks.
+
+---
+
+## PR 4.5 — what landed
+
+The first UI/UX pass over everything built so far.
+
+### Navigation
+
+| Tool   | Key        | Cursor                       | Drag does                        |
+| ------ | ---------- | ---------------------------- | -------------------------------- |
+| Select | `V`        | arrow, `move` while dragging | pans                             |
+| Zoom   | `Z` (hold) | zoom-in / -out               | zooms to the region, Alt inverts |
+
+**A plain drag pans, from every tool except Zoom.** That is what a map does.
+
+An earlier version of this PR made panning its own mode — a hand tool on `H`
+with a `Space`-to-pan hold, borrowed from design tools — and reverted it. On a
+canvas that is a map first, requiring a modifier to do the thing every other map
+on the internet does on a plain drag is friction with nothing on the other side
+of it. The cursor carries the story instead: an arrow until you press, the
+four-way `move` cursor while the ground is actually moving, and only then. A
+hand sitting there permanently claims a mode the map is not in.
+
+Panning is on for drawing tools too. Placing a feature is a `click`, and
+MapLibre suppresses `click` once the pointer has moved past its tolerance, so a
+pan mid-draw cannot drop a stray vertex.
+
+MapLibre's own `shift+drag` box zoom is switched off. It collides with
+shift-click multi-select, it is undiscoverable, and it would be a second way to
+do what `Z`-drag does with different behaviour. The replacement uses one formula
+for both directions, so zooming out is exactly the inverse of zooming in rather
+than a separate behaviour that happens to be nearby.
+
+**The zoom hold is not a shortcut.** The registry dispatcher only understands
+keydown, and a hold needs both edges. `Z` is declared in the registry with
+`hold: true` so the help overlay lists it, and skipped by the dispatcher; the
+mode is owned by `useNavigation`, which binds both edges and clears on window
+blur so a keyup that lands elsewhere cannot strand the map.
+
+### The camera goes to the work
+
+**Wheel zoom is anchored to the pointer.** It had been set to
+`{ around: 'center' }`, under a comment claiming that smoothed the wheel curve.
+It does not — that option only moves the anchor — and anchoring to the centre
+walks a tee at the edge of the screen straight off it. Aiming with the cursor
+and correcting with a pan is the whole interaction that broke.
+
+**Loading a document frames its features** rather than restoring a stored
+viewport. A saved camera is wherever you happened to stop scrolling, which is
+rarely where you want to resume, and restoring an autosave used not to move the
+camera at all — so a reload showed a full scorecard over the middle of Kansas.
+The stored view survives as the fallback for a course with nothing drawn, which
+is the only case where "where you were last looking" is the best guess
+available.
+
+`Zoom to fit` (⇧1) and `Zoom to selection` (⇧2) were reserved in the registry
+since PR 0 and run the same helper, so they are implemented now rather than
+left inert beside it.
+
+The framing lives in `CourseEditor`, keyed on a document epoch from
+`CourseProvider` — incremented when a whole document replaces the current one,
+untouched by ordinary edits. `MapCanvas` no longer takes a `pendingViewRef`:
+two components moving the camera on load is one too many, and the one that owns
+the map instance is not the one that knows what is worth looking at.
+
+### Layout
+
+```
+┌─ course name · undo/redo · file ──── basemap ──── theme · help ─┐
+│                                                                 │
+│  Holes                                            Properties    │
+│  ├ scorecard                                      ├ feature,    │
+│  └ design notes                                   │  else hole, │
+│                                                   └  else course│
+│                                                                 │
+│  scale · units · coords    [ tools ]        zoom · bearing      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Tools moved to bottom centre.** A vertical rail on the left competes with the
+course panel for the same column; a bottom bar costs only a strip of sky.
+
+**Basemap moved to the top bar.** It is a statement about what you are looking
+at, alongside what you are working on — not a camera control like zoom or
+bearing, which stay in the map's own corner.
+
+**The right panel is always present and has three modes**: the selected feature,
+else the selected hole, else the course. A column that appears and vanishes is
+one the eye has to re-find each time. Deselecting is exactly when course-level
+questions get asked, so that is what the empty state answers.
+
+Hole properties are new surface: number, name, par with its full reasoning
+visible rather than hidden in a tooltip, both measurements, and the assigned
+features as links back to the map.
+
+Two duplications were resolved rather than shipped. The course name is editable
+only in the top bar — a second control for the same value, visible at the same
+time, only raises the question of which one is authoritative. And the hole
+properties' feature links are labelled `Select Tee pad` rather than `Tee pad`,
+because the rail button that _draws_ a tee already owns that name.
 
 ---
 

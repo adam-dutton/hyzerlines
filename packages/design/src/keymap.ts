@@ -31,13 +31,32 @@ export interface Shortcut {
   group: string;
   /** Fires on keydown even while an input is focused. Rare — use sparingly. */
   allowInInput?: boolean;
+  /**
+   * A modal hold rather than a command: the behaviour lasts while the key is
+   * down and ends on keyup.
+   *
+   * Declared here so the help overlay can list it, but never dispatched — the
+   * dispatcher only understands keydown, and a hold needs both edges. The
+   * handling lives with the feature that owns the mode. The overlay renders
+   * these as "Hold X" so they don't read as something you press once.
+   */
+  hold?: boolean;
 }
 
 export const shortcuts: readonly Shortcut[] = [
   // --- Tools. Single keys, Figma-style. Reserved here even where the tool
   // --- lands in a later PR, so the letters don't get claimed by something else.
+  // Panning has no key and no tool: a plain drag pans from everything except
+  // the zoom tool, which is what a map is expected to do.
   { id: 'tool.select', label: 'Select', keys: ['v'], scope: 'map', group: 'Tools' },
-  { id: 'tool.pan', label: 'Pan', keys: ['h'], scope: 'map', group: 'Tools' },
+  {
+    id: 'tool.zoomHold',
+    label: 'Zoom — drag a region, Alt to zoom out',
+    keys: ['z'],
+    scope: 'map',
+    group: 'Tools',
+    hold: true,
+  },
   { id: 'tool.tee', label: 'Tee pad', keys: ['t'], scope: 'map', group: 'Tools' },
   { id: 'tool.basket', label: 'Basket', keys: ['b'], scope: 'map', group: 'Tools' },
   { id: 'tool.fairway', label: 'Fairway line', keys: ['f'], scope: 'map', group: 'Tools' },
@@ -150,6 +169,8 @@ export function formatKeys(combo: string): string {
           return mac ? '⌫' : 'Backspace';
         case 'Enter':
           return mac ? '↵' : 'Enter';
+        case ' ':
+          return 'Space';
         default:
           return part.length === 1 ? part.toUpperCase() : part;
       }

@@ -43,7 +43,11 @@ export function ShortcutsOverlay({
                   className="flex items-center justify-between gap-4 border-b border-border-subtle py-1.5 last:border-b-0"
                 >
                   <span className="text-xs text-text-secondary">{s.label}</span>
-                  <span className="flex gap-1">
+                  <span className="flex items-center gap-1">
+                    {/* A hold lasts while the key is down, so it is labelled
+                        differently — "Space" alone reads as a thing you press
+                        once, which is the wrong mental model entirely. */}
+                    {s.hold && <span className="text-2xs text-text-muted">Hold</span>}
                     {s.keys.map((k) => (
                       <Kbd key={k} combo={k} />
                     ))}

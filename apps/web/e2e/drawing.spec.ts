@@ -68,6 +68,18 @@ async function openEditor(page: Page): Promise<void> {
   await expect(skip).toBeHidden();
 }
 
+/**
+ * The tool rail, as a scope.
+ *
+ * Tool buttons are named for what they draw ("Basket"), and so are controls
+ * elsewhere that refer to the same things ("Select Basket" in the hole
+ * properties). Playwright matches accessible names as substrings by default, so
+ * an unscoped `getByRole('button', { name: 'Basket' })` will start resolving to
+ * two elements the moment a hole is selected. Scoping to the toolbar means
+ * these tests fail for real reasons rather than for naming collisions.
+ */
+const rail = (page: Page) => page.getByRole('toolbar', { name: 'Tools' });
+
 /** Click a point on the map canvas, in canvas-relative pixels. */
 async function clickMap(page: Page, x: number, y: number): Promise<void> {
   await page.locator('canvas.maplibregl-canvas').click({ position: { x, y } });
@@ -77,7 +89,7 @@ test.describe('drawing', () => {
   test('places a point feature and opens the inspector on it', async ({ page }) => {
     await openEditor(page);
 
-    await page.getByRole('button', { name: 'Basket' }).click();
+    await rail(page).getByRole('button', { name: 'Basket' }).click();
     await clickMap(page, 500, 400);
 
     // Selecting what was just drawn is the behaviour under test: the next thing
@@ -90,7 +102,7 @@ test.describe('drawing', () => {
   test('returns to the select tool after placing a point', async ({ page }) => {
     await openEditor(page);
 
-    const tee = page.getByRole('button', { name: 'Tee pad' });
+    const tee = rail(page).getByRole('button', { name: 'Tee pad' });
     await tee.click();
     await expect(tee).toHaveAttribute('aria-pressed', 'true');
 
@@ -102,7 +114,7 @@ test.describe('drawing', () => {
   test('draws a multi-point line and finishes on Enter', async ({ page }) => {
     await openEditor(page);
 
-    await page.getByRole('button', { name: 'Fairway line' }).click();
+    await rail(page).getByRole('button', { name: 'Fairway line' }).click();
     await clickMap(page, 400, 300);
     await clickMap(page, 500, 350);
     await clickMap(page, 600, 320);
@@ -122,7 +134,7 @@ test.describe('drawing', () => {
   }) => {
     await openEditor(page);
 
-    await page.getByRole('button', { name: 'Out of bounds' }).click();
+    await rail(page).getByRole('button', { name: 'Out of bounds' }).click();
     await clickMap(page, 400, 300);
     await clickMap(page, 500, 350);
     await expect(page.getByText(/2 points/)).toBeVisible();
@@ -136,7 +148,7 @@ test.describe('drawing', () => {
   test('a drawn feature is undoable and survives a reload', async ({ page }) => {
     await openEditor(page);
 
-    await page.getByRole('button', { name: 'Basket' }).click();
+    await rail(page).getByRole('button', { name: 'Basket' }).click();
     await clickMap(page, 520, 380);
 
     const undo = page.getByRole('button', { name: 'Undo' });
@@ -151,14 +163,44 @@ test.describe('drawing', () => {
     await page.reload();
     await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
 
-    await clickMap(page, 520, 380);
+    /*
+     * Where the basket ended up on screen, not where it was clicked.
+     *
+     * A reload reframes the camera on whatever the document contains, so the
+     * original pixel is no longer over the feature. Projecting its actual
+     * coordinates tests what this is about — the feature survived and is still
+     * selectable — instead of testing that the camera did not move.
+     */
+    const point = await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const map = (window as unknown as { hyzerlinesMap?: MapLibreMap }).hyzerlinesMap;
+          const feature = map?.querySourceFeatures('course-features')[0];
+          if (!map || !feature || feature.geometry.type !== 'Point') return null;
+          const p = map.project(feature.geometry.coordinates as [number, number]);
+          return { x: Math.round(p.x), y: Math.round(p.y) };
+        }),
+      )
+      .not.toBeNull()
+      .then(() =>
+        page.evaluate(() => {
+          const map = (window as unknown as { hyzerlinesMap: MapLibreMap }).hyzerlinesMap;
+          const feature = map.querySourceFeatures('course-features')[0]!;
+          const p = map.project(
+            (feature.geometry as GeoJSON.Point).coordinates as [number, number],
+          );
+          return { x: Math.round(p.x), y: Math.round(p.y) };
+        }),
+      );
+
+    await clickMap(page, point.x, point.y);
     await expect(page.getByRole('textbox', { name: 'Feature name' })).toBeVisible();
   });
 
   test('inspector edits are undoable', async ({ page }) => {
     await openEditor(page);
 
-    await page.getByRole('button', { name: 'Basket' }).click();
+    await rail(page).getByRole('button', { name: 'Basket' }).click();
     await clickMap(page, 500, 400);
 
     const name = page.getByRole('textbox', { name: 'Feature name' });
@@ -166,7 +208,8 @@ test.describe('drawing', () => {
     await expect(page.getByText('Hole 7 pin')).toBeVisible();
 
     // Focus the canvas first: undo inside a text field is the browser's own.
-    await clickMap(page, 200, 200);
+    // Middle of the viewport, clear of the docked panels on either side.
+    await clickMap(page, 600, 500);
     await page.keyboard.press('ControlOrMeta+z');
     // The whole typing run should revert in one step, not one character.
     await expect(page.getByText('Hole 7 pin')).toBeHidden();
@@ -176,13 +219,13 @@ test.describe('drawing', () => {
     await openEditor(page);
 
     await page.keyboard.press('b');
-    await expect(page.getByRole('button', { name: 'Basket' })).toHaveAttribute(
+    await expect(rail(page).getByRole('button', { name: 'Basket' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
 
     await page.keyboard.press('v');
-    await expect(page.getByRole('button', { name: 'Select' })).toHaveAttribute(
+    await expect(rail(page).getByRole('button', { name: 'Select' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
@@ -197,7 +240,7 @@ test.describe('drawing', () => {
   test('a selected feature is actually flagged selected on the map', async ({ page }) => {
     await openEditor(page);
 
-    await page.getByRole('button', { name: 'Basket' }).click();
+    await rail(page).getByRole('button', { name: 'Basket' }).click();
     await clickMap(page, 500, 400);
     await expect(page.getByRole('textbox', { name: 'Feature name' })).toBeVisible();
 
@@ -223,7 +266,7 @@ test.describe('drawing', () => {
   test('deleting removes the feature and closes the inspector', async ({ page }) => {
     await openEditor(page);
 
-    await page.getByRole('button', { name: 'Basket' }).click();
+    await rail(page).getByRole('button', { name: 'Basket' }).click();
     await clickMap(page, 500, 400);
     await expect(page.getByRole('textbox', { name: 'Feature name' })).toBeVisible();
 

@@ -76,6 +76,41 @@ export function featureLength(feature: Feature): number {
 }
 
 /**
+ * The smallest box containing every given feature, as `[west, south, east, north]`.
+ *
+ * Null when there is nothing to bound. Deliberately not wrapped in a class:
+ * this is data the map layer converts into whatever its own camera API wants,
+ * and core does not depend on MapLibre.
+ *
+ * No antimeridian handling. A disc golf course spanning 180° longitude is not a
+ * case worth carrying complexity for, and pretending to handle it would be
+ * worse than not — a wrong answer that looks considered.
+ */
+export type Bounds = [west: number, south: number, east: number, north: number];
+
+export function boundsOf(features: readonly Feature[]): Bounds | null {
+  let west = Infinity;
+  let south = Infinity;
+  let east = -Infinity;
+  let north = -Infinity;
+
+  const include = ([lng, lat]: Position) => {
+    if (lng < west) west = lng;
+    if (lng > east) east = lng;
+    if (lat < south) south = lat;
+    if (lat > north) north = lat;
+  };
+
+  for (const feature of features) {
+    const geometry = feature.geometry;
+    if (geometry.type === 'point') include(geometry.coordinates);
+    else for (const position of geometry.coordinates) include(position);
+  }
+
+  return west === Infinity ? null : [west, south, east, north];
+}
+
+/**
  * Whether two paths cross.
  *
  * Plain planar segment intersection in degrees, deliberately. Over the few

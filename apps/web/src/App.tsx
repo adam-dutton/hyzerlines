@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   TooltipProvider,
   applyTheme,
@@ -70,34 +70,30 @@ function Shell() {
   }, []);
 
   /*
-   * Camera changes are recorded so a course reopens where it was left, but they
-   * are not undoable — see isUndoable() in core. MapCanvas debounces these, so
-   * a drag produces one op rather than one per frame.
+   * Camera changes are recorded, but they are not undoable — see isUndoable()
+   * in core. MapCanvas debounces these, so a drag produces one op rather than
+   * one per frame.
+   *
+   * The stored view is now only a fallback for a course with nothing drawn:
+   * CourseEditor frames the features themselves when a document loads.
    */
   const handleViewChange = useCallback(
     (view: View) => dispatch({ type: 'setView', view }),
     [dispatch],
   );
 
-  // Applied to the map only when a *different* document arrives, never on every
-  // store change — the map is the source of truth for its own camera, and
-  // writing back continuously would fight the user mid-pan.
-  const pendingViewRef = useRef<View | null>(null);
-  const applyDocumentView = useCallback((view: View) => {
-    pendingViewRef.current = view;
-  }, []);
-
   const openFile = useCallback(async () => {
     const result = await openCourseFile();
     if (result.ok && result.course) {
+      // The camera follows from the load: CourseEditor frames whatever the
+      // document contains. One mechanism, not two racing to move the map.
       load(result.course);
-      applyDocumentView(result.course.view);
       setDismissedSearch(true);
       setFileError(null);
     } else if (result.error) {
       setFileError(result.error);
     }
-  }, [load, applyDocumentView]);
+  }, [load]);
 
   useShortcuts({
     'edit.undo': undo,
@@ -131,16 +127,14 @@ function Shell() {
        */
       data-hydrated={hydrating ? undefined : 'true'}
     >
-      <MapCanvas
-        basemapId={course.basemapId}
-        onViewChange={handleViewChange}
-        pendingViewRef={pendingViewRef}
-      >
+      <MapCanvas basemapId={course.basemapId} onViewChange={handleViewChange}>
         {!chromeHidden && (
           <>
             <TopBar
               courseName={course.name}
               onCourseNameChange={(name) => dispatch({ type: 'setName', name })}
+              basemapId={course.basemapId}
+              onBasemapChange={(basemapId) => dispatch({ type: 'setBasemap', basemapId })}
               theme={theme}
               onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               onShowShortcuts={() => setShowShortcuts(true)}
@@ -153,10 +147,7 @@ function Shell() {
               saveStatus={saveStatus}
             />
             <StatusBar basemapId={course.basemapId} units={units} onUnitsChange={changeUnits} />
-            <MapControls
-              basemapId={course.basemapId}
-              onBasemapChange={(basemapId) => dispatch({ type: 'setBasemap', basemapId })}
-            />
+            <MapControls />
           </>
         )}
 

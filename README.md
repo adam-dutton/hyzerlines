@@ -97,8 +97,16 @@ Every shortcut is declared once, in `packages/design/src/keymap.ts`. Tooltips,
 the help overlay (`?`) and the actual key handling all read from that registry,
 so a displayed shortcut cannot drift from the one that fires.
 
-Tool keys (`T` tee, `B` basket, `O` out of bounds…) are already reserved and
-become active as each tool ships.
+|            | Key      | Cursor                       | Drag does                          |
+| ---------- | -------- | ---------------------------- | ---------------------------------- |
+| **Select** | `V`      | arrow, `move` while dragging | pans                               |
+| **Zoom**   | hold `Z` | zoom-in / zoom-out           | zooms to the region; `Alt` inverts |
+
+A plain drag pans, from every tool except Zoom — there is no pan tool and no
+modifier to reach for. Wheel zoom anchors to the pointer, and opening a course
+frames what is drawn rather than restoring wherever you last stopped scrolling.
+
+Tool keys (`T` tee, `B` basket, `O` out of bounds…) place features.
 
 ## Contributing
 

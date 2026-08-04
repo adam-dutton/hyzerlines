@@ -49,6 +49,21 @@ export function formatDistance(meters: number, units: UnitSystem): string {
 }
 
 /**
+ * A range, in one unit throughout.
+ *
+ * `formatDistance` switches to miles or kilometres past a threshold, which is
+ * right for a single measurement and wrong for a span: a course length range of
+ * "4500 ft to 1.42 mi" makes the reader convert one end in their head to know
+ * whether their course fits. Both bounds take the unit the lower one would use.
+ */
+export function formatRange(minMeters: number, maxMeters: number, units: UnitSystem): string {
+  const suffix = units === 'metric' ? 'm' : 'ft';
+  const value = (meters: number) =>
+    Math.round(units === 'metric' ? meters : toFeet(meters)).toLocaleString();
+  return `${value(minMeters)}–${value(maxMeters)} ${suffix}`;
+}
+
+/**
  * Two decimals at most, and none that are only zeros. `500.00 mi` reads as a
  * precision claim the number does not deserve; `500 mi` is the same value
  * without the noise.
