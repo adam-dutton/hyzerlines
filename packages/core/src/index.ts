@@ -1,3 +1,5 @@
+export * from './geo.js';
+export * from './features.js';
 export * from './schema.js';
 export * from './ops.js';
 export * from './store.js';

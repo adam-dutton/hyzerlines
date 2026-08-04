@@ -98,6 +98,18 @@ export function MapCanvas({
     mapRef.current = instance;
     setMap(instance);
 
+    /*
+     * A debugging handle on the map instance.
+     *
+     * Genuinely useful from the console when diagnosing a rendering problem —
+     * and, since this is AGPL and meant to be self-hosted, useful to anyone
+     * running their own copy. The end-to-end tests use it to assert on things
+     * that have no DOM representation, such as whether a feature is actually
+     * flagged selected: a bug where selection silently did nothing shipped
+     * past a full suite of tests that only ever checked the inspector opened.
+     */
+    (window as unknown as { hyzerlinesMap?: maplibregl.Map }).hyzerlinesMap = instance;
+
     return () => {
       if (viewTimerRef.current) clearTimeout(viewTimerRef.current);
       instance.remove();

@@ -14,6 +14,7 @@ import { StatusBar } from './chrome/StatusBar';
 import { MapControls } from './chrome/MapControls';
 import { LocationSearch } from './chrome/LocationSearch';
 import { ShortcutsOverlay } from './chrome/ShortcutsOverlay';
+import { CourseEditor } from './CourseEditor';
 import { useShortcuts } from './keyboard/useShortcuts';
 import { getStoredUnits, storeUnits, type UnitSystem } from './units';
 import { CourseProvider, useCourse } from './document/CourseProvider';
@@ -158,6 +159,8 @@ function Shell() {
             />
           </>
         )}
+
+        <CourseEditor units={units} hidden={chromeHidden} />
 
         {showSearch && !chromeHidden && (
           <LocationSearch onDismiss={() => setDismissedSearch(true)} />
