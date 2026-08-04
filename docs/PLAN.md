@@ -41,20 +41,30 @@ current as PRs land.
 | **3**   | Drawing engine, full feature palette, schema-driven inspector                      | ✅ done |
 | **4**   | Hole workflow, distances, PDGA par and advisory checks                             | ✅ done |
 | **4.5** | UI/UX: navigation, docked panels, layout, camera framing                           | ✅ done |
-| **5**   | Terrain: DEM sampling, elevation profiles, hillshade                               |         |
-| **6**   | Parametric flight model, shot editor, disc database                                |         |
-| **7**   | Safety: dispersion envelopes, overlap and proximity rules                          |         |
-| **8**   | Accounts, share links, published course pages (backend begins here)                |         |
-| **9**   | Exports: PDF/PNG maps, tee signs, punch lists                                      |         |
-| **10**  | KML/KMZ interop                                                                    |         |
-| **11**  | Terrain 2: contours, slope analysis, LiDAR, custom DEM upload                      |         |
-| **12**  | Offline/PWA, tile caching                                                          |         |
-| **13**  | Field mode: touch targets, GPS, geotagged photos                                   |         |
-| **14**  | Donations, public gallery, self-host via docker-compose                            |         |
+| **5**   | Document model v2: pairs, layouts, migration                                       | ✅ done |
+| **6**   | Derived geometry: tee footprints, pair picker, fairway lines and areas             | next    |
+| **7**   | Boundaries and acreage                                                             |         |
+| **8**   | Layouts and routing: named layouts, skip, repeat, reorder                          |         |
+| **9**   | Expanded palette: relief areas, noted areas, drop zones, invert, circles           |         |
+| **10**  | Terrain: DEM sampling, elevation profiles, hillshade                               |         |
+| **11**  | Parametric flight model, shot editor, disc database                                |         |
+| **12**  | Safety: dispersion envelopes, overlap and proximity rules                          |         |
+| **13**  | Accounts, share links, published course pages (backend begins here)                |         |
+| **14**  | Exports: PDF/PNG maps, tee signs, punch lists                                      |         |
+| **15**  | KML/KMZ interop                                                                    |         |
+| **16**  | Terrain 2: contours, slope analysis, LiDAR, custom DEM upload                      |         |
+| **17**  | Offline/PWA, tile caching                                                          |         |
+| **18**  | Field mode: touch targets, GPS, geotagged photos                                   |         |
+| **19**  | Donations, public gallery, self-host via docker-compose                            |         |
 
-Sharing sits at PR 8 rather than the end because a published, linkable course
+Sharing sits at PR 13 rather than the end because a published, linkable course
 page is the growth loop — it is how a designer shows a parks department and how a
 club shows its players.
+
+PRs 5 through 9 are one piece of work split for reviewability: the document
+model the app should have had from the start. It came out of a design session
+with the hand-drawn model in `docs/MODEL.md`, and the model settled before any
+of it was written.
 
 ---
 
@@ -202,6 +212,59 @@ only in the top bar — a second control for the same value, visible at the same
 time, only raises the question of which one is authoritative. And the hole
 properties' feature links are labelled `Select Tee pad` rather than `Tee pad`,
 because the rail button that _draws_ a tee already owns that name.
+
+---
+
+## PR 5 — what landed
+
+The document model, rewritten. Format version 2, and the project's first real
+migration. Deliberately invisible: the interface is unchanged, because
+everything downstream — fairway geometry, layouts, the expanded palette — churns
+until the model settles.
+
+The full reference is **[docs/MODEL.md](./MODEL.md)**. The three decisions that
+drove it:
+
+**The pair is the unit of measurement, not the hole.** A hole with three tees
+and three pins is nine different shots. A single par on the hole is true of at
+most one of them, so distance and par moved onto the tee-to-target pair and the
+hole became a container. Pairs are stored sparsely — a record only exists once
+it carries a par override or a drawn fairway.
+
+**A layout is an ordered sequence of plays, not a per-hole selection.** It can
+skip a hole and can play one twice, once to each pin. Neither is expressible as
+"pick a tee and a pin for each hole". That makes the number a player sees a
+property of the routing, so `hole.number` became the designer's label for the
+corridor and the played number became a position in the list.
+
+**Skill level is derived from tee colours, not stored on the course.**
+[ELEMENTS] p3 says a tee's colour _is_ the level it was built for, so a
+course-wide setting would be a second source of truth that could disagree with
+the tees on the map. A layout mixing colours has no level — every published PDGA
+figure is per level, so there is no range for it to be inside or outside of, and
+null is the only honest answer.
+
+Also landed: `casualArea` and `requiredRelief` as separate kinds (the Rules of
+Play make one optional and one required); `holeId` as scope rather than a second
+collection; tags as one shared mechanism; install status separating "is there a
+basket in the ground" from "is this a valid design"; and the **Rules of Play**
+as a sixth transcribed source, which is what finally let the target circles ship
+with honest provenance — C1 is a real rule, C2 is a real figure the rules use
+for something else, and the bullseye is league convention attributed to nobody.
+
+### The migration is the risky part
+
+It reinterprets documents rather than adding fields, so each move is tested
+separately rather than through one round-trip that would pass on an average.
+Sixteen tests cover it, including the degenerate documents a real autosave
+actually contains: no holes, dangling references, a `holes` key that is not an
+array.
+
+Two decisions worth stating plainly. A par override on a hole with **no tee or
+no target is dropped** — that combination was unmeasurable in v1 too, so no
+number a designer could ever see is lost. And **dangling references are kept**,
+so the structural check can still report them rather than the migration quietly
+tidying away evidence of a problem.
 
 ---
 

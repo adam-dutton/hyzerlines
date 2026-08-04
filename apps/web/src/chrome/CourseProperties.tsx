@@ -1,17 +1,19 @@
+import { TextField } from '@hyzerlines/design';
 import {
-  coursePar,
-  courseLength,
+  activeLayout,
+  featureIndex,
+  isLayoutPlayable,
+  courseSkillLevel,
   COURSE_LENGTH_FT,
   COURSE_LENGTH_HOLE_COUNT,
   feetToMeters,
-  SKILL_LEVELS,
   SKILL_LEVEL_INFO,
   type Course,
   type Op,
-  type SkillLevel,
 } from '@hyzerlines/core';
 
 import { formatDistance, formatRange, type UnitSystem } from '../units';
+import { totalLength, totalPar, viewHoles } from '../document/holeView';
 import { Row, SectionTitle, sectionClass } from './propertyRow';
 
 /**
@@ -32,8 +34,14 @@ export function CourseProperties({
   onOp: (op: Op) => void;
 }) {
   const holes = course.holes;
-  const totalLength = courseLength(course, holes);
-  const range = COURSE_LENGTH_FT[course.skillLevel];
+  const views = viewHoles(course, holes);
+  const length = totalLength(views.values());
+
+  const layout = activeLayout(course);
+  const featureById = featureIndex(course);
+  const skill = courseSkillLevel(layout, course.features, featureById);
+  const playable = layout ? isLayoutPlayable(layout, featureById) : true;
+  const range = skill ? COURSE_LENGTH_FT[skill] : null;
 
   return (
     <>
@@ -46,29 +54,44 @@ export function CourseProperties({
         one is authoritative.
       */}
       <div className={sectionClass}>
-        <Row label="Skill level">
-          <select
-            aria-label="Skill level this course is designed for"
-            value={course.skillLevel}
-            onChange={(e) =>
-              onOp({ type: 'setSkillLevel', skillLevel: e.target.value as SkillLevel })
-            }
-            className="rounded-md border border-border-default bg-surface-inset px-2 py-1 text-xs text-text-primary focus:border-border-accent focus:outline-none focus:ring-2 focus:ring-focus-ring/40"
-          >
-            {SKILL_LEVELS.map((level) => (
-              <option key={level} value={level}>
-                {SKILL_LEVEL_INFO[level].label}
-              </option>
-            ))}
-          </select>
+        <Row label="Notes">
+          <TextField
+            label="Course notes"
+            size="sm"
+            value={course.notes}
+            placeholder="Anything worth remembering"
+            onChange={(e) => onOp({ type: 'setNotes', notes: e.target.value })}
+            className="w-36"
+          />
         </Row>
-        {/* The rating band is the thing that actually makes the level mean
-            something. "White" is a colour; "875+ rated" is a decision. */}
+      </div>
+
+      {/*
+        The skill level is read, not chosen.
+
+        It comes from the tee colours — [ELEMENTS] p3 says a tee's colour IS the
+        level it was built for — so offering a separate course-wide picker would
+        be a second source of truth that could disagree with the tees on the map.
+        A layout mixing colours has no level at all, and says so rather than
+        averaging two published tables into a number that is in neither.
+      */}
+      <div className={sectionClass}>
+        <SectionTitle>Skill level</SectionTitle>
+        <Row label="Plays as">
+          <span className="text-xs text-text-primary">
+            {skill ? SKILL_LEVEL_INFO[skill].label : 'Mixed'}
+          </span>
+        </Row>
         <p className="text-2xs leading-4 text-text-muted">
-          Par bands and length ranges follow the PDGA tables for{' '}
-          {SKILL_LEVEL_INFO[course.skillLevel].label} —{' '}
-          {SKILL_LEVEL_INFO[course.skillLevel].ratingDescription} rated players.
+          {skill
+            ? `Par bands and length ranges follow the PDGA tables for ${SKILL_LEVEL_INFO[skill].label} — ${SKILL_LEVEL_INFO[skill].ratingDescription} rated players.`
+            : 'Tees are set to more than one colour, so no PDGA level applies. Par is still read from each tee’s own colour.'}
         </p>
+        {!playable && (
+          <p className="mt-1 text-2xs leading-4 text-status-warning">
+            Not playable as it stands — a tee or target is marked position only.
+          </p>
+        )}
       </div>
 
       <div className={sectionClass}>
@@ -80,22 +103,23 @@ export function CourseProperties({
         </Row>
         <Row label="Par">
           <span className="font-mono text-xs tabular-nums text-text-primary">
-            {holes.length === 0 ? '—' : coursePar(course, holes)}
+            {holes.length === 0 ? '—' : totalPar(views.values())}
           </span>
         </Row>
         <Row label="Length">
           <span className="font-mono text-xs tabular-nums text-text-primary">
-            {holes.length === 0 ? '—' : formatDistance(totalLength, units)}
+            {holes.length === 0 ? '—' : formatDistance(length, units)}
           </span>
         </Row>
         {/* The PDGA quotes this range for 18 holes and gives no per-hole
             figure, so it is shown as context at any hole count but only
             checked — in the findings list — at eighteen. */}
-        <p className="text-2xs leading-4 text-text-muted">
-          Typical {SKILL_LEVEL_INFO[course.skillLevel].label} course over{' '}
-          {COURSE_LENGTH_HOLE_COUNT} holes:{' '}
-          {formatRange(feetToMeters(range.min), feetToMeters(range.max), units)}.
-        </p>
+        {skill && range && (
+          <p className="text-2xs leading-4 text-text-muted">
+            Typical {SKILL_LEVEL_INFO[skill].label} course over {COURSE_LENGTH_HOLE_COUNT}{' '}
+            holes: {formatRange(feetToMeters(range.min), feetToMeters(range.max), units)}.
+          </p>
+        )}
       </div>
 
       <div className={sectionClass}>

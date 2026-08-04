@@ -26,11 +26,13 @@ the build instead of quietly becoming the app's idea of a PDGA standard.
 | `[ELEMENTS]` | Disc Golf Course Design Elements                 | undated            |
 | `[ACREAGE]`  | Disc Golf Course Acreage Guide                   | undated            |
 | `[DEV]`      | Disc Golf Course Design & Development            | undated            |
+| `[RULES]`    | Official Rules and Regulations of Disc Golf      | Rev. Jan 1, 2026   |
 
-Only `[PAR]` carries a revision date of its own; it is also marked a draft. The
-others are living web documents with no version stamp, which is a real limitation
-of this transcription — a silent edit upstream would not announce itself. Page
-numbers below refer to the PDF pagination as supplied.
+`[RULES]` and `[PAR]` carry revision dates of their own — `[PAR]` is also marked
+a draft. The other three are living web documents with no version stamp, which is
+a real limitation of this transcription: a silent edit upstream would not
+announce itself. Page numbers refer to the PDF pagination as supplied; `[RULES]`
+is cited by its own rule numbers instead, which are stable across revisions.
 
 ---
 
@@ -580,6 +582,98 @@ and every check as dismissible.
 
 ---
 
+## Rules of play — `[RULES]`
+
+The rules govern how a hole is _played_, not how it is designed, and most of
+them have nothing to say to a design tool. Four things do.
+
+### The teeing area — 802.04.A
+
+> A teeing area, or tee, is the area bounded by the edges of a tee pad, if
+> provided. Otherwise, it is the area extending three meters perpendicularly
+> behind the designated tee line. The tee line is the line at the front of the
+> teeing area, or the line between the outside edges of two tee markers.
+
+This is the citation for storing a tee as a point at the **front centre** of the
+pad, with the footprint extending backwards — and for the 3 m fallback depth
+when no pad dimensions are set. It agrees with `[ELEMENTS]` p2, which measures
+hole length "from front of the tee".
+
+### Circles around a target
+
+Three figures, three different provenances. The app labels each, rather than
+presenting them as a uniform set of "PDGA circles".
+
+| Ring     | Radius | Where it comes from                                                           |
+| -------- | ------ | ----------------------------------------------------------------------------- |
+| Bullseye | 3 m    | **Not in the rules at all.** League and stat-tracking convention.             |
+| Circle 1 | 10 m   | **806.01.A** — a real rule.                                                   |
+| Circle 2 | 20 m   | **802.03.C.1** — the figure is in the rules, but as a pace-of-play threshold. |
+
+> 806.01.A — "Any throw made from within 10 meters of the target, as measured
+> from the front of the lie to the base of the target, is a putt."
+
+That sentence also fixes the centre: circles are measured from the **base of the
+target**, not from a point above it.
+
+> 802.03.C.1 — "When making a throw from the teeing area (802.04), a drop zone
+> (802.05.C), or within 20 meters of the target, the player has 30 seconds to
+> throw."
+
+Twenty metres is a real published figure. "Circle 2" is what players call the
+band it describes; the rules never use the phrase. Three metres appears in the
+rules only in the unit-conversion table and as the teeing area depth above —
+neither is a circle — so the bullseye is recorded as community convention and
+attributed to nobody else.
+
+### Regulated areas — 806
+
+The distinctions decide what a designer is claiming when they draw one, and two
+of them are easy to conflate.
+
+| Area                 | Penalty | Relief                       | Rule   |
+| -------------------- | ------- | ---------------------------- | ------ |
+| Out of bounds        | 1 throw | —                            | 806.02 |
+| Casual area          | none    | **optional**                 | 806.03 |
+| Required relief area | none    | **required**                 | 806.04 |
+| Hazard               | 1 throw | none — the lie does not move | 806.05 |
+
+> 806.03.A — "A casual area is an area designated by the Tournament Director
+> which allows for optional relocation without penalty. A player **may** choose
+> to take relief if their lie is in that area."
+
+> 806.04.B — "A required relief area is considered and played as an
+> out-of-bounds area ... The player does not receive a penalty throw."
+
+That is why `casualArea` and `requiredRelief` are separate feature kinds rather
+than one kind with a flag: one is a choice and one is not.
+
+> 806.05.D — "A player whose disc is in a hazard receives one penalty throw. A
+> hazard area has no impact on the location of the lie."
+
+**Water is casual by default**, 806.03.B:
+
+> By default, any body of water that is in-bounds and has not been explicitly
+> declared by the Tournament Director to be in play is a casual area.
+
+Hence the `inPlay` flag on the water kind — so a drawn pond says which it is
+rather than leaving the question open.
+
+### Mandatory routes — 804.01
+
+> B. The restricted plane is a vertical plane marked by one or more objects or
+> other markers which define the edges of the space.
+>
+> C. If part of a thrown disc clearly enters into a restricted plane, the player
+> receives one penalty throw. The lie for the next throw is the drop zone for
+> that mandatory. If no drop zone has been designated, the lie for the next
+> throw is the previous lie.
+
+The last sentence is why a mandatory owns a _specific_ drop zone rather than
+merely being near one.
+
+---
+
 ## What is transcribed but not yet used
 
 Recorded in `pdga.ts` so the figure is available and audited, with nothing built
@@ -592,6 +686,8 @@ on it yet:
 - **Acreage chart** — needs a course boundary polygon to compare against.
 - **Fairway corridor widths** — descriptive of typical practice, not a threshold.
 - **Close Range Par and Par by Difficulty** — alternative par methods from `[PAR]`.
+- **Basket rim height** and the **18" water depth** best practice — recorded,
+  not checkable from imagery.
 
 ## What is deliberately absent
 

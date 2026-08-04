@@ -1,7 +1,16 @@
 import type { Course } from './schema.js';
 import { KIND_DEFINITIONS, type Feature } from './features.js';
 import { anchorOf, distance, pathsCross } from './measure.js';
-import { holeName, measureHole, type Hole } from './holes.js';
+import { holeName, type Hole } from './holes.js';
+import { findPair, measurePair } from './pairs.js';
+import {
+  layoutName,
+  layoutSkillLevel,
+  layoutLength,
+  measureLayout,
+  type Layout,
+} from './layouts.js';
+import { activeLayout, featureIndex } from './schema.js';
 import {
   courseLengthMeters,
   metersToFeet,
@@ -74,9 +83,10 @@ export interface Finding {
   authority: Authority;
   /** What is wrong, in the designer's terms. */
   message: string;
-  /** Feature or hole this attaches to, for click-to-reveal. */
+  /** Feature, hole or play this attaches to, for click-to-reveal. */
   featureId?: string;
   holeId?: string;
+  playId?: string;
   source?: string;
   /** Which revision of the source. A figure without one cannot be looked up. */
   revision?: string;
@@ -87,6 +97,14 @@ interface RuleContext {
   course: Course;
   holes: readonly Hole[];
   featureById: Map<string, Feature>;
+  /**
+   * The layout being checked. Undefined only for a document with none.
+   *
+   * Checks that ask "how long is this course" or "what par does it play" have
+   * no answer without one — a course with three tees and three pins per hole is
+   * a different length depending on which you walk.
+   */
+  layout: Layout | undefined;
 }
 
 interface Rule extends RuleDefinition {
@@ -126,16 +144,16 @@ const holeNeedsTee: Rule = {
       ),
 };
 
-const holeNeedsBasket: Rule = {
+const holeNeedsTarget: Rule = {
   id: 'structural.hole-missing-basket',
   title: 'Hole has no target',
   severity: 'error',
   authority: 'structural',
   run: ({ holes }) =>
     holes
-      .filter((hole) => hole.basketIds.length === 0)
+      .filter((hole) => hole.targetIds.length === 0)
       .map((hole) =>
-        finding(holeNeedsBasket, `${holeName(hole)} has no basket assigned.`, {
+        finding(holeNeedsTarget, `${holeName(hole)} has no basket assigned.`, {
           holeId: hole.id,
         }),
       ),
@@ -146,11 +164,16 @@ const danglingReference: Rule = {
   title: 'Hole references a deleted feature',
   severity: 'error',
   authority: 'structural',
-  run: ({ holes, featureById }) => {
+  run: ({ course, holes, featureById }) => {
     const found: Finding[] = [];
     for (const hole of holes) {
-      const referenced = [...hole.teeIds, ...hole.basketIds, hole.fairwayId].filter(
-        (id): id is string => id !== null,
+      // Pairs carry the fairway now, so a hole's references are its tees, its
+      // targets, and the fairway of any pair built from them.
+      const fairwayIds = course.pairs
+        .filter((p) => hole.teeIds.includes(p.teeId) && hole.targetIds.includes(p.targetId))
+        .map((p) => p.fairwayId);
+      const referenced = [...hole.teeIds, ...hole.targetIds, ...fairwayIds].filter(
+        (id): id is string => id !== null && id !== undefined,
       );
       for (const id of referenced) {
         if (!featureById.has(id)) {
@@ -198,10 +221,13 @@ const degenerateHole: Rule = {
   title: 'Tee and basket are in the same place',
   severity: 'warning',
   authority: 'structural',
-  run: ({ course, holes }) =>
+  run: ({ holes, featureById }) =>
     holes.flatMap((hole) => {
-      const measurement = measureHole(course, hole);
-      if (measurement.straight === null || measurement.straight > 5) return [];
+      const teeId = hole.teeIds[0];
+      const targetId = hole.targetIds[0];
+      if (!teeId || !targetId) return [];
+      const { straight } = measurePair(featureById, teeId, targetId);
+      if (straight === null || straight > 5) return [];
       return [
         finding(degenerateHole, `${holeName(hole)} measures under 5 m — is it finished?`, {
           holeId: hole.id,
@@ -219,33 +245,56 @@ const fairwayDetached: Rule = {
   title: 'Fairway line does not start at the tee',
   severity: 'info',
   authority: 'structural',
-  run: ({ holes, featureById }) =>
-    holes.flatMap((hole) => {
-      const fairway = hole.fairwayId ? featureById.get(hole.fairwayId) : undefined;
-      const tee = hole.teeIds[0] ? featureById.get(hole.teeIds[0]) : undefined;
-      if (!fairway || !tee || fairway.geometry.type !== 'line') return [];
+  run: ({ course, holes, featureById }) =>
+    holes.flatMap((hole) =>
+      // Every drawn fairway of the hole, since each pair can have its own.
+      course.pairs
+        .filter(
+          (pair) =>
+            pair.fairwayId !== null &&
+            hole.teeIds.includes(pair.teeId) &&
+            hole.targetIds.includes(pair.targetId),
+        )
+        .flatMap((pair) => {
+          const fairway = featureById.get(pair.fairwayId!);
+          const tee = featureById.get(pair.teeId);
+          if (!fairway || !tee || fairway.geometry.type !== 'line') return [];
 
-      const gap = distance(fairway.geometry.coordinates[0]!, anchorOf(tee));
-      if (gap <= 30) return [];
-      return [
-        finding(
-          fairwayDetached,
-          `${holeName(hole)}'s fairway starts ${Math.round(gap)} m from its tee.`,
-          { holeId: hole.id, featureId: fairway.id },
-        ),
-      ];
-    }),
+          const gap = distance(fairway.geometry.coordinates[0]!, anchorOf(tee));
+          if (gap <= 30) return [];
+          return [
+            finding(
+              fairwayDetached,
+              `${holeName(hole)}'s fairway starts ${Math.round(gap)} m from its tee.`,
+              { holeId: hole.id, featureId: fairway.id },
+            ),
+          ];
+        }),
+    ),
 };
 
+/**
+ * A tee or target no hole references.
+ *
+ * Usually it means you drew one and forgot to make the hole. Sometimes it means
+ * a practice basket, which is a legitimate thing to have on a course and not a
+ * mistake — so the check exempts anything explicitly marked as standalone
+ * rather than nagging about it forever.
+ */
 const unassignedTargets: Rule = {
   id: 'structural.unassigned-feature',
   title: 'Tee or basket belongs to no hole',
   severity: 'info',
   authority: 'structural',
   run: ({ course, holes }) => {
-    const assigned = new Set(holes.flatMap((h) => [...h.teeIds, ...h.basketIds]));
+    const assigned = new Set(holes.flatMap((h) => [...h.teeIds, ...h.targetIds]));
     return course.features
-      .filter((f) => (f.kind === 'tee' || f.kind === 'basket') && !assigned.has(f.id))
+      .filter(
+        (f) =>
+          (f.kind === 'tee' || f.kind === 'target') &&
+          !assigned.has(f.id) &&
+          f.props['standalone'] !== true,
+      )
       .map((f) =>
         finding(
           unassignedTargets,
@@ -258,7 +307,7 @@ const unassignedTargets: Rule = {
 
 export const STRUCTURAL_RULES: readonly Rule[] = [
   holeNeedsTee,
-  holeNeedsBasket,
+  holeNeedsTarget,
   danglingReference,
   duplicateNumbers,
   degenerateHole,
@@ -329,14 +378,27 @@ const holeTooShort: Rule = {
   source: SOURCES.elements.title,
   revision: SOURCES.elements.revision,
   docUrl: SOURCES.elements.url,
-  run: ({ course, holes }) =>
+  run: ({ course, holes, featureById }) =>
     holes.flatMap((hole) => {
-      const { effective } = measureHole(course, hole);
-      if (effective === null || effective < 5 || effective >= MIN_HOLE_LENGTH_M) return [];
+      /*
+       * Every tee-and-pin combination, not just the first. A hole can be fine
+       * from the long tee and 60 ft from the short one, and the short one is
+       * exactly the case this check exists for.
+       */
+      const shortest = hole.teeIds
+        .flatMap((teeId) => hole.targetIds.map((targetId) => ({ teeId, targetId })))
+        .map(({ teeId, targetId }) => {
+          const pair = findPair(course.pairs, teeId, targetId);
+          return measurePair(featureById, teeId, targetId, pair?.fairwayId ?? null).effective;
+        })
+        .filter((m): m is number => m !== null && m >= 5)
+        .sort((a, b) => a - b)[0];
+
+      if (shortest === undefined || shortest >= MIN_HOLE_LENGTH_M) return [];
       return [
         finding(
           holeTooShort,
-          `${holeName(hole)} plays ${ft(effective)} ft — under the ${MIN_HOLE_LENGTH_FT} ft minimum for any skill level.`,
+          `${holeName(hole)} plays ${ft(shortest)} ft from its shortest tee — under the ${MIN_HOLE_LENGTH_FT} ft minimum for any skill level.`,
           { holeId: hole.id },
         ),
       ];
@@ -346,9 +408,14 @@ const holeTooShort: Rule = {
 /**
  * [SKILL] p2 publishes typical total lengths for 18 holes, per skill level.
  *
- * Only runs on an 18-hole course, because 18 holes is what the table is quoted
- * for and it gives no per-hole figure — pro-rating it to a 9- or 24-hole layout
- * would be this file inventing a number, which is exactly what it must not do.
+ * Measures the LAYOUT, not the holes — which is what makes it correct now that
+ * a layout can skip a hole or play one twice. Eighteen plays is eighteen plays
+ * however many corridors they came from.
+ *
+ * Two conditions gate it, both because the alternative would be inventing a
+ * figure. The table is quoted for 18 and gives no per-hole number, so a 9- or
+ * 24-play layout is not covered. And every published range is per skill level,
+ * so a layout mixing tee colours has no range to be inside or outside of.
  *
  * Informational: "typical" is the document's framing, and a deliberately tight
  * wooded course sitting under the range is a design decision, not a defect.
@@ -361,23 +428,26 @@ const courseLengthOutsideRange: Rule = {
   source: SOURCES.skill.title,
   revision: SOURCES.skill.revision,
   docUrl: SOURCES.skill.url,
-  run: ({ course, holes }) => {
-    if (holes.length !== COURSE_LENGTH_HOLE_COUNT) return [];
+  run: ({ course, featureById, layout }) => {
+    if (!layout || layout.plays.length !== COURSE_LENGTH_HOLE_COUNT) return [];
 
-    // Every hole has to be measurable, or the total is not a total.
-    const lengths = holes.map((hole) => measureHole(course, hole).effective);
-    if (lengths.some((length) => length === null)) return [];
-    const total = lengths.reduce<number>((sum, length) => sum + length!, 0);
+    const skill = layoutSkillLevel(layout, featureById);
+    if (!skill) return [];
 
-    const range = courseLengthMeters(course.skillLevel);
+    // Every play has to be measurable, or the total is not a total.
+    const measurements = measureLayout(layout, featureById, course.pairs);
+    if (measurements.some((m) => m.meters === null)) return [];
+
+    const total = layoutLength(measurements);
+    const range = courseLengthMeters(skill);
     if (total >= range.min && total <= range.max) return [];
 
-    const level = SKILL_LEVEL_INFO[course.skillLevel].label;
+    const level = SKILL_LEVEL_INFO[skill].label;
     const direction = total < range.min ? 'shorter' : 'longer';
     return [
       finding(
         courseLengthOutsideRange,
-        `At ${ft(total).toLocaleString()} ft this course is ${direction} than the typical ${level} range (${ft(range.min).toLocaleString()}–${ft(range.max).toLocaleString()} ft).`,
+        `At ${ft(total).toLocaleString()} ft, ${layoutName(layout)} is ${direction} than the typical ${level} range (${ft(range.min).toLocaleString()}–${ft(range.max).toLocaleString()} ft).`,
       ),
     ];
   },
@@ -400,35 +470,65 @@ const fairwaysCross: Rule = {
   source: SOURCES.elements.title,
   revision: SOURCES.elements.revision,
   docUrl: SOURCES.elements.url,
-  run: ({ holes, featureById }) => {
-    const routed = holes
-      .map((hole) => {
-        const fairway = hole.fairwayId ? featureById.get(hole.fairwayId) : undefined;
-        return fairway?.geometry.type === 'line'
-          ? { hole, fairway, line: fairway.geometry.coordinates }
-          : null;
-      })
-      .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+  run: ({ course, holes, featureById, layout }) => {
+    /*
+     * The lines actually played, not every line that exists.
+     *
+     * A hole with three tees and three pins has nine routes, and comparing all
+     * of them against all of another hole's would report a course as a mess of
+     * crossings no player would ever make. The layout says which route is real;
+     * without one, the first tee to the first target stands in.
+     */
+    const routed =
+      layout?.plays.map((play) => ({
+        holeId: play.holeId,
+        teeId: play.teeId,
+        targetId: play.targetId,
+      })) ?? [];
 
-    // Unrouted holes still have a played line — tee to basket — and two of
-    // those crossing is the same problem drawn with fewer clicks.
-    for (const hole of holes) {
-      if (routed.some((entry) => entry.hole.id === hole.id)) continue;
-      const tee = hole.teeIds[0] ? featureById.get(hole.teeIds[0]) : undefined;
-      const basket = hole.basketIds[0] ? featureById.get(hole.basketIds[0]) : undefined;
-      if (!tee || !basket) continue;
-      routed.push({
-        hole,
-        fairway: tee,
-        line: [anchorOf(tee), anchorOf(basket)],
-      });
-    }
+    /*
+     * An empty layout is not the same as no layout.
+     *
+     * A course being drawn has holes long before it has a routing — that is the
+     * normal order of work — so falling through to the holes themselves is what
+     * keeps this check useful during design rather than only after it.
+     */
+    const played =
+      routed.length > 0
+        ? routed
+        : holes.flatMap((hole) => {
+            const teeId = hole.teeIds[0];
+            const targetId = hole.targetIds[0];
+            return teeId && targetId ? [{ holeId: hole.id, teeId, targetId }] : [];
+          });
+
+    const routes = played.flatMap((entry) => {
+      const hole = holes.find((h) => h.id === entry.holeId);
+      const tee = featureById.get(entry.teeId);
+      const target = featureById.get(entry.targetId);
+      if (!hole || !tee || !target) return [];
+
+      const pair = findPair(course.pairs, entry.teeId, entry.targetId);
+      const fairway = pair?.fairwayId ? featureById.get(pair.fairwayId) : undefined;
+
+      // A drawn fairway is the route; otherwise the played line is tee to
+      // target, and two of those crossing is the same problem drawn with
+      // fewer clicks.
+      const line =
+        fairway?.geometry.type === 'line'
+          ? fairway.geometry.coordinates
+          : [anchorOf(tee), anchorOf(target)];
+
+      return [{ hole, line }];
+    });
 
     const found: Finding[] = [];
-    for (let i = 0; i < routed.length; i++) {
-      for (let j = i + 1; j < routed.length; j++) {
-        const a = routed[i]!;
-        const b = routed[j]!;
+    for (let i = 0; i < routes.length; i++) {
+      for (let j = i + 1; j < routes.length; j++) {
+        const a = routes[i]!;
+        const b = routes[j]!;
+        // A hole played twice in one layout shares its corridor with itself.
+        if (a.hole.id === b.hole.id) continue;
         if (!pathsCross(a.line, b.line)) continue;
         found.push(
           finding(fairwaysCross, `${holeName(a.hole)} and ${holeName(b.hole)} cross.`, {
@@ -460,19 +560,21 @@ export const ALL_RULES: readonly Rule[] = [...STRUCTURAL_RULES, ...PDGA_RULES];
 /**
  * Run every rule.
  *
+ * Takes the whole course rather than a course plus a hole list: the checks now
+ * need the active layout and the pair table too, and threading those through
+ * separately would be three chances for a caller to pass a set that disagrees
+ * with itself.
+ *
  * `dismissed` carries rule ids the designer has silenced for this course.
  * Filtering happens here rather than in the UI so that a dismissal means the
  * same thing everywhere, including in an export.
  */
-export function checkCourse(
-  course: Course,
-  holes: readonly Hole[],
-  dismissed: readonly string[] = [],
-): Finding[] {
+export function checkCourse(course: Course, dismissed: readonly string[] = []): Finding[] {
   const ctx: RuleContext = {
     course,
-    holes,
-    featureById: new Map(course.features.map((f) => [f.id, f])),
+    holes: course.holes,
+    featureById: featureIndex(course),
+    layout: activeLayout(course),
   };
 
   const silenced = new Set(dismissed);

@@ -37,6 +37,7 @@ apps/web           the application
 packages/core      document model, geometry, PDGA data, rules engine
 packages/design    design tokens, theming, keyboard registry
 docs/PLAN.md       roadmap and design decisions
+docs/MODEL.md      what a course document is, and how it migrates
 docs/PDGA.md       transcription record for every PDGA figure used
 ```
 
@@ -73,8 +74,9 @@ OS preference.
 
 ### PDGA figures are transcribed, never remembered
 
-Par bands, tee pad minimums, hole and course length ranges and throw distances all
-come from the published PDGA course design documents. Every one is transcribed in
+Par bands, tee pad minimums, hole and course length ranges, throw distances and
+the circles around a target all come from the published PDGA documents — the five
+course design guides plus the Rules of Play. Every one is transcribed in
 `packages/core/src/pdga.ts` against the page and sentence it came from, and the
 full record — including the metric tables, the places two documents disagree, and
 what is deliberately absent — is in [`docs/PDGA.md`](docs/PDGA.md).
@@ -85,11 +87,28 @@ and an invented number is worse than a missing one because it cannot be told apa
 from a correct one. There is no safety separation distance in here, for exactly
 that reason: the PDGA does not publish one.
 
+Where a figure is _nearly_ official, the app says so rather than rounding up. The
+three rings drawn around a target have three different provenances — Circle 1 at
+10 m is a rule, Circle 2 at 20 m is a real figure the rules use for pace of play
+rather than as a circle, and the 3 m bullseye is league convention that appears in
+no PDGA document at all. Each is labelled with which it is.
+
 Checks are advisory and every one is dismissible. `packages/core/src/pdga.test.ts`
 restates the published figures independently of the tables the code reads, so a
 typo fails the build.
 
 Hyzerlines is not affiliated with or endorsed by the PDGA.
+
+### The course model
+
+A hole with three tees and three pin positions is nine different shots, so
+measurement lives on the **pair** — one tee to one target — rather than on the
+hole. How the course is _played_ is a **layout**: an ordered sequence that can
+skip a hole or play one twice. Skill level is read from tee colours, never stored
+on the course.
+
+[`docs/MODEL.md`](docs/MODEL.md) is the full reference, including how version 1
+documents migrate.
 
 ### Keyboard model
 

@@ -106,7 +106,7 @@ test.describe('holes', () => {
   }) => {
     await openEditor(page);
     await place(page, 'Tee pad', 400, 500);
-    await place(page, 'Basket', 800, 300);
+    await place(page, 'Target', 800, 300);
 
     await page.getByRole('button', { name: 'Add hole' }).click();
 
@@ -124,7 +124,7 @@ test.describe('holes', () => {
   test('par can be overridden, and the override persists across a reload', async ({ page }) => {
     await openEditor(page);
     await place(page, 'Tee pad', 400, 500);
-    await place(page, 'Basket', 800, 300);
+    await place(page, 'Target', 800, 300);
     await page.getByRole('button', { name: 'Add hole' }).click();
 
     const par = page.getByRole('combobox', { name: /Par for Hole 1/ });
@@ -173,7 +173,7 @@ test.describe('holes', () => {
   test('a clean hole produces no findings', async ({ page }) => {
     await openEditor(page);
     await place(page, 'Tee pad', 400, 500);
-    await place(page, 'Basket', 800, 300);
+    await place(page, 'Target', 800, 300);
     await page.getByRole('button', { name: 'Add hole' }).click();
 
     await expect(page.getByRole('button', { name: /notes?$/ })).toBeHidden();
@@ -182,7 +182,7 @@ test.describe('holes', () => {
   test('holes survive a reload', async ({ page }) => {
     await openEditor(page);
     await place(page, 'Tee pad', 400, 500);
-    await place(page, 'Basket', 800, 300);
+    await place(page, 'Target', 800, 300);
     await page.getByRole('button', { name: 'Add hole' }).click();
     await expect(page.getByText('Hole 1').first()).toBeVisible();
 
@@ -194,39 +194,38 @@ test.describe('holes', () => {
   });
 
   /**
-   * Par comes from the PDGA table for the course's skill level, so the same
-   * hole is a different par depending on who it is built for. This is the only
-   * place that wiring is visible end to end — core proves the table, but only
-   * the browser proves the picker reaches it and the change survives a reload.
+   * Par comes from the PDGA table for the TEE'S skill level, and a tee's colour
+   * is that level — [ELEMENTS] p3. The course no longer carries one of its own,
+   * so this is the wiring that replaced it: set the colour, the par re-bands.
    */
-  test('changing the skill level re-pars the course, and persists', async ({ page }) => {
+  test('the tee colour sets the skill level, and re-pars the hole', async ({ page }) => {
     await openEditor(page);
     // ~570 ft at zoom 16: par 4 for White (431-765), par 3 for Gold (186-585).
     await place(page, 'Tee pad', 300, 500);
-    await place(page, 'Basket', 700, 200);
+    await place(page, 'Target', 700, 200);
     await page.getByRole('button', { name: 'Add hole' }).click();
 
-    // Adding a hole selects it, and the right panel shows the course only when
-    // nothing is selected. Escape steps back out to it.
-    await page.keyboard.press('Escape');
-
     const par = page.getByRole('combobox', { name: /Par for Hole 1/ });
-    const level = page.getByRole('combobox', { name: /Skill level/ });
+    const asDefault = await par.inputValue();
 
-    await expect(level).toHaveValue('white');
-    const asWhite = await par.inputValue();
+    // Select the tee to reach its properties, then colour it Gold.
+    await page.getByRole('button', { name: 'Select Tee pad' }).click();
+    const colour = page.getByRole('combobox', { name: 'Colour' });
+    await colour.selectOption('gold');
+    await expect(colour).toHaveValue('gold');
 
-    await level.selectOption('gold');
-    await expect(par).not.toHaveValue(asWhite);
+    await expect(par).not.toHaveValue(asDefault);
     const asGold = await par.inputValue();
-    expect(Number(asGold)).toBeLessThan(Number(asWhite));
+    expect(Number(asGold)).toBeLessThan(Number(asDefault));
 
     await page.waitForTimeout(1400);
     await page.reload();
     await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
 
-    await expect(page.getByRole('combobox', { name: /Skill level/ })).toHaveValue('gold');
     await expect(page.getByRole('combobox', { name: /Par for Hole 1/ })).toHaveValue(asGold);
+    // And the course panel reports the level it derived, rather than storing one.
+    await page.keyboard.press('Escape');
+    await expect(page.getByText('Gold', { exact: true }).first()).toBeVisible();
   });
 
   /**
@@ -237,7 +236,7 @@ test.describe('holes', () => {
   test('a PDGA finding cites its source document', async ({ page }) => {
     await openEditor(page);
     await place(page, 'Tee pad', 400, 500);
-    await place(page, 'Basket', 410, 495);
+    await place(page, 'Target', 410, 495);
     await page.getByRole('button', { name: 'Add hole' }).click();
 
     await page.getByRole('button', { name: /notes?$/ }).click();
@@ -259,7 +258,7 @@ test.describe('holes', () => {
   }) => {
     await openEditor(page);
     await place(page, 'Tee pad', 400, 500);
-    await place(page, 'Basket', 800, 300);
+    await place(page, 'Target', 800, 300);
     await page.getByRole('button', { name: 'Add hole' }).click();
 
     const before = await page.evaluate(() => ({
@@ -305,7 +304,7 @@ test.describe('holes', () => {
   test('Zoom to fit frames the whole course', async ({ page }) => {
     await openEditor(page);
     await place(page, 'Tee pad', 400, 500);
-    await place(page, 'Basket', 800, 300);
+    await place(page, 'Target', 800, 300);
 
     // Wander off, then ask to come back.
     await page.evaluate(() => window.hyzerlinesMap!.jumpTo({ center: [-80, 40], zoom: 6 }));
@@ -325,7 +324,7 @@ test.describe('holes', () => {
   test('adding a hole is undoable', async ({ page }) => {
     await openEditor(page);
     await place(page, 'Tee pad', 400, 500);
-    await place(page, 'Basket', 800, 300);
+    await place(page, 'Target', 800, 300);
     await page.getByRole('button', { name: 'Add hole' }).click();
     await expect(page.getByText('Hole 1').first()).toBeVisible();
 

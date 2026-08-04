@@ -6,15 +6,7 @@ import { applyOp, type Op } from './ops.js';
 import { CourseStore } from './store.js';
 import { bearing, boundsOf, distance, pathLength, pathsCross } from './measure.js';
 import type { Position } from './geo.js';
-import {
-  createHole,
-  coursePar,
-  effectivePar,
-  holeName,
-  measureHole,
-  suggestPar,
-} from './holes.js';
-import { feetToMeters, PAR_BY_LENGTH_FT, type SkillLevel } from './pdga.js';
+import { createHole, holeName, pairingsOf } from './holes.js';
 import { checkCourse, PDGA_RULES } from './rules.js';
 import { serializeCourse, deserializeCourse } from './file.js';
 
@@ -96,7 +88,7 @@ describe('measure', () => {
     });
 
     it('gives a single point a zero-size box rather than nothing', () => {
-      const basket = createFeature('basket', pt(-93.1, 44.9));
+      const basket = createFeature('target', pt(-93.1, 44.9));
       expect(boundsOf([basket])).toEqual([-93.1, 44.9, -93.1, 44.9]);
     });
   });
@@ -157,166 +149,6 @@ describe('measure', () => {
   });
 });
 
-describe('hole measurement', () => {
-  const buildHole = (fairway?: Geometry) => {
-    let course = createCourse();
-    const tee = createFeature('tee', pt(-93.1, 44.9));
-    const basket = createFeature('basket', pt(-93.1, 44.903));
-    for (const f of [tee, basket]) {
-      course = applyOp(course, { type: 'addFeature', feature: f }).course;
-    }
-    let fairwayId: string | null = null;
-    if (fairway) {
-      const line = createFeature('fairway', fairway);
-      course = applyOp(course, { type: 'addFeature', feature: line }).course;
-      fairwayId = line.id;
-    }
-    const hole = createHole(1, { teeIds: [tee.id], basketIds: [basket.id], fairwayId });
-    course = applyOp(course, { type: 'addHole', hole }).course;
-    return { course, hole, tee, basket };
-  };
-
-  it('measures the straight line tee to basket', () => {
-    const { course, hole } = buildHole();
-    const m = measureHole(course, hole);
-    expect(m.straight).toBeCloseTo(distance([-93.1, 44.9], [-93.1, 44.903]), 6);
-    expect(m.routed).toBeNull();
-    expect(m.effective).toBe(m.straight);
-  });
-
-  // A dogleg plays its route, not its chord.
-  it('prefers the routed length when a fairway is drawn', () => {
-    const { course, hole } = buildHole({
-      type: 'line',
-      coordinates: [
-        [-93.1, 44.9],
-        [-93.095, 44.9015],
-        [-93.1, 44.903],
-      ],
-    });
-    const m = measureHole(course, hole);
-    expect(m.routed).not.toBeNull();
-    expect(m.routed!).toBeGreaterThan(m.straight!);
-    expect(m.effective).toBe(m.routed);
-  });
-
-  it('reports null rather than guessing when an end is missing', () => {
-    const course = createCourse();
-    const hole = createHole(1);
-    expect(measureHole(course, hole).effective).toBeNull();
-    expect(suggestPar(course, hole)).toBeNull();
-  });
-});
-
-/** Build a hole of an exact straight length by walking north from a point. */
-const holeOfLength = (meters: number, skillLevel: SkillLevel = 'white') => {
-  const metersPerDegreeLat = distance([0, 44.9], [0, 45.9]);
-  const dLat = meters / metersPerDegreeLat;
-  let course = createCourse({ skillLevel });
-  const tee = createFeature('tee', pt(-93.1, 44.9));
-  const basket = createFeature('basket', pt(-93.1, 44.9 + dLat));
-  for (const f of [tee, basket]) {
-    course = applyOp(course, { type: 'addFeature', feature: f }).course;
-  }
-  const hole = createHole(1, { teeIds: [tee.id], basketIds: [basket.id] });
-  return { course, hole };
-};
-
-const holeOfFeet = (feet: number, skillLevel: SkillLevel = 'white') =>
-  holeOfLength(feetToMeters(feet), skillLevel);
-
-describe('par suggestion', () => {
-  /**
-   * Asserted against the published foot figures rather than against our own
-   * output, so this fails if the transcription drifts rather than merely
-   * changing with it.
-   *
-   * [PAR] p10, White row: par 2 is 0-55, par 3 is 56-430, par 4 is 431-765,
-   * par 5 is 766-1170, par 6 is 1171+.
-   */
-  it('reads par from the PDGA table for the course skill level', () => {
-    for (const [feet, expected] of [
-      [40, 2],
-      [55, 2],
-      [56, 3],
-      [430, 3],
-      [431, 4],
-      [765, 4],
-      [766, 5],
-      [1170, 5],
-      [1171, 6],
-    ] as const) {
-      const { course, hole } = holeOfFeet(feet);
-      expect(suggestPar(course, hole)?.par, `${feet} ft, white`).toBe(expected);
-    }
-  });
-
-  /**
-   * The whole reason the course carries a skill level: the same hole is a
-   * different par depending on who it is built for.
-   *
-   * 700 ft is par 4 for Gold (586-1010), par 4 for Blue (481-845), and par 5
-   * for Red (681-1010). Green has no par 2 band at all.
-   */
-  it('gives the same hole a different par at different skill levels', () => {
-    const parAt = (level: SkillLevel) => {
-      const { course, hole } = holeOfFeet(700, level);
-      return suggestPar(course, hole)?.par;
-    };
-    expect(parAt('gold')).toBe(4);
-    expect(parAt('blue')).toBe(4);
-    expect(parAt('red')).toBe(5);
-
-    // Green's table prints "na" for par 2, so even a 20 ft hole is a par 3.
-    const green = holeOfFeet(20, 'green');
-    expect(suggestPar(green.course, green.hole)?.par).toBe(3);
-  });
-
-  /**
-   * A bare number nobody can interrogate gets ignored. The reasoning is the
-   * feature, so an empty factor list is a bug — and it has to name the level,
-   * because par is meaningless without it.
-   */
-  it('always explains itself, and names the skill level it used', () => {
-    const { course, hole } = holeOfLength(200);
-    const suggestion = suggestPar(course, hole);
-    expect(suggestion?.factors.length).toBeGreaterThan(0);
-    expect(suggestion?.factors[0]?.label).toContain('White');
-    expect(suggestion?.skillLevel).toBe('white');
-  });
-
-  it('flags holes sitting on a band boundary as borderline', () => {
-    const onEdge = holeOfFeet(PAR_BY_LENGTH_FT.white.par3);
-    expect(suggestPar(onEdge.course, onEdge.hole)?.borderline).toBe(true);
-
-    // Mid-band, ~90 m clear of either boundary.
-    const clear = holeOfFeet(250);
-    expect(suggestPar(clear.course, clear.hole)?.borderline).toBe(false);
-  });
-
-  /**
-   * The override exists so that changing the skill level never silently
-   * overwrites a deliberate decision. If this breaks, designers lose work
-   * invisibly.
-   */
-  it('lets the designer override, and never discards the override', () => {
-    const { course, hole } = holeOfFeet(300);
-    expect(effectivePar(course, hole)).toBe(3);
-
-    const overridden = { ...hole, parOverride: 4 };
-    expect(effectivePar(course, overridden)).toBe(4);
-    // The suggestion is still computed underneath, unchanged.
-    expect(suggestPar(course, overridden)?.par).toBe(3);
-  });
-
-  it('totals par across holes', () => {
-    const a = holeOfFeet(300);
-    const b = holeOfFeet(600);
-    const course = { ...a.course, features: [...a.course.features, ...b.course.features] };
-    expect(coursePar(course, [a.hole, b.hole])).toBe(3 + 4);
-  });
-});
-
 describe('hole ops', () => {
   it('round-trips through inverses', () => {
     const base = createCourse();
@@ -340,7 +172,7 @@ describe('hole ops', () => {
   // The inverse captures only the keys that changed, so undo restores exactly
   // what the op touched rather than clobbering unrelated edits.
   it('undoes a partial hole update without touching other fields', () => {
-    const hole = createHole(1, { name: 'Original', parOverride: 4 });
+    const hole = createHole(1, { name: 'Original', notes: 'Blind tee shot' });
     const course = applyOp(createCourse(), { type: 'addHole', hole }).course;
 
     const { course: renamed, inverse } = applyOp(course, {
@@ -349,11 +181,11 @@ describe('hole ops', () => {
       changes: { name: 'Renamed' },
     });
     expect(renamed.holes[0]?.name).toBe('Renamed');
-    expect(renamed.holes[0]?.parOverride).toBe(4);
+    expect(renamed.holes[0]?.notes).toBe('Blind tee shot');
 
     const undone = applyOp(renamed, inverse).course;
     expect(undone.holes[0]?.name).toBe('Original');
-    expect(undone.holes[0]?.parOverride).toBe(4);
+    expect(undone.holes[0]?.notes).toBe('Blind tee shot');
   });
 
   it('puts hole edits on the undo stack', () => {
@@ -370,14 +202,14 @@ describe('hole ops', () => {
     course = applyOp(course, { type: 'addFeature', feature: tee }).course;
     course = applyOp(course, {
       type: 'addHole',
-      hole: createHole(1, { teeIds: [tee.id], parOverride: 4 }),
+      hole: createHole(1, { teeIds: [tee.id] }),
     }).course;
 
     const result = deserializeCourse(serializeCourse(course));
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.course.holes).toHaveLength(1);
-      expect(result.course.holes[0]?.parOverride).toBe(4);
+      expect(result.course.holes[0]?.teeIds).toEqual([tee.id]);
     }
   });
 
@@ -385,12 +217,26 @@ describe('hole ops', () => {
     expect(holeName(createHole(7))).toBe('Hole 7');
     expect(holeName(createHole(7, { name: 'The Chute' }))).toBe('The Chute');
   });
+
+  /**
+   * Two tees and three pins is six different shots, and the app has to be able
+   * to offer all of them — this is the list the pair picker is built from.
+   */
+  it('enumerates every tee and target combination', () => {
+    const hole = createHole(1, { teeIds: ['t1', 't2'], targetIds: ['a', 'b', 'c'] });
+    expect(pairingsOf(hole)).toHaveLength(6);
+    expect(pairingsOf(hole)[0]).toEqual({ teeId: 't1', targetId: 'a' });
+
+    // A hole missing either end has no pairings at all, rather than a partial
+    // list that would measure against nothing.
+    expect(pairingsOf(createHole(2, { teeIds: ['t1'] }))).toEqual([]);
+  });
 });
 
 describe('design checks', () => {
   it('reports a hole with no tee or basket', () => {
     const course = applyOp(createCourse(), { type: 'addHole', hole: createHole(1) }).course;
-    const findings = checkCourse(course, course.holes);
+    const findings = checkCourse(course);
     expect(findings.map((f) => f.ruleId)).toEqual(
       expect.arrayContaining(['structural.hole-missing-tee', 'structural.hole-missing-basket']),
     );
@@ -406,7 +252,7 @@ describe('design checks', () => {
     }).course;
     course = applyOp(course, { type: 'removeFeature', id: tee.id }).course;
 
-    const ids = checkCourse(course, course.holes).map((f) => f.ruleId);
+    const ids = checkCourse(course).map((f) => f.ruleId);
     expect(ids).toContain('structural.dangling-reference');
   });
 
@@ -415,7 +261,7 @@ describe('design checks', () => {
     for (const hole of [createHole(3), createHole(3)]) {
       course = applyOp(course, { type: 'addHole', hole }).course;
     }
-    expect(checkCourse(course, course.holes).map((f) => f.ruleId)).toContain(
+    expect(checkCourse(course).map((f) => f.ruleId)).toContain(
       'structural.duplicate-hole-number',
     );
   });
@@ -423,16 +269,14 @@ describe('design checks', () => {
   it('reports tees and baskets that belong to no hole', () => {
     const course = applyOp(createCourse(), {
       type: 'addFeature',
-      feature: createFeature('basket', pt(-93.1, 44.9)),
+      feature: createFeature('target', pt(-93.1, 44.9)),
     }).course;
-    expect(checkCourse(course, course.holes).map((f) => f.ruleId)).toContain(
-      'structural.unassigned-feature',
-    );
+    expect(checkCourse(course).map((f) => f.ruleId)).toContain('structural.unassigned-feature');
   });
 
   it('honours dismissals', () => {
     const course = applyOp(createCourse(), { type: 'addHole', hole: createHole(1) }).course;
-    const dismissed = checkCourse(course, course.holes, ['structural.hole-missing-tee']);
+    const dismissed = checkCourse(course, ['structural.hole-missing-tee']);
     expect(dismissed.map((f) => f.ruleId)).not.toContain('structural.hole-missing-tee');
   });
 
@@ -440,11 +284,11 @@ describe('design checks', () => {
     let course = createCourse();
     course = applyOp(course, {
       type: 'addFeature',
-      feature: createFeature('basket', pt(-93.1, 44.9)),
+      feature: createFeature('target', pt(-93.1, 44.9)),
     }).course;
     course = applyOp(course, { type: 'addHole', hole: createHole(1) }).course;
 
-    const severities = checkCourse(course, course.holes).map((f) => f.severity);
+    const severities = checkCourse(course).map((f) => f.severity);
     const rank = { error: 0, warning: 1, info: 2 } as const;
     for (let i = 1; i < severities.length; i++) {
       expect(rank[severities[i]!]).toBeGreaterThanOrEqual(rank[severities[i - 1]!]);
@@ -454,16 +298,16 @@ describe('design checks', () => {
   it('finds a clean course clean', () => {
     let course = createCourse();
     const tee = createFeature('tee', pt(-93.1, 44.9));
-    const basket = createFeature('basket', pt(-93.1, 44.903));
+    const basket = createFeature('target', pt(-93.1, 44.903));
     for (const f of [tee, basket]) {
       course = applyOp(course, { type: 'addFeature', feature: f }).course;
     }
     course = applyOp(course, {
       type: 'addHole',
-      hole: createHole(1, { teeIds: [tee.id], basketIds: [basket.id] }),
+      hole: createHole(1, { teeIds: [tee.id], targetIds: [basket.id] }),
     }).course;
 
-    expect(checkCourse(course, course.holes)).toEqual([]);
+    expect(checkCourse(course)).toEqual([]);
   });
 
   /**

@@ -3,6 +3,8 @@ export * from './pdga.js';
 export * from './features.js';
 export * from './measure.js';
 export * from './holes.js';
+export * from './pairs.js';
+export * from './layouts.js';
 export * from './rules.js';
 export * from './schema.js';
 export * from './ops.js';

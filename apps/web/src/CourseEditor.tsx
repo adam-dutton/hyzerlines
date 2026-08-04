@@ -4,6 +4,7 @@ import {
   checkCourse,
   createFeature,
   createHole,
+  createPair,
   geometryMatchesKind,
   type Feature,
   type FeatureKind,
@@ -45,10 +46,7 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
   const selected = course.features.find((f) => f.id === selectedId) ?? null;
   const selectedHole = course.holes.find((h) => h.id === selectedHoleId) ?? null;
 
-  const findings = useMemo(
-    () => checkCourse(course, course.holes, course.dismissedRules),
-    [course],
-  );
+  const findings = useMemo(() => checkCourse(course, course.dismissedRules), [course]);
 
   /**
    * Create a hole from what is already drawn.
@@ -61,15 +59,15 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
    * silently sitting there.
    */
   const addHole = useCallback(() => {
-    const assigned = new Set(course.holes.flatMap((h) => [...h.teeIds, ...h.basketIds]));
+    const assigned = new Set(course.holes.flatMap((h) => [...h.teeIds, ...h.targetIds]));
     const free = (kind: FeatureKind): Feature[] =>
       course.features.filter((f) => f.kind === kind && !assigned.has(f.id));
 
     const tee = free('tee')[0];
-    const basket = free('basket')[0];
+    const target = free('target')[0];
 
     const claimedFairways = new Set(
-      course.holes.map((h) => h.fairwayId).filter((id): id is string => id !== null),
+      course.pairs.map((p) => p.fairwayId).filter((id): id is string => id !== null),
     );
     const fairway =
       tee &&
@@ -85,11 +83,23 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
     const number = course.holes.reduce((max, h) => Math.max(max, h.number), 0) + 1;
     const hole = createHole(number, {
       teeIds: tee ? [tee.id] : [],
-      basketIds: basket ? [basket.id] : [],
-      fairwayId: fairway ? fairway.id : null,
+      targetIds: target ? [target.id] : [],
     });
 
     dispatch({ type: 'addHole', hole });
+
+    /*
+     * A fairway now belongs to the tee-and-target pair, not the hole, so
+     * claiming one means writing a pair record. Nothing else about the pair is
+     * worth storing — the par is derived until the designer disagrees with it.
+     */
+    if (tee && target && fairway) {
+      dispatch({
+        type: 'setPair',
+        pair: createPair(tee.id, target.id, { fairwayId: fairway.id }),
+      });
+    }
+
     setSelectedHoleId(hole.id);
   }, [course, dispatch]);
 
@@ -238,8 +248,18 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
           ? [selected]
           : selectedHole
             ? course.features.filter((f) =>
-                [...selectedHole.teeIds, ...selectedHole.basketIds, selectedHole.fairwayId]
-                  .filter((id): id is string => id !== null)
+                [
+                  ...selectedHole.teeIds,
+                  ...selectedHole.targetIds,
+                  ...course.pairs
+                    .filter(
+                      (p) =>
+                        selectedHole.teeIds.includes(p.teeId) &&
+                        selectedHole.targetIds.includes(p.targetId),
+                    )
+                    .map((p) => p.fairwayId),
+                ]
+                  .filter((id): id is string => id !== null && id !== undefined)
                   .includes(f.id),
               )
             : [];
@@ -248,7 +268,7 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
         frameFeatures(map, target.length > 0 ? target : course.features, { duration: 400 });
       },
       'tool.tee': () => setTool('tee'),
-      'tool.basket': () => setTool('basket'),
+      'tool.basket': () => setTool('target'),
       'tool.fairway': () => setTool('fairway'),
       'tool.mando': () => setTool('mando'),
       'tool.ob': () => setTool('ob'),
