@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 import { viewSchema, type View } from './geo.js';
 import { featureSchema } from './features.js';
+import { holeSchema } from './holes.js';
+import { skillLevelSchema, DEFAULT_SKILL_LEVEL } from './pdga.js';
 
 /**
  * The course document.
@@ -26,10 +28,30 @@ export const courseSchema = z.object({
   view: viewSchema,
   basemapId: z.string().min(1),
 
-  features: z.array(featureSchema).default([]),
+  /**
+   * The PDGA skill level this course is designed for.
+   *
+   * Par bands, course length ranges and throw distances all differ by level —
+   * a 700 ft hole is a par 4 for Gold and a par 5 for Red — so a course that
+   * does not say who it is for cannot have its par computed at all.
+   *
+   * Defaulted rather than required, which is what keeps documents written
+   * before this field existed loading without a format bump: zod fills it in,
+   * and the designer sees the level they can change in the top bar.
+   */
+  skillLevel: skillLevelSchema.default(DEFAULT_SKILL_LEVEL),
 
-  /* Reserved for the hole workflow in PR 4. */
-  holes: z.array(z.unknown()).default([]),
+  features: z.array(featureSchema).default([]),
+  holes: z.array(holeSchema).default([]),
+
+  /**
+   * Rule ids the designer has silenced for this course.
+   *
+   * Part of the document rather than a preference: a dismissal is a decision
+   * about this course ("the short pad really is that close to the path"), and
+   * it should travel with the file to whoever reviews it.
+   */
+  dismissedRules: z.array(z.string()).default([]),
 });
 
 export type Course = z.infer<typeof courseSchema>;
@@ -52,6 +74,7 @@ export function createCourse(overrides: Partial<Course> = {}): Course {
     updatedAt: now,
     view: DEFAULT_VIEW,
     basemapId: 'esri-imagery',
+    skillLevel: DEFAULT_SKILL_LEVEL,
     features: [],
     holes: [],
     ...overrides,

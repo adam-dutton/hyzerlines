@@ -1,6 +1,8 @@
 import type { Course } from './schema.js';
 import type { View } from './geo.js';
 import type { Feature, Geometry } from './features.js';
+import type { Hole } from './holes.js';
+import type { SkillLevel } from './pdga.js';
 
 /**
  * Every mutation to a course goes through an operation.
@@ -17,11 +19,16 @@ export type Op =
   | { type: 'setName'; name: string }
   | { type: 'setView'; view: View }
   | { type: 'setBasemap'; basemapId: string }
+  | { type: 'setSkillLevel'; skillLevel: SkillLevel }
   | { type: 'addFeature'; feature: Feature }
   | { type: 'removeFeature'; id: string }
   | { type: 'setGeometry'; id: string; geometry: Geometry }
   | { type: 'setLabel'; id: string; label: string }
-  | { type: 'setProp'; id: string; key: string; value: string | number | boolean | undefined };
+  | { type: 'setProp'; id: string; key: string; value: string | number | boolean | undefined }
+  | { type: 'addHole'; hole: Hole }
+  | { type: 'removeHole'; id: string }
+  | { type: 'updateHole'; id: string; changes: Partial<Omit<Hole, 'id'>> }
+  | { type: 'setDismissed'; ruleIds: string[] };
 
 export interface ApplyResult {
   course: Course;
@@ -78,6 +85,18 @@ export function applyOp(course: Course, op: Op): ApplyResult {
         undoable,
       );
 
+    /*
+     * Undoable, unlike the camera. Changing the skill level re-pars every hole
+     * that has no override, which is a substantial and easily-mistaken edit —
+     * exactly the kind of thing ⌘Z should take back.
+     */
+    case 'setSkillLevel':
+      return result(
+        { ...course, skillLevel: op.skillLevel },
+        { type: 'setSkillLevel', skillLevel: course.skillLevel },
+        undoable,
+      );
+
     case 'addFeature':
       return result(
         { ...course, features: [...course.features, op.feature] },
@@ -92,6 +111,13 @@ export function applyOp(course: Course, op: Op): ApplyResult {
         { ...course, features: course.features.filter((f) => f.id !== op.id) },
         // Restores the whole feature, so undoing a delete brings back its
         // properties and label rather than a bare shape.
+        //
+        // Hole references are deliberately NOT cleaned up here. Undo would
+        // have to restore them, which means the inverse op would need to carry
+        // the entire holes array — and a delete that silently rewrites unrelated
+        // parts of the document is the kind of op that makes undo untrustworthy.
+        // The dangling reference is instead surfaced as a structural finding,
+        // where the designer can see it and decide.
         { type: 'addFeature', feature: existing },
         undoable,
       );
@@ -116,6 +142,50 @@ export function applyOp(course: Course, op: Op): ApplyResult {
         undoable,
       );
     }
+
+    case 'addHole':
+      return result(
+        { ...course, holes: [...course.holes, op.hole] },
+        { type: 'removeHole', id: op.hole.id },
+        undoable,
+      );
+
+    case 'removeHole': {
+      const existing = course.holes.find((h) => h.id === op.id);
+      if (!existing) return noop(course, op);
+      return result(
+        { ...course, holes: course.holes.filter((h) => h.id !== op.id) },
+        // Restores the whole hole, so undoing brings back its assignments.
+        { type: 'addHole', hole: existing },
+        undoable,
+      );
+    }
+
+    case 'updateHole': {
+      const existing = course.holes.find((h) => h.id === op.id);
+      if (!existing) return noop(course, op);
+      // The inverse captures only the keys that changed, so undo restores
+      // exactly what this op touched rather than the whole hole.
+      const inverseChanges: Partial<Omit<Hole, 'id'>> = {};
+      for (const key of Object.keys(op.changes) as (keyof Omit<Hole, 'id'>)[]) {
+        (inverseChanges as Record<string, unknown>)[key] = existing[key];
+      }
+      return result(
+        {
+          ...course,
+          holes: course.holes.map((h) => (h.id === op.id ? { ...h, ...op.changes } : h)),
+        },
+        { type: 'updateHole', id: op.id, changes: inverseChanges },
+        undoable,
+      );
+    }
+
+    case 'setDismissed':
+      return result(
+        { ...course, dismissedRules: op.ruleIds },
+        { type: 'setDismissed', ruleIds: course.dismissedRules },
+        undoable,
+      );
 
     case 'setProp': {
       const existing = course.features.find((f) => f.id === op.id);

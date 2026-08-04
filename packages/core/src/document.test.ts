@@ -4,6 +4,7 @@ import { createCourse, parseCourse, DOCUMENT_VERSION } from './schema.js';
 import { applyOp, canCoalesce, isUndoable, COALESCE_WINDOW_MS, type Op } from './ops.js';
 import { CourseStore } from './store.js';
 import { serializeCourse, deserializeCourse, suggestedFilename } from './file.js';
+import { DEFAULT_SKILL_LEVEL } from './pdga.js';
 
 describe('schema', () => {
   it('creates a valid course', () => {
@@ -43,6 +44,22 @@ describe('schema', () => {
     const swapped = { ...course, view: { ...course.view, center: [39.8283, -98.5795] } };
     expect(parseCourse(swapped).ok).toBe(false);
   });
+
+  /**
+   * `skillLevel` was added after version 1 shipped, defaulted rather than
+   * required so that no format bump — and no migration — was needed. Courses
+   * saved before it existed must still open, or PR 4's autosaves are lost.
+   */
+  it('fills in a skill level for documents saved before the field existed', () => {
+    const { skillLevel: _omitted, ...older } = createCourse();
+    const result = parseCourse(older);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.course.skillLevel).toBe(DEFAULT_SKILL_LEVEL);
+  });
+
+  it('rejects a skill level that is not one of the five', () => {
+    expect(parseCourse({ ...createCourse(), skillLevel: 'platinum' }).ok).toBe(false);
+  });
 });
 
 describe('applyOp', () => {
@@ -65,6 +82,7 @@ describe('applyOp', () => {
     const ops: Op[] = [
       { type: 'setName', name: 'Something else' },
       { type: 'setBasemap', basemapId: 'osm' },
+      { type: 'setSkillLevel', skillLevel: 'gold' },
       { type: 'setView', view: { center: [-93.1, 44.9], zoom: 16, bearing: 30, pitch: 20 } },
     ];
 

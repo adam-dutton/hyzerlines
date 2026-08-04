@@ -7,9 +7,9 @@ Point it at a piece of land, draw tees and baskets on satellite imagery, and get
 real measurements — distances, elevation, par suggestions, safety envelopes —
 instead of shapes on a screenshot.
 
-> **Status: early.** The foundation is in place (map, design system, keyboard
-> model). Drawing tools land in PR 3. See [`docs/PLAN.md`](docs/PLAN.md) for what
-> is built and what is coming.
+> **Status: early.** You can draw a course, measure it, and get PDGA par and
+> design checks against it. Terrain, flight modelling and sharing are still
+> ahead. See [`docs/PLAN.md`](docs/PLAN.md) for what is built and what is coming.
 
 ## Running it
 
@@ -34,8 +34,10 @@ Node 22+ and pnpm 10+.
 
 ```
 apps/web           the application
+packages/core      document model, geometry, PDGA data, rules engine
 packages/design    design tokens, theming, keyboard registry
 docs/PLAN.md       roadmap and design decisions
+docs/PDGA.md       transcription record for every PDGA figure used
 ```
 
 ### The design system comes first
@@ -68,6 +70,26 @@ The map is dark and occupies most of the viewport, so the dark theme is the
 designed default rather than a fallback. Light is opt-in via the toggle
 (`⇧D`) — useful in direct sunlight — and is never applied automatically from the
 OS preference.
+
+### PDGA figures are transcribed, never remembered
+
+Par bands, tee pad minimums, hole and course length ranges and throw distances all
+come from the published PDGA course design documents. Every one is transcribed in
+`packages/core/src/pdga.ts` against the page and sentence it came from, and the
+full record — including the metric tables, the places two documents disagree, and
+what is deliberately absent — is in [`docs/PDGA.md`](docs/PDGA.md).
+
+**If a figure is not in a source document, it is not in the code.** A designer may
+take a dimension from this tool to a parks department, a landowner or an insurer,
+and an invented number is worse than a missing one because it cannot be told apart
+from a correct one. There is no safety separation distance in here, for exactly
+that reason: the PDGA does not publish one.
+
+Checks are advisory and every one is dismissible. `packages/core/src/pdga.test.ts`
+restates the published figures independently of the tables the code reads, so a
+typo fails the build.
+
+Hyzerlines is not affiliated with or endorsed by the PDGA.
 
 ### Keyboard model
 

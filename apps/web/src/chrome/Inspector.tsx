@@ -1,6 +1,7 @@
 import { IconButton, Panel, TextField, shortcutFor } from '@hyzerlines/design';
 import {
   KIND_DEFINITIONS,
+  pathLength,
   featureName,
   fieldsFor,
   type Feature,
@@ -144,23 +145,6 @@ function Field({
   );
 }
 
-/** Length of a line, for the readout. Haversine over each segment. */
-function lineLength(coordinates: readonly (readonly [number, number])[]): number {
-  const R = 6371008.8; // mean Earth radius, meters
-  let total = 0;
-  for (let i = 1; i < coordinates.length; i++) {
-    const [lng1, lat1] = coordinates[i - 1]!;
-    const [lng2, lat2] = coordinates[i]!;
-    const φ1 = (lat1 * Math.PI) / 180;
-    const φ2 = (lat2 * Math.PI) / 180;
-    const dφ = φ2 - φ1;
-    const dλ = ((lng2 - lng1) * Math.PI) / 180;
-    const a = Math.sin(dφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(dλ / 2) ** 2;
-    total += 2 * R * Math.asin(Math.sqrt(a));
-  }
-  return total;
-}
-
 export function Inspector({
   feature,
   units,
@@ -227,7 +211,7 @@ export function Inspector({
             <div className={`${rowClass} border-t border-border-subtle mt-1 pt-2`}>
               <span className={labelClass}>Length</span>
               <span className="font-mono text-xs tabular-nums text-text-primary">
-                {formatDistance(lineLength(feature.geometry.coordinates), units)}
+                {formatDistance(pathLength(feature.geometry.coordinates), units)}
               </span>
             </div>
           )}

@@ -1,10 +1,16 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
+  anchorOf,
+  checkCourse,
   createFeature,
+  createHole,
   geometryMatchesKind,
+  type Feature,
   type FeatureKind,
+  type Finding,
   type Geometry,
   type Op,
+  distance,
 } from '@hyzerlines/core';
 
 import { useMap } from './map/MapContext';
@@ -12,6 +18,8 @@ import { FeatureLayer } from './map/FeatureLayer';
 import { useDrawing, drawingPreview, type Tool } from './map/useDrawing';
 import { ToolRail } from './chrome/ToolRail';
 import { Inspector } from './chrome/Inspector';
+import { HolePanel } from './chrome/HolePanel';
+import { WarningsPanel } from './chrome/WarningsPanel';
 import { useShortcuts } from './keyboard/useShortcuts';
 import type { UnitSystem } from './units';
 import { useCourse } from './document/CourseProvider';
@@ -30,8 +38,78 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
 
   const [tool, setTool] = useState<Tool>('select');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedHoleId, setSelectedHoleId] = useState<string | null>(null);
 
   const selected = course.features.find((f) => f.id === selectedId) ?? null;
+
+  const findings = useMemo(
+    () => checkCourse(course, course.holes, course.dismissedRules),
+    [course],
+  );
+
+  /**
+   * Create a hole from what is already drawn.
+   *
+   * Adding an empty hole and then hunting for its tee is busywork; the common
+   * case is that you have just drawn a tee and a basket. So the nearest
+   * unassigned pair is claimed automatically, and the fairway too if one
+   * plausibly connects them. Everything it guesses is visible and editable —
+   * and anything it gets wrong shows up as a structural finding rather than
+   * silently sitting there.
+   */
+  const addHole = useCallback(() => {
+    const assigned = new Set(course.holes.flatMap((h) => [...h.teeIds, ...h.basketIds]));
+    const free = (kind: FeatureKind): Feature[] =>
+      course.features.filter((f) => f.kind === kind && !assigned.has(f.id));
+
+    const tee = free('tee')[0];
+    const basket = free('basket')[0];
+
+    const claimedFairways = new Set(
+      course.holes.map((h) => h.fairwayId).filter((id): id is string => id !== null),
+    );
+    const fairway =
+      tee &&
+      course.features.find(
+        (f) =>
+          f.kind === 'fairway' &&
+          !claimedFairways.has(f.id) &&
+          f.geometry.type === 'line' &&
+          // Same threshold the fairway-detached check uses, so the two agree.
+          distance(f.geometry.coordinates[0]!, anchorOf(tee)) <= 30,
+      );
+
+    const number = course.holes.reduce((max, h) => Math.max(max, h.number), 0) + 1;
+    const hole = createHole(number, {
+      teeIds: tee ? [tee.id] : [],
+      basketIds: basket ? [basket.id] : [],
+      fairwayId: fairway ? fairway.id : null,
+    });
+
+    dispatch({ type: 'addHole', hole });
+    setSelectedHoleId(hole.id);
+  }, [course, dispatch]);
+
+  /** Frame whatever a finding points at, so it can be seen rather than read. */
+  const reveal = useCallback(
+    (finding: Finding) => {
+      if (finding.holeId) setSelectedHoleId(finding.holeId);
+      if (finding.featureId) {
+        setSelectedId(finding.featureId);
+        const feature = course.features.find((f) => f.id === finding.featureId);
+        if (feature && map) map.easeTo({ center: anchorOf(feature), duration: 500 });
+      }
+    },
+    [course.features, map],
+  );
+
+  const dismissRule = useCallback(
+    (ruleId: string) => {
+      if (course.dismissedRules.includes(ruleId)) return;
+      dispatch({ type: 'setDismissed', ruleIds: [...course.dismissedRules, ruleId] });
+    },
+    [course.dismissedRules, dispatch],
+  );
 
   /*
    * geometryMatchesKind guards the seam between the tool layer and the
@@ -103,6 +181,17 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
       {!hidden && (
         <>
           <ToolRail tool={tool} onToolChange={setTool} />
+
+          <HolePanel
+            course={course}
+            units={units}
+            selectedHoleId={selectedHoleId}
+            onSelectHole={setSelectedHoleId}
+            onOp={handleOp}
+            onAddHole={addHole}
+          />
+
+          <WarningsPanel findings={findings} onReveal={reveal} onDismissRule={dismissRule} />
 
           {selected && (
             <Inspector
