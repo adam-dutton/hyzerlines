@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { viewSchema, type View } from './geo.js';
 import { featureSchema } from './features.js';
+import { holeSchema } from './holes.js';
 
 /**
  * The course document.
@@ -27,9 +28,16 @@ export const courseSchema = z.object({
   basemapId: z.string().min(1),
 
   features: z.array(featureSchema).default([]),
+  holes: z.array(holeSchema).default([]),
 
-  /* Reserved for the hole workflow in PR 4. */
-  holes: z.array(z.unknown()).default([]),
+  /**
+   * Rule ids the designer has silenced for this course.
+   *
+   * Part of the document rather than a preference: a dismissal is a decision
+   * about this course ("the short pad really is that close to the path"), and
+   * it should travel with the file to whoever reviews it.
+   */
+  dismissedRules: z.array(z.string()).default([]),
 });
 
 export type Course = z.infer<typeof courseSchema>;
