@@ -101,19 +101,43 @@ export function WarningsPanel({
                 <div className="flex items-start gap-2 px-3 py-2">
                   <Dot severity={finding.severity} />
                   <div className="min-w-0 flex-1">
-                    <button
-                      type="button"
-                      onClick={() => onReveal(finding)}
-                      className="text-left text-2xs leading-4 text-text-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-                    >
-                      {finding.message}
-                    </button>
+                    {/* A course-wide finding has nothing to frame, so it is
+                        plain text rather than a button that would do nothing. */}
+                    {finding.featureId || finding.holeId ? (
+                      <button
+                        type="button"
+                        onClick={() => onReveal(finding)}
+                        className="text-left text-2xs leading-4 text-text-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                      >
+                        {finding.message}
+                      </button>
+                    ) : (
+                      <p className="text-2xs leading-4 text-text-secondary">
+                        {finding.message}
+                      </p>
+                    )}
 
                     {/* Where the rule's authority comes from. A designer should
-                        know whether they are being told a fact about their
-                        document or a published standard. */}
+                        know whether they are being told a fact about their own
+                        document or a published standard — and if it is a
+                        standard, exactly which revision, because they may be
+                        about to quote it to a parks department. */}
                     {finding.source && (
-                      <p className="mt-0.5 text-2xs text-text-muted">{finding.source}</p>
+                      <p className="mt-0.5 text-2xs text-text-muted">
+                        {finding.docUrl ? (
+                          <a
+                            href={finding.docUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline-offset-2 hover:text-text-secondary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                          >
+                            {finding.source}
+                          </a>
+                        ) : (
+                          finding.source
+                        )}
+                        {finding.revision && ` · ${finding.revision}`}
+                      </p>
                     )}
 
                     <button

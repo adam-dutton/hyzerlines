@@ -76,6 +76,47 @@ export function featureLength(feature: Feature): number {
 }
 
 /**
+ * Whether two paths cross.
+ *
+ * Plain planar segment intersection in degrees, deliberately. Over the few
+ * hundred metres a fairway spans, the difference between a great-circle arc and
+ * a straight line in lng/lat is far below the precision of a hand-drawn route —
+ * and unlike distance, a crossing is a yes/no answer, so a metre of curvature
+ * error cannot turn into a wrong number a designer would quote.
+ *
+ * Touching endpoints do not count: two fairways that legitimately share a
+ * junction should not be reported as crossing.
+ */
+export function pathsCross(a: readonly Position[], b: readonly Position[]): boolean {
+  for (let i = 1; i < a.length; i++) {
+    for (let j = 1; j < b.length; j++) {
+      if (segmentsCross(a[i - 1]!, a[i]!, b[j - 1]!, b[j]!)) return true;
+    }
+  }
+  return false;
+}
+
+const cross = (o: Position, p: Position, q: Position): number =>
+  (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0]);
+
+function segmentsCross(p1: Position, p2: Position, p3: Position, p4: Position): boolean {
+  const d1 = cross(p3, p4, p1);
+  const d2 = cross(p3, p4, p2);
+  const d3 = cross(p1, p2, p3);
+  const d4 = cross(p1, p2, p4);
+
+  /*
+   * Each segment must have the other's endpoints strictly on opposite sides.
+   *
+   * A product rather than a sign comparison, because a cross product of exactly
+   * zero means "on the line" — which is what a shared endpoint produces — and
+   * `(d1 > 0) !== (d2 > 0)` would read that zero as the opposite side and
+   * report a junction as a crossing.
+   */
+  return d1 * d2 < 0 && d3 * d4 < 0;
+}
+
+/**
  * Compass bearing from a to b, in degrees clockwise from north.
  *
  * Used for tee orientation and, later, for wind adjustment.

@@ -14,7 +14,9 @@ current as PRs land.
    it. Opening a panel must not reflow the map — losing your place mid-measurement
    is the difference between a tool and a toy.
 2. **Numbers must be true.** All geometry is metric internally; unit conversion
-   happens only at the display boundary. Precision is never overstated.
+   happens only at the display boundary. Precision is never overstated. A figure
+   attributed to a published standard is transcribed from the document, with its
+   citation, or it is absent — see [docs/PDGA.md](./PDGA.md).
 3. **Design system before features.** Tokens are the single source of truth, and
    Tailwind's theme is generated from them. There is no untokenized value.
 4. **Dark first.** The map is dark; the interface is designed for that, and light
@@ -31,23 +33,24 @@ current as PRs land.
 
 ## Roadmap
 
-| PR     | Scope                                                                              | Status  |
-| ------ | ---------------------------------------------------------------------------------- | ------- |
-| **0**  | Monorepo, design tokens + theming, app shell, MapLibre, keyboard registry, CI      | ✅ done |
-| **1**  | Design system: Radix primitives, panel/inspector/tool patterns, component library  | next    |
-| **2**  | Document model, zod schemas, `applyOp` store, undo/redo, IndexedDB, `.hyzer` files |         |
-| **3**  | Drawing engine, full feature palette, schema-driven inspector                      |         |
-| **4**  | Hole workflow, layouts, distances, auto-par, PDGA advisory checks                  |         |
-| **5**  | Terrain: DEM sampling, elevation profiles, hillshade                               |         |
-| **6**  | Parametric flight model, shot editor, disc database                                |         |
-| **7**  | Safety: dispersion envelopes, overlap and proximity rules                          |         |
-| **8**  | Accounts, share links, published course pages (backend begins here)                |         |
-| **9**  | Exports: PDF/PNG maps, tee signs, punch lists                                      |         |
-| **10** | KML/KMZ interop                                                                    |         |
-| **11** | Terrain 2: contours, slope analysis, LiDAR, custom DEM upload                      |         |
-| **12** | Offline/PWA, tile caching                                                          |         |
-| **13** | Field mode: touch targets, GPS, geotagged photos                                   |         |
-| **14** | Donations, public gallery, self-host via docker-compose                            |         |
+| PR      | Scope                                                                              | Status  |
+| ------- | ---------------------------------------------------------------------------------- | ------- |
+| **0**   | Monorepo, design tokens + theming, app shell, MapLibre, keyboard registry, CI      | ✅ done |
+| **1**   | Design system: Radix primitives, panel/inspector/tool patterns, component library  | ✅ done |
+| **2**   | Document model, zod schemas, `applyOp` store, undo/redo, IndexedDB, `.hyzer` files | ✅ done |
+| **3**   | Drawing engine, full feature palette, schema-driven inspector                      | ✅ done |
+| **4**   | Hole workflow, distances, PDGA par and advisory checks                             | ✅ done |
+| **4.5** | UI/UX refinement pass across everything shipped so far                             | next    |
+| **5**   | Terrain: DEM sampling, elevation profiles, hillshade                               |         |
+| **6**   | Parametric flight model, shot editor, disc database                                |         |
+| **7**   | Safety: dispersion envelopes, overlap and proximity rules                          |         |
+| **8**   | Accounts, share links, published course pages (backend begins here)                |         |
+| **9**   | Exports: PDF/PNG maps, tee signs, punch lists                                      |         |
+| **10**  | KML/KMZ interop                                                                    |         |
+| **11**  | Terrain 2: contours, slope analysis, LiDAR, custom DEM upload                      |         |
+| **12**  | Offline/PWA, tile caching                                                          |         |
+| **13**  | Field mode: touch targets, GPS, geotagged photos                                   |         |
+| **14**  | Donations, public gallery, self-host via docker-compose                            |         |
 
 Sharing sits at PR 8 rather than the end because a published, linkable course
 page is the growth loop — it is how a designer shows a parks department and how a
@@ -159,54 +162,86 @@ looks.
 
 ---
 
-## PDGA standards (PR 4)
+## PDGA standards — what landed in PR 4
 
-Encoded as a **versioned ruleset file**, not hardcoded conditionals, so standards
-can be updated without a code change and clubs can layer on local rules.
+The five published PDGA course design documents are transcribed in
+[`packages/core/src/pdga.ts`](../packages/core/src/pdga.ts), with the full record —
+every figure, its page, and the sentence it came from — in
+[docs/PDGA.md](./PDGA.md).
 
-```jsonc
-// rulesets/pdga-course-design.json
-{
-  "id": "...",
-  "title": "...",
-  "source": "...",
-  "appliesTo": "...",
-  "severity": "...",
-  "check": "...",
-  "message": "...",
-  "docUrl": "...",
-}
-```
+**The rule this project works under: a figure that is not in a source document is
+not in the code.** Not estimated, not interpolated, not remembered. A designer may
+take a tee pad dimension or a length range from this tool to a parks department, a
+landowner, or an insurer, and an invented number is worse than a missing one
+because it cannot be told apart from a correct one. `pdga.test.ts` restates the
+published figures independently of the tables the code reads, so a typo fails the
+build rather than quietly becoming the app's idea of a PDGA standard.
 
-Checks run live against the document and surface alongside safety warnings: hole
-length ranges by par, tee pad dimensions and surface, fairway corridor width,
-target specifications, tee sign content, safety separation, multi-tee and
-multi-pin recommendations.
+Rules are split by authority, and the split is load-bearing:
 
-Every violation cites its source and links to the PDGA document, and every one is
-dismissible per-course with a reason. Designers break guidelines deliberately and
+- `STRUCTURAL_RULES` follow from the document's own geometry and self-consistency
+  and claim no external authority — a hole with no tee, two holes numbered 4, a
+  fairway that starts 40 m from its tee.
+- `PDGA_RULES` cite a published figure. Each carries the `source` and `revision`
+  of the document it came from, surfaced in the warnings panel and linked. A test
+  fails the build if one claims `authority: 'pdga'` without both.
+
+Shipping now: tee pad below the 4 ft × 10 ft minimum, hole under the 100 ft
+minimum, two holes whose played lines cross, and an 18-hole course outside the
+typical length range for its skill level.
+
+Every finding is dismissible per-course, and the dismissal is stored in the
+document so it travels with the file. Designers break guidelines deliberately and
 the tool should not nag.
 
-The current PDGA course design documents will be sourced when this ships — the
-ruleset carries a `source` and revision date so it stays auditable rather than
-depending on anyone's recollection of the numbers.
+### Deliberately not shipped
 
-## Auto-par (PR 4)
+**Safety separation distances between fairways.** No source document publishes
+one. `[ELEMENTS]` says fairways should be "far enough apart so errant throws
+aren't regularly in the wrong fairway" and puts no number on it. A plausible
+invented separation distance is the single most dangerous number this app could
+get wrong, so PR 7 will derive it from a stated dispersion model instead — a
+number the designer can see the reasoning for, not a constant attributed to a
+standard that does not contain it.
 
-`suggestPar(hole)` returns a value **with its reasoning**, which is what makes it
-trustworthy rather than magic.
+Whether to move the rules into a **versioned JSON ruleset file** — so clubs can
+layer on local rules without a code change — is deferred. It was the original
+plan, but the checks that exist need real geometry (segment intersection, feature
+lookup), not a declarative predicate, and a data format invented before there is
+a second consumer would be a guess. Revisit when local rules are actually asked
+for; `Authority` already has a `'local'` case reserved.
 
-Effective distance — actual, adjusted for elevation change and prevailing wind —
-is the base. Modifiers: fairway technicality (corridor width against length),
-obstacle density along the line, required shot shape, green difficulty and
-approach angle, OB proximity, and forced-layup geometry from mandos.
+## Par — what landed in PR 4
 
-Output is a suggested par, a difficulty rating, and a plain-language breakdown:
-_"565 ft, +18 ft elevation, tight corridor → par 4."_
+`suggestPar(course, hole)` returns a par **with its reasoning**, which is what
+makes it trustworthy rather than magic.
 
-Stored as `parSuggested` and `parOverride` separately. A designer's override
-survives every future improvement to the model, and each layout carries its own
-par.
+It implements the PDGA's **Par by Hole Length** method (`[PAR]` p10) fed by the
+PDGA's **Effective Length** formula (`[PAR]` p8), for the skill level the course
+is set to. The course carries a `skillLevel` because par is meaningless without
+it: a 700 ft hole is a par 4 for Gold and a par 5 for Red, and `[ELEMENTS]` p4
+requires par to be labelled with the standard it was set against.
+
+`[PAR]` p10 warns that "strictly following the table will not give appropriate
+pars for all holes." That is exactly why the number is a suggestion, why the
+reasoning is on screen, and why the override is one click away. Holes within 15 m
+of a band boundary are marked as genuinely arguable — that margin is ours, not
+the PDGA's, and is labelled as such in the code.
+
+`parOverride` is stored separately from the computed value, so changing the skill
+level — or a later revision of the PDGA tables — never silently overwrites a
+deliberate decision.
+
+**Not yet fed into the formula**, because the inputs do not exist yet rather than
+because the model is simple: elevation waits on terrain (PR 5); the dogleg term
+needs the distance to a corner and the water term needs the detour a carry forces,
+neither of which the document model represents. Those terms are omitted rather
+than estimated, and `effectiveLength` is already shaped to take them.
+
+PR 4 removed an earlier `+10 m per mando` par penalty. It was invented, it counted
+every mando on the course rather than the ones on the hole, and the PDGA formula
+has no mando term. A real version needs mandos assigned to holes — then a mando is
+a dogleg in the PDGA's sense and feeds the existing dogleg term with a citation.
 
 ---
 

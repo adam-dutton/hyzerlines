@@ -1,7 +1,18 @@
 import type { Course } from './schema.js';
 import { KIND_DEFINITIONS, type Feature } from './features.js';
-import { anchorOf, distance } from './measure.js';
+import { anchorOf, distance, pathsCross } from './measure.js';
 import { holeName, measureHole, type Hole } from './holes.js';
+import {
+  courseLengthMeters,
+  metersToFeet,
+  COURSE_LENGTH_HOLE_COUNT,
+  MIN_HOLE_LENGTH_FT,
+  MIN_HOLE_LENGTH_M,
+  SKILL_LEVEL_INFO,
+  SOURCES,
+  TEE_PAD_FT,
+  TEE_PAD_M,
+} from './pdga.js';
 
 /**
  * Design checks.
@@ -13,24 +24,24 @@ import { holeName, measureHole, type Hole } from './holes.js';
  * ─────────────────────────────────────────────────────────────────────────────
  * ON PDGA STANDARDS — READ BEFORE ADDING RULES
  *
- * The plan called for encoding the PDGA course design standards here. That has
- * NOT been done, and the omission is deliberate.
+ * Rules come in two kinds, and the distinction is load-bearing.
  *
- * The PDGA documents could not be retrieved (pdga.com returns 403 to automated
- * requests), and the numbers were not transcribed from memory. Tee pad
- * dimensions, hole length bands, and safety separation distances are figures a
- * designer may take to a parks department, a landowner, or an insurer on this
- * tool's authority. A plausible-looking invented number is worse than no number
- * at all, because it cannot be told apart from a correct one.
+ * `STRUCTURAL_RULES` follow from the document's own geometry and
+ * self-consistency. They need no external authority and claim none.
  *
- * `PDGA_RULES` below is therefore empty. To populate it:
- *   1. Obtain the current PDGA course design documents.
- *   2. Transcribe each figure with its `source` and `revision` filled in.
- *   3. Only then set `authority: 'pdga'` on the rule.
+ * `PDGA_RULES` cite a published PDGA figure. A designer may take a tee pad
+ * dimension or a length range from this tool to a parks department, a
+ * landowner, or an insurer, so every one of these rules MUST carry the `source`
+ * and `revision` of the document its number came from, and that number must be
+ * transcribed in pdga.ts against a citation — never remembered, never
+ * interpolated. `holes.test.ts` fails the build if a rule claims `authority:
+ * 'pdga'` without both fields.
  *
- * Everything currently shipping is in `STRUCTURAL_RULES`: checks that follow
- * from geometry and self-consistency and need no external authority. They claim
- * nothing they cannot prove.
+ * Where the PDGA publishes no figure, this file has no rule. That is why there
+ * is no safety-separation check: the documents transcribed so far describe
+ * fairway widths and skill-level distances but publish no separation distance
+ * between adjacent fairways, and inventing one would be the single most
+ * dangerous number this app could get wrong.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -67,6 +78,8 @@ export interface Finding {
   featureId?: string;
   holeId?: string;
   source?: string;
+  /** Which revision of the source. A figure without one cannot be looked up. */
+  revision?: string;
   docUrl?: string;
 }
 
@@ -91,6 +104,7 @@ const finding = (
   authority: rule.authority,
   message,
   ...(rule.source ? { source: rule.source } : {}),
+  ...(rule.revision ? { revision: rule.revision } : {}),
   ...(rule.docUrl ? { docUrl: rule.docUrl } : {}),
   ...extra,
 });
@@ -252,13 +266,194 @@ export const STRUCTURAL_RULES: readonly Rule[] = [
   unassignedTargets,
 ];
 
+/* ------------------------------------------------------------------------- */
+/* PDGA rules — each cites the published figure it enforces                   */
+/* ------------------------------------------------------------------------- */
+
+const ft = (meters: number): number => Math.round(metersToFeet(meters));
+
+/**
+ * [ELEMENTS] p2: "Minimum rectangular size is 4 feet (1.2m) wide by 10 feet
+ * (3m) long."
+ *
+ * Only fires once a dimension has actually been entered. A tee with no
+ * measurements is unspecified, not undersized, and nagging about a field the
+ * designer has not reached yet is how a checks panel gets switched off.
+ */
+const teePadUndersized: Rule = {
+  id: 'pdga.tee-pad-undersized',
+  title: 'Tee pad below the minimum size',
+  severity: 'warning',
+  authority: 'pdga',
+  source: SOURCES.elements.title,
+  revision: SOURCES.elements.revision,
+  docUrl: SOURCES.elements.url,
+  run: ({ course }) =>
+    course.features.flatMap((feature) => {
+      if (feature.kind !== 'tee') return [];
+
+      const width = feature.props['width'];
+      const length = feature.props['length'];
+      const short: string[] = [];
+
+      if (typeof width === 'number' && width > 0 && width < TEE_PAD_M.minimumWidth) {
+        short.push(`${ft(width)} ft wide (minimum ${TEE_PAD_FT.minimumWidth} ft)`);
+      }
+      if (typeof length === 'number' && length > 0 && length < TEE_PAD_M.minimumLength) {
+        short.push(`${ft(length)} ft long (minimum ${TEE_PAD_FT.minimumLength} ft)`);
+      }
+      if (short.length === 0) return [];
+
+      const name = feature.label.trim() || KIND_DEFINITIONS.tee.label;
+      return [
+        finding(teePadUndersized, `${name} is ${short.join(' and ')}.`, {
+          featureId: feature.id,
+        }),
+      ];
+    }),
+};
+
+/**
+ * [ELEMENTS] p2: "no hole should effectively be shorter than about 100 feet
+ * (30m) even on courses designed for the youngest players."
+ *
+ * "About" is the document's own word, so this is a warning rather than an
+ * error, and the degenerate-hole check already covers the under-5 m case that
+ * means "unfinished" rather than "short".
+ */
+const holeTooShort: Rule = {
+  id: 'pdga.hole-too-short',
+  title: 'Hole below the minimum length',
+  severity: 'warning',
+  authority: 'pdga',
+  source: SOURCES.elements.title,
+  revision: SOURCES.elements.revision,
+  docUrl: SOURCES.elements.url,
+  run: ({ course, holes }) =>
+    holes.flatMap((hole) => {
+      const { effective } = measureHole(course, hole);
+      if (effective === null || effective < 5 || effective >= MIN_HOLE_LENGTH_M) return [];
+      return [
+        finding(
+          holeTooShort,
+          `${holeName(hole)} plays ${ft(effective)} ft — under the ${MIN_HOLE_LENGTH_FT} ft minimum for any skill level.`,
+          { holeId: hole.id },
+        ),
+      ];
+    }),
+};
+
+/**
+ * [SKILL] p2 publishes typical total lengths for 18 holes, per skill level.
+ *
+ * Only runs on an 18-hole course, because 18 holes is what the table is quoted
+ * for and it gives no per-hole figure — pro-rating it to a 9- or 24-hole layout
+ * would be this file inventing a number, which is exactly what it must not do.
+ *
+ * Informational: "typical" is the document's framing, and a deliberately tight
+ * wooded course sitting under the range is a design decision, not a defect.
+ */
+const courseLengthOutsideRange: Rule = {
+  id: 'pdga.course-length-outside-range',
+  title: 'Course length outside the typical range for its skill level',
+  severity: 'info',
+  authority: 'pdga',
+  source: SOURCES.skill.title,
+  revision: SOURCES.skill.revision,
+  docUrl: SOURCES.skill.url,
+  run: ({ course, holes }) => {
+    if (holes.length !== COURSE_LENGTH_HOLE_COUNT) return [];
+
+    // Every hole has to be measurable, or the total is not a total.
+    const lengths = holes.map((hole) => measureHole(course, hole).effective);
+    if (lengths.some((length) => length === null)) return [];
+    const total = lengths.reduce<number>((sum, length) => sum + length!, 0);
+
+    const range = courseLengthMeters(course.skillLevel);
+    if (total >= range.min && total <= range.max) return [];
+
+    const level = SKILL_LEVEL_INFO[course.skillLevel].label;
+    const direction = total < range.min ? 'shorter' : 'longer';
+    return [
+      finding(
+        courseLengthOutsideRange,
+        `At ${ft(total).toLocaleString()} ft this course is ${direction} than the typical ${level} range (${ft(range.min).toLocaleString()}–${ft(range.max).toLocaleString()} ft).`,
+      ),
+    ];
+  },
+};
+
+/**
+ * [ELEMENTS] p4: "Fairways should not cross one another and should be far
+ * enough apart so errant throws aren't regularly in the wrong fairway."
+ *
+ * Only the first half is checked. Crossing is a geometric fact about two drawn
+ * lines; "far enough apart" is a separation distance the document declines to
+ * put a number on, and this file does not supply numbers the PDGA has not
+ * published — least of all a safety one.
+ */
+const fairwaysCross: Rule = {
+  id: 'pdga.fairways-cross',
+  title: 'Two fairways cross',
+  severity: 'warning',
+  authority: 'pdga',
+  source: SOURCES.elements.title,
+  revision: SOURCES.elements.revision,
+  docUrl: SOURCES.elements.url,
+  run: ({ holes, featureById }) => {
+    const routed = holes
+      .map((hole) => {
+        const fairway = hole.fairwayId ? featureById.get(hole.fairwayId) : undefined;
+        return fairway?.geometry.type === 'line'
+          ? { hole, fairway, line: fairway.geometry.coordinates }
+          : null;
+      })
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+    // Unrouted holes still have a played line — tee to basket — and two of
+    // those crossing is the same problem drawn with fewer clicks.
+    for (const hole of holes) {
+      if (routed.some((entry) => entry.hole.id === hole.id)) continue;
+      const tee = hole.teeIds[0] ? featureById.get(hole.teeIds[0]) : undefined;
+      const basket = hole.basketIds[0] ? featureById.get(hole.basketIds[0]) : undefined;
+      if (!tee || !basket) continue;
+      routed.push({
+        hole,
+        fairway: tee,
+        line: [anchorOf(tee), anchorOf(basket)],
+      });
+    }
+
+    const found: Finding[] = [];
+    for (let i = 0; i < routed.length; i++) {
+      for (let j = i + 1; j < routed.length; j++) {
+        const a = routed[i]!;
+        const b = routed[j]!;
+        if (!pathsCross(a.line, b.line)) continue;
+        found.push(
+          finding(fairwaysCross, `${holeName(a.hole)} and ${holeName(b.hole)} cross.`, {
+            holeId: a.hole.id,
+          }),
+        );
+      }
+    }
+    return found;
+  },
+};
+
 /**
  * PDGA-sourced rules.
  *
- * Intentionally empty — see the note at the top of this file. Do not add
- * entries here without a verifiable `source` and `revision`.
+ * Every entry must carry `source` and `revision`, and its figure must be
+ * transcribed in pdga.ts against a citation. See the note at the top of this
+ * file before adding one.
  */
-export const PDGA_RULES: readonly Rule[] = [];
+export const PDGA_RULES: readonly Rule[] = [
+  teePadUndersized,
+  holeTooShort,
+  fairwaysCross,
+  courseLengthOutsideRange,
+];
 
 export const ALL_RULES: readonly Rule[] = [...STRUCTURAL_RULES, ...PDGA_RULES];
 

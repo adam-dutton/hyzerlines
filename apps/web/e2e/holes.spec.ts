@@ -183,6 +183,56 @@ test.describe('holes', () => {
     await expect(page.getByText('Hole 1')).toBeVisible();
   });
 
+  /**
+   * Par comes from the PDGA table for the course's skill level, so the same
+   * hole is a different par depending on who it is built for. This is the only
+   * place that wiring is visible end to end — core proves the table, but only
+   * the browser proves the picker reaches it and the change survives a reload.
+   */
+  test('changing the skill level re-pars the course, and persists', async ({ page }) => {
+    await openEditor(page);
+    // ~570 ft at zoom 16: par 4 for White (431-765), par 3 for Gold (186-585).
+    await place(page, 'Tee pad', 300, 500);
+    await place(page, 'Basket', 700, 200);
+    await page.getByRole('button', { name: 'Add hole' }).click();
+
+    const par = page.getByRole('combobox', { name: /Par for Hole 1/ });
+    const level = page.getByRole('combobox', { name: /Skill level/ });
+
+    await expect(level).toHaveValue('white');
+    const asWhite = await par.inputValue();
+
+    await level.selectOption('gold');
+    await expect(par).not.toHaveValue(asWhite);
+    const asGold = await par.inputValue();
+    expect(Number(asGold)).toBeLessThan(Number(asWhite));
+
+    await page.waitForTimeout(1400);
+    await page.reload();
+    await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
+
+    await expect(page.getByRole('combobox', { name: /Skill level/ })).toHaveValue('gold');
+    await expect(page.getByRole('combobox', { name: /Par for Hole 1/ })).toHaveValue(asGold);
+  });
+
+  /**
+   * A PDGA check must say which document it came from. A designer quoting a
+   * figure to a parks department needs to know it is a published standard and
+   * which revision, not this app's opinion.
+   */
+  test('a PDGA finding cites its source document', async ({ page }) => {
+    await openEditor(page);
+    await place(page, 'Tee pad', 400, 500);
+    await place(page, 'Basket', 410, 495);
+    await page.getByRole('button', { name: 'Add hole' }).click();
+
+    await page.getByRole('button', { name: /notes?$/ }).click();
+
+    const item = page.getByRole('listitem').filter({ hasText: /under the 100 ft minimum/ });
+    await expect(item).toBeVisible();
+    await expect(item.getByRole('link', { name: /Course Design Elements/ })).toBeVisible();
+  });
+
   test('adding a hole is undoable', async ({ page }) => {
     await openEditor(page);
     await place(page, 'Tee pad', 400, 500);

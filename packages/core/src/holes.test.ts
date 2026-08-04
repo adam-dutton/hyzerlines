@@ -4,7 +4,8 @@ import { createCourse } from './schema.js';
 import { createFeature, type Geometry } from './features.js';
 import { applyOp, type Op } from './ops.js';
 import { CourseStore } from './store.js';
-import { bearing, distance, pathLength } from './measure.js';
+import { bearing, distance, pathLength, pathsCross } from './measure.js';
+import type { Position } from './geo.js';
 import {
   createHole,
   coursePar,
@@ -12,8 +13,8 @@ import {
   holeName,
   measureHole,
   suggestPar,
-  PAR_THRESHOLDS_M,
 } from './holes.js';
+import { feetToMeters, PAR_BY_LENGTH_FT, type SkillLevel } from './pdga.js';
 import { checkCourse, PDGA_RULES } from './rules.js';
 import { serializeCourse, deserializeCourse } from './file.js';
 
@@ -63,6 +64,61 @@ describe('measure', () => {
     expect(bearing([0, 0], [0, 1])).toBeCloseTo(0, 1); // north
     expect(bearing([0, 0], [1, 0])).toBeCloseTo(90, 1); // east
     expect(bearing([0, 1], [0, 0])).toBeCloseTo(180, 1); // south
+  });
+
+  describe('path crossing', () => {
+    const horizontal: Position[] = [
+      [0, 0],
+      [10, 0],
+    ];
+
+    it('detects a plain X', () => {
+      expect(
+        pathsCross(horizontal, [
+          [5, -5],
+          [5, 5],
+        ]),
+      ).toBe(true);
+    });
+
+    it('leaves parallel and merely nearby paths alone', () => {
+      expect(
+        pathsCross(horizontal, [
+          [0, 1],
+          [10, 1],
+        ]),
+      ).toBe(false);
+      // Stops just short.
+      expect(
+        pathsCross(horizontal, [
+          [5, 1],
+          [5, 0.001],
+        ]),
+      ).toBe(false);
+    });
+
+    /**
+     * Two routes that legitimately meet at a junction are not crossing, and
+     * reporting them as such would make the check noise on any course with a
+     * shared landing area.
+     */
+    it('does not count paths that only touch at an endpoint', () => {
+      expect(
+        pathsCross(horizontal, [
+          [10, 0],
+          [10, 5],
+        ]),
+      ).toBe(false);
+    });
+
+    it('checks every segment pair, not just the first', () => {
+      const dogleg: Position[] = [
+        [0, -5],
+        [9, -5],
+        [9, 5],
+      ];
+      expect(pathsCross(horizontal, dogleg)).toBe(true);
+    });
   });
 });
 
@@ -117,59 +173,99 @@ describe('hole measurement', () => {
   });
 });
 
-describe('par suggestion', () => {
-  /** Build a hole of an exact straight length by walking north from a point. */
-  const holeOfLength = (meters: number) => {
-    const metersPerDegreeLat = distance([0, 44.9], [0, 45.9]);
-    const dLat = meters / metersPerDegreeLat;
-    let course = createCourse();
-    const tee = createFeature('tee', pt(-93.1, 44.9));
-    const basket = createFeature('basket', pt(-93.1, 44.9 + dLat));
-    for (const f of [tee, basket]) {
-      course = applyOp(course, { type: 'addFeature', feature: f }).course;
-    }
-    const hole = createHole(1, { teeIds: [tee.id], basketIds: [basket.id] });
-    return { course, hole };
-  };
+/** Build a hole of an exact straight length by walking north from a point. */
+const holeOfLength = (meters: number, skillLevel: SkillLevel = 'white') => {
+  const metersPerDegreeLat = distance([0, 44.9], [0, 45.9]);
+  const dLat = meters / metersPerDegreeLat;
+  let course = createCourse({ skillLevel });
+  const tee = createFeature('tee', pt(-93.1, 44.9));
+  const basket = createFeature('basket', pt(-93.1, 44.9 + dLat));
+  for (const f of [tee, basket]) {
+    course = applyOp(course, { type: 'addFeature', feature: f }).course;
+  }
+  const hole = createHole(1, { teeIds: [tee.id], basketIds: [basket.id] });
+  return { course, hole };
+};
 
-  it('assigns par from effective distance', () => {
-    for (const [meters, expected] of [
-      [80, 3],
-      [PAR_THRESHOLDS_M.par3Max - 5, 3],
-      [PAR_THRESHOLDS_M.par3Max + 5, 4],
-      [PAR_THRESHOLDS_M.par4Max + 5, 5],
-      [PAR_THRESHOLDS_M.par5Max + 50, 6],
+const holeOfFeet = (feet: number, skillLevel: SkillLevel = 'white') =>
+  holeOfLength(feetToMeters(feet), skillLevel);
+
+describe('par suggestion', () => {
+  /**
+   * Asserted against the published foot figures rather than against our own
+   * output, so this fails if the transcription drifts rather than merely
+   * changing with it.
+   *
+   * [PAR] p10, White row: par 2 is 0-55, par 3 is 56-430, par 4 is 431-765,
+   * par 5 is 766-1170, par 6 is 1171+.
+   */
+  it('reads par from the PDGA table for the course skill level', () => {
+    for (const [feet, expected] of [
+      [40, 2],
+      [55, 2],
+      [56, 3],
+      [430, 3],
+      [431, 4],
+      [765, 4],
+      [766, 5],
+      [1170, 5],
+      [1171, 6],
     ] as const) {
-      const { course, hole } = holeOfLength(meters);
-      expect(suggestPar(course, hole)?.par, `${meters} m`).toBe(expected);
+      const { course, hole } = holeOfFeet(feet);
+      expect(suggestPar(course, hole)?.par, `${feet} ft, white`).toBe(expected);
     }
+  });
+
+  /**
+   * The whole reason the course carries a skill level: the same hole is a
+   * different par depending on who it is built for.
+   *
+   * 700 ft is par 4 for Gold (586-1010), par 4 for Blue (481-845), and par 5
+   * for Red (681-1010). Green has no par 2 band at all.
+   */
+  it('gives the same hole a different par at different skill levels', () => {
+    const parAt = (level: SkillLevel) => {
+      const { course, hole } = holeOfFeet(700, level);
+      return suggestPar(course, hole)?.par;
+    };
+    expect(parAt('gold')).toBe(4);
+    expect(parAt('blue')).toBe(4);
+    expect(parAt('red')).toBe(5);
+
+    // Green's table prints "na" for par 2, so even a 20 ft hole is a par 3.
+    const green = holeOfFeet(20, 'green');
+    expect(suggestPar(green.course, green.hole)?.par).toBe(3);
   });
 
   /**
    * A bare number nobody can interrogate gets ignored. The reasoning is the
-   * feature, so an empty factor list is a bug.
+   * feature, so an empty factor list is a bug — and it has to name the level,
+   * because par is meaningless without it.
    */
-  it('always explains itself', () => {
+  it('always explains itself, and names the skill level it used', () => {
     const { course, hole } = holeOfLength(200);
     const suggestion = suggestPar(course, hole);
     expect(suggestion?.factors.length).toBeGreaterThan(0);
-    expect(suggestion?.factors[0]?.label).toBeTruthy();
+    expect(suggestion?.factors[0]?.label).toContain('White');
+    expect(suggestion?.skillLevel).toBe('white');
   });
 
-  it('flags holes sitting on a threshold as borderline', () => {
-    const onEdge = holeOfLength(PAR_THRESHOLDS_M.par3Max);
+  it('flags holes sitting on a band boundary as borderline', () => {
+    const onEdge = holeOfFeet(PAR_BY_LENGTH_FT.white.par3);
     expect(suggestPar(onEdge.course, onEdge.hole)?.borderline).toBe(true);
 
-    const clear = holeOfLength(80);
+    // Mid-band, ~90 m clear of either boundary.
+    const clear = holeOfFeet(250);
     expect(suggestPar(clear.course, clear.hole)?.borderline).toBe(false);
   });
 
   /**
-   * The override exists so improving the heuristic never silently overwrites a
-   * deliberate decision. If this breaks, designers lose work invisibly.
+   * The override exists so that changing the skill level never silently
+   * overwrites a deliberate decision. If this breaks, designers lose work
+   * invisibly.
    */
   it('lets the designer override, and never discards the override', () => {
-    const { course, hole } = holeOfLength(80);
+    const { course, hole } = holeOfFeet(300);
     expect(effectivePar(course, hole)).toBe(3);
 
     const overridden = { ...hole, parOverride: 4 };
@@ -179,8 +275,8 @@ describe('par suggestion', () => {
   });
 
   it('totals par across holes', () => {
-    const a = holeOfLength(80);
-    const b = holeOfLength(200);
+    const a = holeOfFeet(300);
+    const b = holeOfFeet(600);
     const course = { ...a.course, features: [...a.course.features, ...b.course.features] };
     expect(coursePar(course, [a.hole, b.hole])).toBe(3 + 4);
   });

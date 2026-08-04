@@ -7,9 +7,12 @@ import {
   holeName,
   measureHole,
   suggestPar,
+  SKILL_LEVELS,
+  SKILL_LEVEL_INFO,
   type Course,
   type Hole,
   type Op,
+  type SkillLevel,
 } from '@hyzerlines/core';
 
 import { formatDistance, type UnitSystem } from '../units';
@@ -21,6 +24,38 @@ import { formatDistance, type UnitSystem } from '../units';
  * reads as one. It doubles as navigation: selecting a hole frames it, which is
  * how you move around a course once there are eighteen of them.
  */
+
+/**
+ * Who the course is built for.
+ *
+ * Sits in this panel rather than the top bar because it is not a course-wide
+ * setting in the way a name is — it is the input to every par on screen. A 700
+ * ft hole is a par 4 for Gold and a par 5 for Red, and putting the control next
+ * to the numbers it changes is what makes that legible instead of mysterious.
+ */
+function SkillLevelPicker({
+  value,
+  onChange,
+}: {
+  value: SkillLevel;
+  onChange: (level: SkillLevel) => void;
+}) {
+  return (
+    <select
+      aria-label="Skill level this course is designed for"
+      title={`Par bands and length ranges follow the PDGA tables for ${SKILL_LEVEL_INFO[value].label} (${SKILL_LEVEL_INFO[value].ratingDescription} rated players).`}
+      value={value}
+      onChange={(e) => onChange(e.target.value as SkillLevel)}
+      className="rounded bg-transparent py-0.5 pl-0.5 pr-1 text-2xs text-text-secondary transition-colors duration-fast hover:text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+    >
+      {SKILL_LEVELS.map((level) => (
+        <option key={level} value={level}>
+          {SKILL_LEVEL_INFO[level].label}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 function ParCell({
   course,
@@ -49,7 +84,7 @@ function ParCell({
   const why = suggestion
     ? [
         ...suggestion.factors.map((f) => f.label),
-        suggestion.borderline ? 'Close to a threshold — could go either way' : null,
+        suggestion.borderline ? 'Close to a band boundary — could go either way' : null,
         overridden ? `You set this to ${hole.parOverride}; suggested ${suggestion.par}` : null,
       ]
         .filter(Boolean)
@@ -124,8 +159,14 @@ export function HolePanel({
     >
       <Panel elevation="raised" padding="none" className="overflow-hidden">
         <header className="flex items-center justify-between border-b border-border-subtle px-3 py-2">
-          <div>
-            <p className="text-sm font-medium text-text-primary">Holes</p>
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-1">
+              <p className="text-sm font-medium text-text-primary">Holes</p>
+              <SkillLevelPicker
+                value={course.skillLevel}
+                onChange={(skillLevel) => onOp({ type: 'setSkillLevel', skillLevel })}
+              />
+            </div>
             {holes.length > 0 && (
               <p className="font-mono text-2xs tabular-nums text-text-muted">
                 Par {totalPar} · {formatDistance(totalLength, units)}

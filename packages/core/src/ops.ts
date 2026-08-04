@@ -2,6 +2,7 @@ import type { Course } from './schema.js';
 import type { View } from './geo.js';
 import type { Feature, Geometry } from './features.js';
 import type { Hole } from './holes.js';
+import type { SkillLevel } from './pdga.js';
 
 /**
  * Every mutation to a course goes through an operation.
@@ -18,6 +19,7 @@ export type Op =
   | { type: 'setName'; name: string }
   | { type: 'setView'; view: View }
   | { type: 'setBasemap'; basemapId: string }
+  | { type: 'setSkillLevel'; skillLevel: SkillLevel }
   | { type: 'addFeature'; feature: Feature }
   | { type: 'removeFeature'; id: string }
   | { type: 'setGeometry'; id: string; geometry: Geometry }
@@ -80,6 +82,18 @@ export function applyOp(course: Course, op: Op): ApplyResult {
       return result(
         { ...course, basemapId: op.basemapId },
         { type: 'setBasemap', basemapId: course.basemapId },
+        undoable,
+      );
+
+    /*
+     * Undoable, unlike the camera. Changing the skill level re-pars every hole
+     * that has no override, which is a substantial and easily-mistaken edit —
+     * exactly the kind of thing ⌘Z should take back.
+     */
+    case 'setSkillLevel':
+      return result(
+        { ...course, skillLevel: op.skillLevel },
+        { type: 'setSkillLevel', skillLevel: course.skillLevel },
         undoable,
       );
 

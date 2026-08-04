@@ -3,6 +3,13 @@ import { z } from 'zod';
 import type { Course } from './schema.js';
 import { type Feature } from './features.js';
 import { anchorOf, distance, pathLength } from './measure.js';
+import {
+  effectiveLength,
+  parBoundariesMeters,
+  parForLength,
+  SKILL_LEVEL_INFO,
+  type SkillLevel,
+} from './pdga.js';
 
 /**
  * A hole: a tee, a target, and the route between them.
@@ -30,8 +37,9 @@ export const holeSchema = z.object({
   /**
    * The designer's par, when they disagree with the suggestion.
    *
-   * Stored separately from the computed value so improving the heuristic never
-   * silently overwrites a deliberate decision.
+   * Stored separately from the computed value so that changing the course's
+   * skill level — or a later revision of the PDGA tables — never silently
+   * overwrites a deliberate decision.
    */
   parOverride: z.number().int().min(2).max(6).nullable().default(null),
 });
@@ -102,51 +110,48 @@ export interface ParSuggestion {
   par: number;
   /** Distance the estimate was actually based on, in meters. */
   effectiveMeters: number;
+  /** The measured length before any effective-length adjustment, in meters. */
+  measuredMeters: number;
+  /** The skill level the bands were read from. */
+  skillLevel: SkillLevel;
   /** Why. Shown in the UI — a bare number nobody can interrogate gets ignored. */
   factors: ParFactor[];
-  /** True when the hole is close enough to a boundary to be arguable. */
+  /** True when the hole is close enough to a band boundary to be arguable. */
   borderline: boolean;
 }
 
 /**
- * Distance thresholds, in meters, for the base estimate.
+ * Within this margin of a band boundary, the call is genuinely arguable.
  *
- * THESE ARE A HEURISTIC, NOT A STANDARD. They approximate common practice in
- * amateur course design and are deliberately not presented anywhere in the UI
- * as a PDGA requirement. The PDGA publishes its own guidance; this project has
- * not transcribed it (see rules.ts for why), and these numbers must not be
- * described to users as if it had.
- *
- * They are exported so they can be tuned in one place, and so the tests can
- * assert against the same values the code uses rather than restating them.
+ * Ours, not the PDGA's — the document publishes hard boundaries and no
+ * tolerance. It exists because a hole one metre inside a boundary is not
+ * meaningfully different from one metre outside it, and saying so is more
+ * honest than presenting a coin-flip as a fact. 15 m is roughly a putt.
  */
-export const PAR_THRESHOLDS_M = {
-  /** Below this, a hole is a par 3 regardless of technicality. */
-  par3Max: 122, // ~400 ft
-  par4Max: 244, // ~800 ft
-  par5Max: 366, // ~1200 ft
-} as const;
-
-/** Within this margin of a threshold, the call is genuinely arguable. */
 const BORDERLINE_MARGIN_M = 15;
 
 /**
  * Suggest a par, with reasoning.
  *
+ * Uses the PDGA "Par by Hole Length" table for the course's skill level, fed
+ * with an Effective Length computed by the PDGA formula. See pdga.ts for both,
+ * with citations.
+ *
  * Returns null when the hole is not measurable yet — a suggestion built on a
  * missing tee would be a guess dressed as a calculation.
  *
- * The model is deliberately simple and legible. A more elaborate one that
- * nobody can follow is worse than a rough one whose reasoning is on screen: a
- * designer can correct a number they understand, and will simply distrust one
- * they can't.
+ * The Par Guidelines themselves warn that "disc golf scores can vary widely for
+ * holes of a given length. Strictly following the table will not give
+ * appropriate pars for all holes." That is exactly why this is a suggestion
+ * with a visible override and its reasoning on screen: a designer can correct a
+ * number they understand, and will simply distrust one they can't.
  */
 export function suggestPar(course: Course, hole: Hole): ParSuggestion | null {
   const measurement = measureHole(course, hole);
   if (measurement.effective === null) return null;
 
+  const skillLevel = course.skillLevel;
   const factors: ParFactor[] = [];
-  let effective = measurement.effective;
 
   if (measurement.routed !== null && measurement.straight !== null) {
     // A dogleg plays longer than its chord; say so when it is material.
@@ -157,32 +162,33 @@ export function suggestPar(course: Course, hole: Hole): ParSuggestion | null {
   }
 
   /*
-   * A mandatory forces a route rather than merely suggesting one, which costs
-   * distance and options. Treated as a modest length penalty rather than a
-   * direct par bump: mandos vary far too much for a blanket rule.
+   * The PDGA's dogleg term needs the distance to the corner, and the water term
+   * needs the detour a carry forces. Neither is in the document model yet, and
+   * elevation waits on terrain data — so those inputs are omitted rather than
+   * estimated, and `effectiveLength` contributes nothing for them. The formula
+   * is already shaped to take them when the data exists.
    */
-  const mandoCount = course.features.filter((f) => f.kind === 'mando').length;
-  if (mandoCount > 0 && measurement.straight !== null) {
-    effective += 10 * Math.min(mandoCount, 2);
-    factors.push({ label: 'Mandatory restricts the line', effect: 'lengthens' });
-  }
+  const effective = effectiveLength({ measured: measurement.effective }, skillLevel);
 
-  const par =
-    effective <= PAR_THRESHOLDS_M.par3Max
-      ? 3
-      : effective <= PAR_THRESHOLDS_M.par4Max
-        ? 4
-        : effective <= PAR_THRESHOLDS_M.par5Max
-          ? 5
-          : 6;
+  const par = parForLength(effective, skillLevel);
 
-  const borderline = (
-    [PAR_THRESHOLDS_M.par3Max, PAR_THRESHOLDS_M.par4Max, PAR_THRESHOLDS_M.par5Max] as const
-  ).some((threshold) => Math.abs(effective - threshold) <= BORDERLINE_MARGIN_M);
+  const borderline = parBoundariesMeters(skillLevel).some(
+    (boundary) => Math.abs(effective - boundary) <= BORDERLINE_MARGIN_M,
+  );
 
-  factors.unshift({ label: 'Based on effective distance', effect: 'neutral' });
+  factors.unshift({
+    label: `PDGA par table, ${SKILL_LEVEL_INFO[skillLevel].label} level`,
+    effect: 'neutral',
+  });
 
-  return { par, effectiveMeters: effective, factors, borderline };
+  return {
+    par,
+    effectiveMeters: effective,
+    measuredMeters: measurement.effective,
+    skillLevel,
+    factors,
+    borderline,
+  };
 }
 
 /** The par in force: the designer's override, else the suggestion, else null. */
