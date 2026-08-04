@@ -46,16 +46,9 @@ export interface Shortcut {
 export const shortcuts: readonly Shortcut[] = [
   // --- Tools. Single keys, Figma-style. Reserved here even where the tool
   // --- lands in a later PR, so the letters don't get claimed by something else.
+  // Panning has no key and no tool: a plain drag pans from everything except
+  // the zoom tool, which is what a map is expected to do.
   { id: 'tool.select', label: 'Select', keys: ['v'], scope: 'map', group: 'Tools' },
-  { id: 'tool.pan', label: 'Move', keys: ['h'], scope: 'map', group: 'Tools' },
-  {
-    id: 'tool.panHold',
-    label: 'Move (while held)',
-    keys: [' '],
-    scope: 'map',
-    group: 'Tools',
-    hold: true,
-  },
   {
     id: 'tool.zoomHold',
     label: 'Zoom — drag a region, Alt to zoom out',

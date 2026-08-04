@@ -153,11 +153,11 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
   const backToSelect = useCallback(() => setTool('select'), []);
 
   /*
-   * Navigation runs first, because its held-key overrides decide what the tool
+   * Navigation runs first, because the zoom hold decides what the tool
    * actually is right now. Everything downstream — drawing, the cursor, the
-   * rail's highlight — reads `effective` rather than `tool`, so holding Space
-   * mid-line suspends drawing instead of dropping a vertex where you meant to
-   * pan from.
+   * rail's highlight — reads `effective` rather than `tool`, so holding Z
+   * mid-line suspends drawing rather than dropping a vertex at the corner of
+   * the region you were framing.
    */
   const nav = useNavigation({ map, tool });
 
@@ -229,7 +229,6 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
       'edit.delete': deleteSelected,
       'edit.commit': drawing.commit,
       'tool.select': backToSelect,
-      'tool.pan': () => setTool('pan'),
       'view.fit': () => frameCourse(),
       // Reserved in the registry since PR 0; it needs exactly the same helper,
       // so leaving it inert now would be the odd choice.

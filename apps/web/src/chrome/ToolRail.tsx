@@ -14,6 +14,9 @@ import type { Tool } from '../map/tools';
  * Navigation first, then a divider, then the things that create geometry. The
  * order within each group is the order you use them designing a hole.
  *
+ * There is no pan tool. A drag pans from every tool except Zoom, so a button
+ * for it would be a button for something already happening.
+ *
  * Icons are drawn in the feature's own token color, so the rail and the map
  * agree without a legend — a gold square is a tee pad in both places.
  */
@@ -24,21 +27,6 @@ function SelectIcon() {
       <path
         d="M3 2.2 11.4 7 7.6 8.1 6.2 12z"
         fill="currentColor"
-        stroke="currentColor"
-        strokeWidth="1.1"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-/** An open hand — the same shape as the `grab` cursor the tool sets. */
-function HandIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
-      <path
-        d="M5.2 7.3V3.6a1 1 0 0 1 2 0v3.1m0-.2V2.9a1 1 0 0 1 2 0v3.6m0-.1V4.2a1 1 0 0 1 2 0v4.4c0 2.4-1.4 4.1-3.6 4.1-2 0-2.9-1-3.7-2.3L3 8.9a1 1 0 0 1 1.6-1.2z"
-        fill="none"
         stroke="currentColor"
         strokeWidth="1.1"
         strokeLinejoin="round"
@@ -160,9 +148,9 @@ export function ToolRail({
   /**
    * The *effective* tool, not the chosen one.
    *
-   * While Space or Z is held the map behaves differently from what was clicked,
-   * and the rail has to say so — a highlighted Select button over a map that is
-   * about to pan is the rail lying about the mode.
+   * While Z is held the map behaves differently from what was clicked, and the
+   * rail has to say so — a highlighted Select button over a map that is about
+   * to zoom is the rail lying about the mode.
    */
   tool: Tool;
   /** Alt is down, so the zoom tool would zoom out. Mirrors the cursor. */
@@ -183,15 +171,6 @@ export function ToolRail({
           onClick={() => onToolChange('select')}
         >
           <SelectIcon />
-        </IconButton>
-        <IconButton
-          label="Move"
-          command="tool.pan"
-          tooltipSide="top"
-          active={tool === 'pan'}
-          onClick={() => onToolChange('pan')}
-        >
-          <HandIcon />
         </IconButton>
         {/* No `command`: Z is a hold, and rendering it as a plain key in the
             tooltip would say "press this", which is not what it does. */}

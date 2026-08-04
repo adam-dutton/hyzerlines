@@ -97,17 +97,14 @@ Every shortcut is declared once, in `packages/design/src/keymap.ts`. Tooltips,
 the help overlay (`?`) and the actual key handling all read from that registry,
 so a displayed shortcut cannot drift from the one that fires.
 
-Navigation follows the model every design tool already uses:
+|            | Key      | Cursor                       | Drag does                          |
+| ---------- | -------- | ---------------------------- | ---------------------------------- |
+| **Select** | `V`      | arrow, `move` while dragging | pans                               |
+| **Zoom**   | hold `Z` | zoom-in / zoom-out           | zooms to the region; `Alt` inverts |
 
-|            | Key                  | Cursor             | Drag does                          |
-| ---------- | -------------------- | ------------------ | ---------------------------------- |
-| **Select** | `V`                  | arrow              | nothing to the camera              |
-| **Move**   | `H`, or hold `Space` | grab / grabbing    | pans                               |
-| **Zoom**   | hold `Z`             | zoom-in / zoom-out | zooms to the region; `Alt` inverts |
-
-Dragging only pans with the Move tool, so the map cannot slide out from under a
-tee you are placing. `Space` is always one key away, which is what makes that
-affordable.
+A plain drag pans, from every tool except Zoom — there is no pan tool and no
+modifier to reach for. Wheel zoom anchors to the pointer, and opening a course
+frames what is drawn rather than restoring wherever you last stopped scrolling.
 
 Tool keys (`T` tee, `B` basket, `O` out of bounds…) place features.
 

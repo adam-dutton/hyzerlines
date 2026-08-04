@@ -40,7 +40,7 @@ current as PRs land.
 | **2**   | Document model, zod schemas, `applyOp` store, undo/redo, IndexedDB, `.hyzer` files | ✅ done |
 | **3**   | Drawing engine, full feature palette, schema-driven inspector                      | ✅ done |
 | **4**   | Hole workflow, distances, PDGA par and advisory checks                             | ✅ done |
-| **4.5** | UI/UX: navigation tools, docked panels, layout                                     | ✅ done |
+| **4.5** | UI/UX: navigation, docked panels, layout, camera framing                           | ✅ done |
 | **5**   | Terrain: DEM sampling, elevation profiles, hillshade                               |         |
 | **6**   | Parametric flight model, shot editor, disc database                                |         |
 | **7**   | Safety: dispersion envelopes, overlap and proximity rules                          |         |
@@ -108,21 +108,26 @@ blocks.
 
 The first UI/UX pass over everything built so far.
 
-### Navigation is a tool, not a side effect
+### Navigation
 
-Three navigation modes, following the model every design tool already uses:
+| Tool   | Key        | Cursor                       | Drag does                        |
+| ------ | ---------- | ---------------------------- | -------------------------------- |
+| Select | `V`        | arrow, `move` while dragging | pans                             |
+| Zoom   | `Z` (hold) | zoom-in / -out               | zooms to the region, Alt inverts |
 
-| Tool   | Key             | Cursor          | Drag does                        |
-| ------ | --------------- | --------------- | -------------------------------- |
-| Select | `V`             | arrow           | nothing to the camera            |
-| Move   | `H`, or `Space` | grab / grabbing | pans                             |
-| Zoom   | `Z` (hold)      | zoom-in / -out  | zooms to the region, Alt inverts |
+**A plain drag pans, from every tool except Zoom.** That is what a map does.
 
-Drag-pan is enabled **only** for the Move tool. That is a real behaviour change:
-a drag with Select, or with any drawing tool, no longer slides the map. It is
-only affordable because `Space` is always one key away, and that trade is the
-whole point — a map that pans under a tee you are placing is worse than one that
-holds still.
+An earlier version of this PR made panning its own mode — a hand tool on `H`
+with a `Space`-to-pan hold, borrowed from design tools — and reverted it. On a
+canvas that is a map first, requiring a modifier to do the thing every other map
+on the internet does on a plain drag is friction with nothing on the other side
+of it. The cursor carries the story instead: an arrow until you press, the
+four-way `move` cursor while the ground is actually moving, and only then. A
+hand sitting there permanently claims a mode the map is not in.
+
+Panning is on for drawing tools too. Placing a feature is a `click`, and
+MapLibre suppresses `click` once the pointer has moved past its tolerance, so a
+pan mid-draw cannot drop a stray vertex.
 
 MapLibre's own `shift+drag` box zoom is switched off. It collides with
 shift-click multi-select, it is undiscoverable, and it would be a second way to
@@ -130,11 +135,11 @@ do what `Z`-drag does with different behaviour. The replacement uses one formula
 for both directions, so zooming out is exactly the inverse of zooming in rather
 than a separate behaviour that happens to be nearby.
 
-**Held keys are not shortcuts.** The registry dispatcher only understands
-keydown, and a hold needs both edges. `Space` and `Z` are declared in the
-registry with `hold: true` so the help overlay lists them, and skipped by the
-dispatcher; the mode is owned by `useNavigation`, which binds both edges and
-clears on window blur so a keyup that lands elsewhere cannot strand the map.
+**The zoom hold is not a shortcut.** The registry dispatcher only understands
+keydown, and a hold needs both edges. `Z` is declared in the registry with
+`hold: true` so the help overlay lists it, and skipped by the dispatcher; the
+mode is owned by `useNavigation`, which binds both edges and clears on window
+blur so a keyup that lands elsewhere cannot strand the map.
 
 ### The camera goes to the work
 

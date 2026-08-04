@@ -6,16 +6,18 @@ import { isDrawingTool, type NavTool, type Tool } from './tools';
 /**
  * Camera navigation: which gesture moves the map, and what the cursor says.
  *
- * The model is the one every design tool uses, because it is the one people
- * already have in their hands:
- *
- *   Select (V)   click selects; a drag does nothing to the camera
- *   Move (H)     drag pans; hold Space for it from any other tool
+ *   Select (V)   click selects; drag pans
  *   Zoom         hold Z; drag a region to zoom to it, Alt to reverse
  *
- * The held-key variants matter more than the rail buttons. Reaching for a
- * toolbar to pan and then reaching back is the interaction that makes a map
- * editor feel slow, and Space-to-pan is the single gesture that fixes it.
+ * **Dragging pans from every tool except Zoom.** That is what a map does, and
+ * it is worth saying why explicitly: an earlier version made panning its own
+ * mode with a hand tool and a Space-to-pan hold, borrowed from design tools. On
+ * a canvas that is a map first, requiring a modifier to do the thing every
+ * other map on the internet does on a plain drag is friction with nothing on
+ * the other side of it.
+ *
+ * The cursor carries the whole story instead: an arrow until you press, the
+ * four-way move cursor while you are actually dragging the ground.
  *
  * MapLibre's own shift+drag box zoom is switched off. It collides with
  * shift-click multi-select, it is undiscoverable, and it would be a second way
@@ -60,12 +62,14 @@ const isTyping = (target: EventTarget | null): boolean =>
  *
  * MapLibre's stylesheet sets `cursor: grab` on `.maplibregl-canvas-container`,
  * so clearing our own value does not fall back to an arrow — it falls back to
- * a hand, and the Select tool ends up claiming it will pan. `default` is the
- * arrow, said out loud.
+ * a hand, permanently, whether or not anything is being dragged. `default` is
+ * the arrow, said out loud.
  */
 function cursorFor(tool: Tool, invertZoom: boolean, dragging: boolean): string {
-  if (tool === 'pan') return dragging ? 'grabbing' : 'grab';
   if (tool === 'zoom') return invertZoom ? 'zoom-out' : 'zoom-in';
+  // The four-way arrows, and only while the ground is actually moving. A hand
+  // sitting there permanently claims a mode the map is not in.
+  if (dragging) return 'move';
   if (isDrawingTool(tool)) return 'crosshair';
   return 'default';
 }
@@ -85,12 +89,12 @@ export function useNavigation({ map, tool }: { map: maplibregl.Map | null; tool:
   invertRef.current = invertZoom;
 
   /*
-   * Held keys.
+   * The zoom hold.
    *
    * Deliberately not routed through the keyboard registry. Every other shortcut
-   * is an event — it fires and is done — while these are states that last as
-   * long as a finger is down, and the dispatcher has no concept of keyup. They
-   * are still declared in the registry so the help overlay lists them.
+   * is an event — it fires and is done — while this is a state that lasts as
+   * long as a finger is down, and the dispatcher has no concept of keyup. It is
+   * still declared in the registry so the help overlay lists it.
    */
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -102,11 +106,7 @@ export function useNavigation({ map, tool }: { map: maplibregl.Map | null; tool:
       // A modifier means this is a real shortcut (⌘Z), not a tool hold.
       if (e.metaKey || e.ctrlKey) return;
 
-      if (e.code === 'Space') {
-        // Otherwise Space scrolls the page, or re-triggers a focused button.
-        e.preventDefault();
-        setHeld('pan');
-      } else if (e.key === 'z' || e.key === 'Z') {
+      if (e.key === 'z' || e.key === 'Z') {
         e.preventDefault();
         setHeld('zoom');
       }
@@ -114,12 +114,11 @@ export function useNavigation({ map, tool }: { map: maplibregl.Map | null; tool:
 
     const up = (e: KeyboardEvent) => {
       if (e.key === 'Alt') setInvertZoom(false);
-      if (e.code === 'Space') setHeld((h) => (h === 'pan' ? null : h));
-      else if (e.key === 'z' || e.key === 'Z') setHeld((h) => (h === 'zoom' ? null : h));
+      if (e.key === 'z' || e.key === 'Z') setHeld((h) => (h === 'zoom' ? null : h));
     };
 
     /*
-     * Losing the window mid-hold would otherwise strand the map in pan mode
+     * Losing the window mid-hold would otherwise strand the map in zoom mode
      * forever: the keyup lands on whatever took focus, not on us.
      */
     const clear = () => {
@@ -140,15 +139,16 @@ export function useNavigation({ map, tool }: { map: maplibregl.Map | null; tool:
   /*
    * Which MapLibre handlers are live.
    *
-   * Drag-pan is on only for the move tool, so a drag with the Select tool or a
-   * drawing tool cannot slide the map out from under the thing being placed.
-   * Space is always one keypress away, which is what makes that affordable.
+   * Drag-pan is on for everything except Zoom, where the drag is drawing a
+   * region and panning at the same time would be incoherent. Placing a feature
+   * is a click, and MapLibre suppresses `click` once the pointer has moved
+   * past its tolerance, so a pan mid-draw cannot drop a stray vertex.
    */
   useEffect(() => {
     if (!map) return;
 
-    if (effective === 'pan') map.dragPan.enable();
-    else map.dragPan.disable();
+    if (effective === 'zoom') map.dragPan.disable();
+    else map.dragPan.enable();
 
     // Ours replaces it — see the note at the top of the file.
     map.boxZoom.disable();
@@ -269,21 +269,30 @@ export function useNavigation({ map, tool }: { map: maplibregl.Map | null; tool:
   }, [map]);
 
   /*
-   * The move tool's cursor has to change on press, and MapLibre swallows the
-   * pointer events that would tell us — its drag handler stops propagation
-   * before they reach anything we bind. Watching the class it toggles is
-   * indirect, but it is the state the map itself considers authoritative.
+   * The drag cursor.
+   *
+   * Tracked from raw pointer events on the container rather than from
+   * MapLibre's own drag events, because `dragstart` only fires once the pointer
+   * has moved past its tolerance — the cursor would change a few pixels late,
+   * which reads as lag rather than as a threshold.
+   *
+   * `pointerup` is on the window: a drag that ends outside the canvas must
+   * still put the cursor back.
    */
   useEffect(() => {
-    if (!map || effective !== 'pan') return;
+    if (!map || effective === 'zoom') return;
     const container = map.getCanvasContainer();
-    const down = () => setDragging(true);
+    const down = (e: PointerEvent) => {
+      if (e.button === 0) setDragging(true);
+    };
     const up = () => setDragging(false);
     container.addEventListener('pointerdown', down);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
     return () => {
       container.removeEventListener('pointerdown', down);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
       setDragging(false);
     };
   }, [map, effective]);

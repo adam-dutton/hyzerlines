@@ -8,9 +8,9 @@ import { deflateSync } from 'node:zlib';
  * element MapLibre also writes to; whether a drag pans depends on which
  * MapLibre handlers are enabled; and the zoom marquee is a pointer gesture that
  * ends in a camera animation. Every one of these failed silently at some point
- * during the build — the Select tool shipped showing a `grab` cursor because
- * MapLibre's stylesheet targets the canvas *container*, and clearing our own
- * inline style fell back to its hand rather than to an arrow.
+ * during the build — the Select tool once showed a permanent `grab` cursor
+ * because MapLibre's stylesheet targets the canvas *container*, and clearing
+ * our own inline style fell back to its hand rather than to an arrow.
  */
 
 function fakeTile(): Buffer {
@@ -119,23 +119,10 @@ async function dragCanvas(page: Page, from: [number, number], to: [number, numbe
 }
 
 test.describe('navigation tools', () => {
-  test('each tool sets its own cursor, and holds restore the previous one', async ({
-    page,
-  }) => {
+  test('the cursor tracks the tool, and Z restores the previous one', async ({ page }) => {
     await openEditor(page);
 
-    // An arrow, not MapLibre's hand: Select does not pan.
-    expect(await cursor(page)).toBe('default');
-
-    await rail(page).getByRole('button', { name: 'Move', exact: true }).click();
-    expect(await cursor(page)).toBe('grab');
-
-    await rail(page).getByRole('button', { name: 'Select', exact: true }).click();
-    expect(await cursor(page)).toBe('default');
-
-    await page.keyboard.down(' ');
-    expect(await cursor(page)).toBe('grab');
-    await page.keyboard.up(' ');
+    // An arrow, not MapLibre's permanent hand.
     expect(await cursor(page)).toBe('default');
 
     await page.keyboard.down('z');
@@ -146,43 +133,69 @@ test.describe('navigation tools', () => {
     await page.keyboard.up('Alt');
     await page.keyboard.up('z');
     expect(await cursor(page)).toBe('default');
+
+    // Drawing tools aim rather than drag.
+    await rail(page).getByRole('button', { name: 'Basket', exact: true }).click();
+    expect(await cursor(page)).toBe('crosshair');
   });
 
-  test('a drag with the Select tool does not move the camera', async ({ page }) => {
+  /** What a map does. There is no pan tool and no modifier to reach for. */
+  test('a plain drag pans the map', async ({ page }) => {
     await openEditor(page);
     await reset(page);
     const before = await center(page);
 
-    await dragCanvas(page, [600, 400], [480, 300]);
-    await page.waitForTimeout(300);
-
-    expect(await center(page)).toEqual(before);
-  });
-
-  test('the Move tool drags the camera', async ({ page }) => {
-    await openEditor(page);
-    await reset(page);
-    const before = await center(page);
-
-    await rail(page).getByRole('button', { name: 'Move', exact: true }).click();
     await dragCanvas(page, [600, 400], [480, 300]);
     await page.waitForTimeout(300);
 
     expect(await center(page)).not.toEqual(before);
   });
 
-  /** The gesture that makes the Move tool optional rather than a detour. */
-  test('holding Space drags the camera from any tool', async ({ page }) => {
+  test('a drag pans from a drawing tool too, without placing anything', async ({ page }) => {
     await openEditor(page);
     await reset(page);
     const before = await center(page);
+
+    await rail(page).getByRole('button', { name: 'Basket', exact: true }).click();
+    await dragCanvas(page, [600, 400], [480, 300]);
+    await page.waitForTimeout(300);
+
+    expect(await center(page)).not.toEqual(before);
+    // A drag is not a click: MapLibre suppresses `click` past its tolerance,
+    // so panning mid-draw must not drop a stray basket.
+    await expect(page.getByRole('textbox', { name: 'Feature name' })).toBeHidden();
+  });
+
+  /**
+   * The four-way arrows, and only while the ground is actually moving. A hand
+   * or a move cursor sitting there permanently claims a mode the map isn't in.
+   */
+  test('the cursor becomes the move cursor while dragging, and reverts after', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await reset(page);
+
+    const box = await page.locator('canvas.maplibregl-canvas').boundingBox();
+    if (!box) throw new Error('no canvas');
+
+    await page.mouse.move(box.x + 600, box.y + 400);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 520, box.y + 330, { steps: 6 });
+    expect(await cursor(page)).toBe('move');
+
+    await page.mouse.up();
+    expect(await cursor(page)).toBe('default');
+  });
+
+  /** Space used to be a pan hold. It is an ordinary key again. */
+  test('Space does not change the cursor', async ({ page }) => {
+    await openEditor(page);
 
     await page.keyboard.down(' ');
-    await dragCanvas(page, [600, 400], [480, 300]);
+    expect(await cursor(page)).toBe('default');
     await page.keyboard.up(' ');
-    await page.waitForTimeout(300);
-
-    expect(await center(page)).not.toEqual(before);
+    expect(await cursor(page)).toBe('default');
   });
 
   test('dragging a region with Z held zooms to it, and Alt reverses it', async ({ page }) => {
@@ -278,31 +291,28 @@ test.describe('navigation tools', () => {
   });
 
   /**
-   * A keyup that lands on another window would otherwise strand the map in pan
-   * mode, with a hand cursor and no way back except pressing and releasing
-   * Space again over the canvas.
+   * A keyup that lands on another window would otherwise strand the map in
+   * zoom mode, with no way back except pressing and releasing Z again over the
+   * canvas.
    */
   test('losing the window mid-hold releases the tool', async ({ page }) => {
     await openEditor(page);
 
-    await page.keyboard.down(' ');
-    expect(await cursor(page)).toBe('grab');
+    await page.keyboard.down('z');
+    expect(await cursor(page)).toBe('zoom-in');
 
     await page.evaluate(() => window.dispatchEvent(new Event('blur')));
     expect(await cursor(page)).toBe('default');
   });
 
-  test('Space types a space rather than switching tools while a field has focus', async ({
-    page,
-  }) => {
+  test('Z types a z rather than switching tools while a field has focus', async ({ page }) => {
     await openEditor(page);
 
     const name = page.getByRole('textbox', { name: 'Course name' });
-    await name.fill('Kaposia');
-    await name.press(' ');
-    await name.pressSequentially('Park');
+    await name.fill('');
+    await name.pressSequentially('Zilker');
 
-    await expect(name).toHaveValue('Kaposia Park');
+    await expect(name).toHaveValue('Zilker');
     expect(await cursor(page)).toBe('default');
   });
 });
