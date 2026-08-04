@@ -136,6 +136,32 @@ registry with `hold: true` so the help overlay lists them, and skipped by the
 dispatcher; the mode is owned by `useNavigation`, which binds both edges and
 clears on window blur so a keyup that lands elsewhere cannot strand the map.
 
+### The camera goes to the work
+
+**Wheel zoom is anchored to the pointer.** It had been set to
+`{ around: 'center' }`, under a comment claiming that smoothed the wheel curve.
+It does not — that option only moves the anchor — and anchoring to the centre
+walks a tee at the edge of the screen straight off it. Aiming with the cursor
+and correcting with a pan is the whole interaction that broke.
+
+**Loading a document frames its features** rather than restoring a stored
+viewport. A saved camera is wherever you happened to stop scrolling, which is
+rarely where you want to resume, and restoring an autosave used not to move the
+camera at all — so a reload showed a full scorecard over the middle of Kansas.
+The stored view survives as the fallback for a course with nothing drawn, which
+is the only case where "where you were last looking" is the best guess
+available.
+
+`Zoom to fit` (⇧1) and `Zoom to selection` (⇧2) were reserved in the registry
+since PR 0 and run the same helper, so they are implemented now rather than
+left inert beside it.
+
+The framing lives in `CourseEditor`, keyed on a document epoch from
+`CourseProvider` — incremented when a whole document replaces the current one,
+untouched by ordinary edits. `MapCanvas` no longer takes a `pendingViewRef`:
+two components moving the camera on load is one too many, and the one that owns
+the map instance is not the one that knows what is worth looking at.
+
 ### Layout
 
 ```

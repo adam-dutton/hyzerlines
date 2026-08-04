@@ -62,6 +62,7 @@ interface MapHandle {
   jumpTo: (options: unknown) => void;
   getZoom: () => number;
   getCenter: () => { toArray: () => [number, number] };
+  unproject: (point: [number, number]) => { lng: number; lat: number };
 }
 
 async function openEditor(page: Page): Promise<void> {
@@ -207,6 +208,52 @@ test.describe('navigation tools', () => {
     await page.waitForTimeout(500);
 
     expect(await zoom(page)).toBeCloseTo(start, 1);
+  });
+
+  /**
+   * The ground under the cursor is the thing you are aiming at.
+   *
+   * MapLibre anchors wheel zoom to the pointer by default; this app had
+   * overridden it to `{ around: 'center' }`, which meant zooming in on a tee
+   * near the edge of the screen walked it off the screen. The failure is
+   * subtle enough to read as "the map drifts" rather than as a setting.
+   */
+  test('scroll zoom keeps the point under the cursor in place', async ({ page }) => {
+    await openEditor(page);
+    await reset(page);
+
+    const box = await page.locator('canvas.maplibregl-canvas').boundingBox();
+    if (!box) throw new Error('no canvas');
+
+    /*
+     * Well off centre, which is the only place the difference shows — but
+     * clear of the docked panels, or the wheel lands on a panel and the map
+     * never sees it. The right panel begins around 0.79 of the width.
+     */
+    const point: [number, number] = [
+      Math.round(box.width * 0.66),
+      Math.round(box.height * 0.7),
+    ];
+
+    const at = () =>
+      page.evaluate(
+        (p) => (window as unknown as { hyzerlinesMap: MapHandle }).hyzerlinesMap.unproject(p),
+        point,
+      );
+
+    const before = await at();
+
+    await page.mouse.move(box.x + point[0], box.y + point[1]);
+    await page.mouse.wheel(0, -400);
+    await expect.poll(() => zoom(page)).toBeGreaterThan(16.2);
+    await page.waitForTimeout(400);
+
+    const after = await at();
+
+    // Within a metre or so at this latitude and zoom. Anchored to centre, the
+    // same gesture moves this point by hundreds of metres.
+    expect(after.lng).toBeCloseTo(before.lng, 4);
+    expect(after.lat).toBeCloseTo(before.lat, 4);
   });
 
   test('the marquee is visible while the region is being dragged', async ({ page }) => {

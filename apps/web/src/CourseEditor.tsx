@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   anchorOf,
   checkCourse,
@@ -17,6 +17,7 @@ import { useMap } from './map/MapContext';
 import { FeatureLayer } from './map/FeatureLayer';
 import { useDrawing, drawingPreview } from './map/useDrawing';
 import { useNavigation } from './map/useNavigation';
+import { frameFeatures } from './map/frame';
 import type { Tool } from './map/tools';
 import { ToolRail } from './chrome/ToolRail';
 import { RightPanel } from './chrome/RightPanel';
@@ -35,7 +36,7 @@ import { useCourse } from './document/CourseProvider';
  */
 export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boolean }) {
   const { map } = useMap();
-  const { course, dispatch } = useCourse();
+  const { course, dispatch, documentEpoch } = useCourse();
 
   const [tool, setTool] = useState<Tool>('select');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -181,6 +182,41 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
 
   const handleOp = useCallback((op: Op) => dispatch(op), [dispatch]);
 
+  /** Put the whole course on screen. Bound to Zoom to fit, and used on load. */
+  const frameCourse = useCallback(
+    (duration = 400) => {
+      if (map) frameFeatures(map, course.features, { duration });
+    },
+    [map, course.features],
+  );
+
+  /*
+   * Frame the course when a document arrives.
+   *
+   * Opening a course and being shown the middle of Kansas, or a corner of a
+   * layout you were nowhere near, is the fastest way to make a map feel broken.
+   * So the camera goes to the work, not to a stored camera position — a saved
+   * viewport was where you happened to stop scrolling, which is rarely where
+   * you want to resume.
+   *
+   * A course with nothing drawn falls back to its stored view, because there is
+   * nothing to frame and the last place you were looking is then the best
+   * guess available.
+   *
+   * Keyed on the epoch rather than on the course object: this must fire when a
+   * document is loaded and never while one is being edited.
+   */
+  const framedEpoch = useRef(-1);
+  useEffect(() => {
+    if (!map || documentEpoch === framedEpoch.current) return;
+    framedEpoch.current = documentEpoch;
+    // Jump rather than fly. Opening a file should present the course, not
+    // perform a several-second animation across the globe to reach it.
+    if (!frameFeatures(map, course.features, { duration: 0 })) {
+      map.jumpTo(course.view);
+    }
+  }, [map, documentEpoch, course.features, course.view]);
+
   /*
    * The `editing` scope is live only while a shape is in progress.
    *
@@ -194,6 +230,24 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
       'edit.commit': drawing.commit,
       'tool.select': backToSelect,
       'tool.pan': () => setTool('pan'),
+      'view.fit': () => frameCourse(),
+      // Reserved in the registry since PR 0; it needs exactly the same helper,
+      // so leaving it inert now would be the odd choice.
+      'view.zoomSelection': () => {
+        if (!map) return;
+        const target = selected
+          ? [selected]
+          : selectedHole
+            ? course.features.filter((f) =>
+                [...selectedHole.teeIds, ...selectedHole.basketIds, selectedHole.fairwayId]
+                  .filter((id): id is string => id !== null)
+                  .includes(f.id),
+              )
+            : [];
+        // Nothing selected means "fit everything", which is what a user
+        // pressing a zoom-to key with an empty selection is reaching for.
+        frameFeatures(map, target.length > 0 ? target : course.features, { duration: 400 });
+      },
       'tool.tee': () => setTool('tee'),
       'tool.basket': () => setTool('basket'),
       'tool.fairway': () => setTool('fairway'),

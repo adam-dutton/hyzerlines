@@ -163,7 +163,37 @@ test.describe('drawing', () => {
     await page.reload();
     await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
 
-    await clickMap(page, 520, 380);
+    /*
+     * Where the basket ended up on screen, not where it was clicked.
+     *
+     * A reload reframes the camera on whatever the document contains, so the
+     * original pixel is no longer over the feature. Projecting its actual
+     * coordinates tests what this is about — the feature survived and is still
+     * selectable — instead of testing that the camera did not move.
+     */
+    const point = await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const map = (window as unknown as { hyzerlinesMap?: MapLibreMap }).hyzerlinesMap;
+          const feature = map?.querySourceFeatures('course-features')[0];
+          if (!map || !feature || feature.geometry.type !== 'Point') return null;
+          const p = map.project(feature.geometry.coordinates as [number, number]);
+          return { x: Math.round(p.x), y: Math.round(p.y) };
+        }),
+      )
+      .not.toBeNull()
+      .then(() =>
+        page.evaluate(() => {
+          const map = (window as unknown as { hyzerlinesMap: MapLibreMap }).hyzerlinesMap;
+          const feature = map.querySourceFeatures('course-features')[0]!;
+          const p = map.project(
+            (feature.geometry as GeoJSON.Point).coordinates as [number, number],
+          );
+          return { x: Math.round(p.x), y: Math.round(p.y) };
+        }),
+      );
+
+    await clickMap(page, point.x, point.y);
     await expect(page.getByRole('textbox', { name: 'Feature name' })).toBeVisible();
   });
 

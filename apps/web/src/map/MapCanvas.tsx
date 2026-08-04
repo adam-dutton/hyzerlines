@@ -10,15 +10,6 @@ interface MapCanvasProps {
   children?: React.ReactNode;
   /** Debounced camera reports, for persisting where the user was working. */
   onViewChange?: (view: MapViewState) => void;
-  /**
-   * A camera to jump to, set when a *different* document is opened.
-   *
-   * Passed as a ref rather than a prop value so that opening a file whose view
-   * happens to equal the current one still moves the map — and, more
-   * importantly, so the map is never driven from state that it also writes to.
-   * That loop is how a map ends up fighting the user mid-pan.
-   */
-  pendingViewRef?: React.RefObject<MapViewState | null>;
 }
 
 /** One op per gesture, not one per frame. */
@@ -31,13 +22,19 @@ const VIEW_DEBOUNCE_MS = 400;
  * switches swap the style in place. Recreating the map would reset camera, break
  * pointer capture mid-drag, and (once drawing lands) drop editing state. Anything
  * that needs the instance gets it through MapContext rather than by remounting.
+ *
+ * Two things this component deliberately does NOT do:
+ *
+ * - **Set the camera when a document loads.** CourseEditor frames the features
+ *   themselves, and it needs the document to do that. Two places moving the map
+ *   on open is one too many; this owns the instance, that owns the intent.
+ * - **Configure `scrollZoom`.** MapLibre's default anchors wheel zoom to the
+ *   pointer, which is what you want. It was once set to `{ around: 'center' }`
+ *   under a comment claiming that smoothed the wheel curve — it does not, it
+ *   only moves the anchor, and anchoring to the centre walks a tee at the edge
+ *   of the screen straight off it.
  */
-export function MapCanvas({
-  basemapId,
-  children,
-  onViewChange,
-  pendingViewRef,
-}: MapCanvasProps) {
+export function MapCanvas({ basemapId, children, onViewChange }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const viewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -72,8 +69,6 @@ export function MapCanvas({
       attributionControl: false,
       // Aerial detail matters more than bandwidth here.
       maxZoom: 21,
-      // Smooths the wheel curve; the stock one overshoots badly on trackpads.
-      scrollZoom: { around: 'center' },
       dragRotate: true,
       // Two-finger rotate constantly fires by accident while panning on trackpads.
       touchPitch: false,
@@ -126,24 +121,6 @@ export function MapCanvas({
     if (!instance) return;
     instance.setStyle(styleForBasemap(basemapById(basemapId)));
   }, [basemapId]);
-
-  /*
-   * Jump to a document's saved camera when one is opened or restored.
-   *
-   * `jumpTo` rather than `flyTo`: opening a file should present the course, not
-   * perform a several-second animation across the globe from wherever the
-   * previous document happened to be.
-   *
-   * The ref is consumed (set back to null) so this fires once per document
-   * rather than re-running on unrelated renders.
-   */
-  useEffect(() => {
-    const instance = mapRef.current;
-    const pending = pendingViewRef?.current;
-    if (!instance || !pending) return;
-    instance.jumpTo(pending);
-    if (pendingViewRef) pendingViewRef.current = null;
-  });
 
   return (
     <MapContext.Provider value={{ map, view }}>

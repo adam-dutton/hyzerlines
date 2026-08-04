@@ -1,5 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
 import { deflateSync } from 'node:zlib';
+import type { Map as MapLibreMap } from 'maplibre-gl';
+
+declare global {
+  interface Window {
+    hyzerlinesMap?: MapLibreMap;
+  }
+}
 
 /**
  * Holes, par and design checks, through the real UI.
@@ -238,6 +245,81 @@ test.describe('holes', () => {
     const item = page.getByRole('listitem').filter({ hasText: /under the 100 ft minimum/ });
     await expect(item).toBeVisible();
     await expect(item.getByRole('link', { name: /Course Design Elements/ })).toBeVisible();
+  });
+
+  /**
+   * A course you cannot see is a course you cannot work on.
+   *
+   * The map opens on the geographic centre of the US, and restoring an autosave
+   * used not to move it at all — so a reload showed a scorecard full of holes
+   * over an empty continent. The camera now goes to the work.
+   */
+  test('a restored course is framed on screen, not left at the default view', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await place(page, 'Tee pad', 400, 500);
+    await place(page, 'Basket', 800, 300);
+    await page.getByRole('button', { name: 'Add hole' }).click();
+
+    const before = await page.evaluate(() => ({
+      center: window.hyzerlinesMap!.getCenter().toArray(),
+      zoom: window.hyzerlinesMap!.getZoom(),
+    }));
+
+    await page.waitForTimeout(1400);
+    await page.reload();
+    await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
+    await expect(page.getByText('Hole 1').first()).toBeVisible();
+
+    await expect
+      .poll(() => page.evaluate(() => window.hyzerlinesMap!.getZoom()))
+      .toBeGreaterThan(12);
+
+    const after = await page.evaluate(() => ({
+      center: window.hyzerlinesMap!.getCenter().toArray(),
+      zoom: window.hyzerlinesMap!.getZoom(),
+    }));
+
+    // Near where the work is, at a working zoom — not the continent.
+    expect(after.center[0]).toBeCloseTo(before.center[0]!, 1);
+    expect(after.center[1]).toBeCloseTo(before.center[1]!, 1);
+    expect(after.zoom).toBeGreaterThan(12);
+
+    // Both features are inside the viewport, which is the actual promise.
+    const visible = await page.evaluate(() => {
+      const map = window.hyzerlinesMap!;
+      const canvas = map.getCanvas();
+      return map
+        .querySourceFeatures('course-features')
+        .filter((f) => f.geometry.type === 'Point')
+        .map((f) => map.project((f.geometry as GeoJSON.Point).coordinates as [number, number]))
+        .every(
+          (p) =>
+            p.x >= 0 && p.y >= 0 && p.x <= canvas.clientWidth && p.y <= canvas.clientHeight,
+        );
+    });
+    expect(visible).toBe(true);
+  });
+
+  test('Zoom to fit frames the whole course', async ({ page }) => {
+    await openEditor(page);
+    await place(page, 'Tee pad', 400, 500);
+    await place(page, 'Basket', 800, 300);
+
+    // Wander off, then ask to come back.
+    await page.evaluate(() => window.hyzerlinesMap!.jumpTo({ center: [-80, 40], zoom: 6 }));
+    await page.waitForTimeout(200);
+
+    await page.locator('canvas.maplibregl-canvas').click({ position: { x: 600, y: 550 } });
+    await page.keyboard.press('Shift+1');
+
+    await expect
+      .poll(() => page.evaluate(() => window.hyzerlinesMap!.getZoom()))
+      .toBeGreaterThan(12);
+    await expect
+      .poll(() => page.evaluate(() => window.hyzerlinesMap!.getCenter().lng))
+      .toBeLessThan(-90);
   });
 
   test('adding a hole is undoable', async ({ page }) => {

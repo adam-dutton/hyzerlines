@@ -48,6 +48,16 @@ interface CourseContextValue extends StoreState {
    * back over their restored work, because naming a course doesn't move the map.
    */
   restored: boolean;
+  /**
+   * Increments every time a whole document replaces the current one — an
+   * autosave restored, a file opened.
+   *
+   * The camera keys off this rather than off `course.id`, so that reopening the
+   * same file still reframes, and off a counter rather than an effect inside
+   * `load` so that nothing has to reach the map from here. Ordinary edits leave
+   * it alone, which is what keeps the view from jumping while you work.
+   */
+  documentEpoch: number;
 }
 
 const CourseContext = createContext<CourseContextValue | null>(null);
@@ -65,6 +75,7 @@ export function CourseProvider({ children }: { children: ReactNode }) {
 
   const [hydrating, setHydrating] = useState(true);
   const [restored, setRestored] = useState(false);
+  const [documentEpoch, setDocumentEpoch] = useState(0);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -76,6 +87,7 @@ export function CourseProvider({ children }: { children: ReactNode }) {
       if (saved) {
         store.load(saved);
         setRestored(true);
+        setDocumentEpoch((n) => n + 1);
       }
       setHydrating(false);
     });
@@ -118,13 +130,17 @@ export function CourseProvider({ children }: { children: ReactNode }) {
       dispatch: (op: Op) => store.dispatch(op),
       undo: () => store.undo(),
       redo: () => store.redo(),
-      load: (course: Course) => store.load(course),
+      load: (course: Course) => {
+        store.load(course);
+        setDocumentEpoch((n) => n + 1);
+      },
       saveStatus,
       saveError,
       hydrating,
       restored,
+      documentEpoch,
     }),
-    [state, store, saveStatus, saveError, hydrating, restored],
+    [state, store, saveStatus, saveError, hydrating, restored, documentEpoch],
   );
 
   return <CourseContext.Provider value={value}>{children}</CourseContext.Provider>;

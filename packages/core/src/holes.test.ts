@@ -4,7 +4,7 @@ import { createCourse } from './schema.js';
 import { createFeature, type Geometry } from './features.js';
 import { applyOp, type Op } from './ops.js';
 import { CourseStore } from './store.js';
-import { bearing, distance, pathLength, pathsCross } from './measure.js';
+import { bearing, boundsOf, distance, pathLength, pathsCross } from './measure.js';
 import type { Position } from './geo.js';
 import {
   createHole,
@@ -64,6 +64,41 @@ describe('measure', () => {
     expect(bearing([0, 0], [0, 1])).toBeCloseTo(0, 1); // north
     expect(bearing([0, 0], [1, 0])).toBeCloseTo(90, 1); // east
     expect(bearing([0, 1], [0, 0])).toBeCloseTo(180, 1); // south
+  });
+
+  describe('bounds', () => {
+    it('has no bounds for nothing', () => {
+      expect(boundsOf([])).toBeNull();
+    });
+
+    it('covers every vertex of every geometry, not just anchors', () => {
+      const tee = createFeature('tee', pt(-93.1, 44.9));
+      const fairway = createFeature('fairway', {
+        type: 'line',
+        coordinates: [
+          [-93.1, 44.9],
+          [-93.05, 44.95],
+          [-93.12, 44.88],
+        ],
+      });
+      const ob = createFeature('ob', {
+        type: 'polygon',
+        coordinates: [
+          [-93.2, 44.85],
+          [-93.19, 44.86],
+          [-93.2, 44.86],
+        ],
+      });
+
+      // The westmost and southmost points live inside the line and the
+      // polygon, not on the tee — bounding by anchors alone would clip them.
+      expect(boundsOf([tee, fairway, ob])).toEqual([-93.2, 44.85, -93.05, 44.95]);
+    });
+
+    it('gives a single point a zero-size box rather than nothing', () => {
+      const basket = createFeature('basket', pt(-93.1, 44.9));
+      expect(boundsOf([basket])).toEqual([-93.1, 44.9, -93.1, 44.9]);
+    });
   });
 
   describe('path crossing', () => {
