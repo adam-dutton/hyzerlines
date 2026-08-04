@@ -40,7 +40,7 @@ current as PRs land.
 | **2**   | Document model, zod schemas, `applyOp` store, undo/redo, IndexedDB, `.hyzer` files | ✅ done |
 | **3**   | Drawing engine, full feature palette, schema-driven inspector                      | ✅ done |
 | **4**   | Hole workflow, distances, PDGA par and advisory checks                             | ✅ done |
-| **4.5** | UI/UX refinement pass across everything shipped so far                             | next    |
+| **4.5** | UI/UX: navigation tools, docked panels, layout                                     | ✅ done |
 | **5**   | Terrain: DEM sampling, elevation profiles, hillshade                               |         |
 | **6**   | Parametric flight model, shot editor, disc database                                |         |
 | **7**   | Safety: dispersion envelopes, overlap and proximity rules                          |         |
@@ -101,6 +101,76 @@ is generated from it, so it cannot go stale.
 land, the map flies there. Geocoding is Photon (keyless, CORS-enabled), and
 pasted coordinates work without any network call, so search failure never
 blocks.
+
+---
+
+## PR 4.5 — what landed
+
+The first UI/UX pass over everything built so far.
+
+### Navigation is a tool, not a side effect
+
+Three navigation modes, following the model every design tool already uses:
+
+| Tool   | Key             | Cursor          | Drag does                        |
+| ------ | --------------- | --------------- | -------------------------------- |
+| Select | `V`             | arrow           | nothing to the camera            |
+| Move   | `H`, or `Space` | grab / grabbing | pans                             |
+| Zoom   | `Z` (hold)      | zoom-in / -out  | zooms to the region, Alt inverts |
+
+Drag-pan is enabled **only** for the Move tool. That is a real behaviour change:
+a drag with Select, or with any drawing tool, no longer slides the map. It is
+only affordable because `Space` is always one key away, and that trade is the
+whole point — a map that pans under a tee you are placing is worse than one that
+holds still.
+
+MapLibre's own `shift+drag` box zoom is switched off. It collides with
+shift-click multi-select, it is undiscoverable, and it would be a second way to
+do what `Z`-drag does with different behaviour. The replacement uses one formula
+for both directions, so zooming out is exactly the inverse of zooming in rather
+than a separate behaviour that happens to be nearby.
+
+**Held keys are not shortcuts.** The registry dispatcher only understands
+keydown, and a hold needs both edges. `Space` and `Z` are declared in the
+registry with `hold: true` so the help overlay lists them, and skipped by the
+dispatcher; the mode is owned by `useNavigation`, which binds both edges and
+clears on window blur so a keyup that lands elsewhere cannot strand the map.
+
+### Layout
+
+```
+┌─ course name · undo/redo · file ──── basemap ──── theme · help ─┐
+│                                                                 │
+│  Holes                                            Properties    │
+│  ├ scorecard                                      ├ feature,    │
+│  └ design notes                                   │  else hole, │
+│                                                   └  else course│
+│                                                                 │
+│  scale · units · coords    [ tools ]        zoom · bearing      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Tools moved to bottom centre.** A vertical rail on the left competes with the
+course panel for the same column; a bottom bar costs only a strip of sky.
+
+**Basemap moved to the top bar.** It is a statement about what you are looking
+at, alongside what you are working on — not a camera control like zoom or
+bearing, which stay in the map's own corner.
+
+**The right panel is always present and has three modes**: the selected feature,
+else the selected hole, else the course. A column that appears and vanishes is
+one the eye has to re-find each time. Deselecting is exactly when course-level
+questions get asked, so that is what the empty state answers.
+
+Hole properties are new surface: number, name, par with its full reasoning
+visible rather than hidden in a tooltip, both measurements, and the assigned
+features as links back to the map.
+
+Two duplications were resolved rather than shipped. The course name is editable
+only in the top bar — a second control for the same value, visible at the same
+time, only raises the question of which one is authoritative. And the hole
+properties' feature links are labelled `Select Tee pad` rather than `Tee pad`,
+because the rail button that _draws_ a tee already owns that name.
 
 ---
 

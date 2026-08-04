@@ -97,8 +97,19 @@ Every shortcut is declared once, in `packages/design/src/keymap.ts`. Tooltips,
 the help overlay (`?`) and the actual key handling all read from that registry,
 so a displayed shortcut cannot drift from the one that fires.
 
-Tool keys (`T` tee, `B` basket, `O` out of bounds…) are already reserved and
-become active as each tool ships.
+Navigation follows the model every design tool already uses:
+
+|            | Key                  | Cursor             | Drag does                          |
+| ---------- | -------------------- | ------------------ | ---------------------------------- |
+| **Select** | `V`                  | arrow              | nothing to the camera              |
+| **Move**   | `H`, or hold `Space` | grab / grabbing    | pans                               |
+| **Zoom**   | hold `Z`             | zoom-in / zoom-out | zooms to the region; `Alt` inverts |
+
+Dragging only pans with the Move tool, so the map cannot slide out from under a
+tee you are placing. `Space` is always one key away, which is what makes that
+affordable.
+
+Tool keys (`T` tee, `B` basket, `O` out of bounds…) place features.
 
 ## Contributing
 

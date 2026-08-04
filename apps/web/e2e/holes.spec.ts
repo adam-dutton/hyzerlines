@@ -78,8 +78,11 @@ async function openEditor(page: Page): Promise<void> {
 const clickMap = (page: Page, x: number, y: number) =>
   page.locator('canvas.maplibregl-canvas').click({ position: { x, y } });
 
+/** Scoped, because the hole properties panel also names features. */
+const rail = (page: Page) => page.getByRole('toolbar', { name: 'Tools' });
+
 async function place(page: Page, tool: string, x: number, y: number): Promise<void> {
-  await page.getByRole('button', { name: tool, exact: true }).click();
+  await rail(page).getByRole('button', { name: tool, exact: true }).click();
   await clickMap(page, x, y);
   // Placing auto-selects; clear it so the next assertion isn't confused.
   await page.keyboard.press('Escape');
@@ -100,7 +103,7 @@ test.describe('holes', () => {
 
     await page.getByRole('button', { name: 'Add hole' }).click();
 
-    await expect(page.getByText('Hole 1')).toBeVisible();
+    await expect(page.getByText('Hole 1').first()).toBeVisible();
     // A measured distance, not a placeholder — proves it found both ends.
     await expect(
       page
@@ -108,7 +111,7 @@ test.describe('holes', () => {
         .getByText(/\d+ ft/)
         .first(),
     ).toBeVisible();
-    await expect(page.getByText(/^Par \d/)).toBeVisible();
+    await expect(page.getByText(/· Par \d/)).toBeVisible();
   });
 
   test('par can be overridden, and the override persists across a reload', async ({ page }) => {
@@ -174,13 +177,13 @@ test.describe('holes', () => {
     await place(page, 'Tee pad', 400, 500);
     await place(page, 'Basket', 800, 300);
     await page.getByRole('button', { name: 'Add hole' }).click();
-    await expect(page.getByText('Hole 1')).toBeVisible();
+    await expect(page.getByText('Hole 1').first()).toBeVisible();
 
     await page.waitForTimeout(1400);
     await page.reload();
     await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
 
-    await expect(page.getByText('Hole 1')).toBeVisible();
+    await expect(page.getByText('Hole 1').first()).toBeVisible();
   });
 
   /**
@@ -195,6 +198,10 @@ test.describe('holes', () => {
     await place(page, 'Tee pad', 300, 500);
     await place(page, 'Basket', 700, 200);
     await page.getByRole('button', { name: 'Add hole' }).click();
+
+    // Adding a hole selects it, and the right panel shows the course only when
+    // nothing is selected. Escape steps back out to it.
+    await page.keyboard.press('Escape');
 
     const par = page.getByRole('combobox', { name: /Par for Hole 1/ });
     const level = page.getByRole('combobox', { name: /Skill level/ });
@@ -238,7 +245,7 @@ test.describe('holes', () => {
     await place(page, 'Tee pad', 400, 500);
     await place(page, 'Basket', 800, 300);
     await page.getByRole('button', { name: 'Add hole' }).click();
-    await expect(page.getByText('Hole 1')).toBeVisible();
+    await expect(page.getByText('Hole 1').first()).toBeVisible();
 
     await page.getByRole('button', { name: 'Undo' }).click();
     await expect(page.getByText(/Draw a tee and a basket/)).toBeVisible();

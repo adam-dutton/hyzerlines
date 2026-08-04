@@ -7,7 +7,9 @@ import {
   type Position,
 } from '@hyzerlines/core';
 
-export type Tool = 'select' | FeatureKind;
+import { isDrawingTool, type Tool } from './tools';
+
+export type { Tool };
 
 interface UseDrawingArgs {
   map: maplibregl.Map | null;
@@ -59,7 +61,7 @@ export function useDrawing({ map, tool, onCommit, onDone }: UseDrawingArgs): Dra
   const commit = useCallback(() => {
     const current = toolRef.current;
     const points = pendingRef.current;
-    if (current === 'select') return;
+    if (!isDrawingTool(current)) return;
 
     const geometryType = KIND_DEFINITIONS[current].geometry;
     // Below the minimum the shape isn't valid geometry — silently discard
@@ -88,7 +90,7 @@ export function useDrawing({ map, tool, onCommit, onDone }: UseDrawingArgs): Dra
 
     const handleClick = (e: maplibregl.MapMouseEvent) => {
       const current = toolRef.current;
-      if (current === 'select') return;
+      if (!isDrawingTool(current)) return;
 
       const position: Position = [e.lngLat.lng, e.lngLat.lat];
       const geometryType = KIND_DEFINITIONS[current].geometry;
@@ -103,12 +105,12 @@ export function useDrawing({ map, tool, onCommit, onDone }: UseDrawingArgs): Dra
     };
 
     const handleMove = (e: maplibregl.MapMouseEvent) => {
-      if (toolRef.current === 'select' || pendingRef.current.length === 0) return;
+      if (!isDrawingTool(toolRef.current) || pendingRef.current.length === 0) return;
       setCursor([e.lngLat.lng, e.lngLat.lat]);
     };
 
     const handleDoubleClick = (e: maplibregl.MapMouseEvent) => {
-      if (toolRef.current === 'select' || pendingRef.current.length === 0) return;
+      if (!isDrawingTool(toolRef.current) || pendingRef.current.length === 0) return;
       // Otherwise MapLibre zooms in on the same gesture that finishes the shape.
       e.preventDefault();
       commit();
@@ -125,16 +127,8 @@ export function useDrawing({ map, tool, onCommit, onDone }: UseDrawingArgs): Dra
     };
   }, [map, onCommit, onDone, commit]);
 
-  // The cursor is the mode indicator: crosshair means "this click will place
-  // something", grab means "this drag will move the map".
-  useEffect(() => {
-    if (!map) return;
-    const canvas = map.getCanvas();
-    canvas.style.cursor = tool === 'select' ? '' : 'crosshair';
-    return () => {
-      canvas.style.cursor = '';
-    };
-  }, [map, tool]);
+  // The cursor is owned by useNavigation, which is the only place that knows
+  // about held-key overrides. Two hooks writing canvas.style.cursor would race.
 
   return { pending, cursor, active: pending.length > 0, commit, cancel };
 }
@@ -151,7 +145,7 @@ export function drawingPreview(
   pending: Position[],
   cursor: Position | null,
 ): GeoJSON.FeatureCollection {
-  if (tool === 'select' || pending.length === 0) {
+  if (!isDrawingTool(tool) || pending.length === 0) {
     return { type: 'FeatureCollection', features: [] };
   }
 

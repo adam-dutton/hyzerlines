@@ -38,6 +38,9 @@ export function useShortcuts(
       const combo = comboFromEvent(e);
 
       for (const shortcut of shortcuts) {
+        // Holds are declared for the help overlay but need a keyup this
+        // dispatcher never sees; whoever owns the mode binds both edges.
+        if (shortcut.hold) continue;
         if (!scopesRef.current.includes(shortcut.scope)) continue;
         if (typing && !shortcut.allowInInput) continue;
         if (!shortcut.keys.includes(combo)) continue;

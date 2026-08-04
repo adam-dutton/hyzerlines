@@ -1,5 +1,15 @@
-import { IconButton, Panel, ChromeLayer, TextField, type ThemeName } from '@hyzerlines/design';
+import { useMemo } from 'react';
+import {
+  IconButton,
+  Panel,
+  ChromeLayer,
+  Segmented,
+  TextField,
+  type SegmentedOption,
+  type ThemeName,
+} from '@hyzerlines/design';
 
+import { basemaps } from '../map/basemaps';
 import type { SaveStatus } from '../document/CourseProvider';
 
 /** The wordmark. Inline SVG — a logo request is not worth a network round trip. */
@@ -155,6 +165,8 @@ function SaveIndicator({ status }: { status: SaveStatus }) {
 export function TopBar({
   courseName,
   onCourseNameChange,
+  basemapId,
+  onBasemapChange,
   theme,
   onToggleTheme,
   onShowShortcuts,
@@ -168,6 +180,8 @@ export function TopBar({
 }: {
   courseName: string;
   onCourseNameChange: (name: string) => void;
+  basemapId: string;
+  onBasemapChange: (id: string) => void;
   theme: ThemeName;
   onToggleTheme: () => void;
   onShowShortcuts: () => void;
@@ -179,8 +193,13 @@ export function TopBar({
   onOpen: () => void;
   saveStatus: SaveStatus;
 }) {
+  const basemapOptions = useMemo<SegmentedOption<string>[]>(
+    () => basemaps.map((b) => ({ value: b.id, label: b.label, hint: b.hint })),
+    [],
+  );
+
   return (
-    <ChromeLayer className="inset-x-0 top-0 flex items-start justify-between p-4">
+    <ChromeLayer className="inset-x-0 top-0 flex items-start justify-between gap-3 p-4">
       <div className="flex items-start gap-2">
         <Panel className="flex items-center gap-2 py-1.5 pl-2.5 pr-1.5">
           <Mark />
@@ -216,6 +235,18 @@ export function TopBar({
           </IconButton>
         </Panel>
       </div>
+
+      {/* Imagery choice sits here rather than in the map controls: it is a
+          statement about what you are looking at, alongside what you are
+          working on, not a camera control like zoom or bearing. */}
+      <Panel>
+        <Segmented
+          label="Basemap"
+          options={basemapOptions}
+          value={basemapId}
+          onChange={onBasemapChange}
+        />
+      </Panel>
 
       <Panel className="flex items-center gap-0.5">
         <IconButton

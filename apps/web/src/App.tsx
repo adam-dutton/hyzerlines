@@ -141,6 +141,8 @@ function Shell() {
             <TopBar
               courseName={course.name}
               onCourseNameChange={(name) => dispatch({ type: 'setName', name })}
+              basemapId={course.basemapId}
+              onBasemapChange={(basemapId) => dispatch({ type: 'setBasemap', basemapId })}
               theme={theme}
               onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               onShowShortcuts={() => setShowShortcuts(true)}
@@ -153,10 +155,7 @@ function Shell() {
               saveStatus={saveStatus}
             />
             <StatusBar basemapId={course.basemapId} units={units} onUnitsChange={changeUnits} />
-            <MapControls
-              basemapId={course.basemapId}
-              onBasemapChange={(basemapId) => dispatch({ type: 'setBasemap', basemapId })}
-            />
+            <MapControls />
           </>
         )}
 

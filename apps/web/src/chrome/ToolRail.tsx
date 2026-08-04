@@ -1,13 +1,18 @@
 import { IconButton, Panel } from '@hyzerlines/design';
 import { KIND_DEFINITIONS, type FeatureKind } from '@hyzerlines/core';
 
-import type { Tool } from '../map/useDrawing';
+import type { Tool } from '../map/tools';
 
 /**
  * The tool palette.
  *
- * Absent until now on purpose: a rail of disabled buttons advertises a roadmap
- * at the cost of making the product look broken. Every tool here works.
+ * Bottom centre, horizontal: the map is the product, and the widest thing on
+ * screen is the horizon. A vertical rail down the left edge eats into the same
+ * column as the course panel and pushes the usable canvas sideways, while a
+ * bottom bar costs only a strip of sky.
+ *
+ * Navigation first, then a divider, then the things that create geometry. The
+ * order within each group is the order you use them designing a hole.
  *
  * Icons are drawn in the feature's own token color, so the rail and the map
  * agree without a legend — a gold square is a tee pad in both places.
@@ -22,6 +27,37 @@ function SelectIcon() {
         stroke="currentColor"
         strokeWidth="1.1"
         strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** An open hand — the same shape as the `grab` cursor the tool sets. */
+function HandIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
+      <path
+        d="M5.2 7.3V3.6a1 1 0 0 1 2 0v3.1m0-.2V2.9a1 1 0 0 1 2 0v3.6m0-.1V4.2a1 1 0 0 1 2 0v4.4c0 2.4-1.4 4.1-3.6 4.1-2 0-2.9-1-3.7-2.3L3 8.9a1 1 0 0 1 1.6-1.2z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.1"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** A magnifier. The sign inside follows what a click would actually do. */
+function ZoomIcon({ out }: { out: boolean }) {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
+      <circle cx="6.6" cy="6.6" r="4.1" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M9.7 9.7 13 13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <path
+        d={out ? 'M4.6 6.6h4' : 'M4.6 6.6h4M6.6 4.6v4'}
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
       />
     </svg>
   );
@@ -114,30 +150,61 @@ const TOOLS: { kind: FeatureKind; icon: () => React.ReactElement }[] = [
   { kind: 'ob', icon: ObIcon },
 ];
 
+const Divider = () => <span className="mx-1 h-5 w-px bg-border-subtle" aria-hidden="true" />;
+
 export function ToolRail({
   tool,
+  invertZoom,
   onToolChange,
 }: {
+  /**
+   * The *effective* tool, not the chosen one.
+   *
+   * While Space or Z is held the map behaves differently from what was clicked,
+   * and the rail has to say so — a highlighted Select button over a map that is
+   * about to pan is the rail lying about the mode.
+   */
   tool: Tool;
+  /** Alt is down, so the zoom tool would zoom out. Mirrors the cursor. */
+  invertZoom: boolean;
   onToolChange: (tool: Tool) => void;
 }) {
   return (
     <div
-      className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2"
+      className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2"
       style={{ zIndex: 'var(--hz-z-chrome)' }}
     >
-      <Panel className="flex flex-col gap-0.5">
+      <Panel className="flex items-center gap-0.5" role="toolbar" aria-label="Tools">
         <IconButton
           label="Select"
           command="tool.select"
-          tooltipSide="right"
+          tooltipSide="top"
           active={tool === 'select'}
           onClick={() => onToolChange('select')}
         >
           <SelectIcon />
         </IconButton>
+        <IconButton
+          label="Move"
+          command="tool.pan"
+          tooltipSide="top"
+          active={tool === 'pan'}
+          onClick={() => onToolChange('pan')}
+        >
+          <HandIcon />
+        </IconButton>
+        {/* No `command`: Z is a hold, and rendering it as a plain key in the
+            tooltip would say "press this", which is not what it does. */}
+        <IconButton
+          label="Zoom — hold Z, drag a region, Alt to zoom out"
+          tooltipSide="top"
+          active={tool === 'zoom'}
+          onClick={() => onToolChange('zoom')}
+        >
+          <ZoomIcon out={tool === 'zoom' && invertZoom} />
+        </IconButton>
 
-        <span className="mx-1 my-0.5 h-px bg-border-subtle" aria-hidden="true" />
+        <Divider />
 
         {TOOLS.map(({ kind, icon: Icon }) => (
           <IconButton
@@ -146,7 +213,7 @@ export function ToolRail({
             {...(KIND_DEFINITIONS[kind].command
               ? { command: KIND_DEFINITIONS[kind].command }
               : {})}
-            tooltipSide="right"
+            tooltipSide="top"
             active={tool === kind}
             onClick={() => onToolChange(kind)}
           >

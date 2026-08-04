@@ -1,39 +1,22 @@
-import { useMemo } from 'react';
-import { IconButton, Panel, Segmented, type SegmentedOption } from '@hyzerlines/design';
+import { IconButton, Panel } from '@hyzerlines/design';
 
 import { useMap } from '../map/MapContext';
-import { basemaps, basemapById } from '../map/basemaps';
 
-/** Bottom-right cluster: basemap, zoom, north reset. */
-export function MapControls({
-  basemapId,
-  onBasemapChange,
-}: {
-  basemapId: string;
-  onBasemapChange: (id: string) => void;
-}) {
+/**
+ * Camera controls: zoom level and bearing.
+ *
+ * Basemap choice used to live here and now sits in the top bar. What is left is
+ * strictly about where the camera is pointed, which is why it stays pinned to
+ * the map's own corner rather than joining the document chrome.
+ */
+export function MapControls() {
   const { map, view } = useMap();
-  const active = basemapById(basemapId);
-
-  const options = useMemo<SegmentedOption<string>[]>(
-    () => basemaps.map((b) => ({ value: b.id, label: b.label, hint: b.hint })),
-    [],
-  );
 
   return (
     <div
       className="pointer-events-none absolute bottom-4 right-4 flex flex-col items-end gap-2"
       style={{ zIndex: 'var(--hz-z-chrome)' }}
     >
-      <Panel>
-        <Segmented
-          label="Basemap"
-          options={options}
-          value={active.id}
-          onChange={onBasemapChange}
-        />
-      </Panel>
-
       <Panel className="flex items-center gap-0.5">
         <IconButton
           label="Zoom out"
