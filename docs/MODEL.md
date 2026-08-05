@@ -193,8 +193,14 @@ styles them differently so the claim is visible.
 | `dropzone`     | surface, width, length, bearing                                          |
 | `mando`        | side, type, height, bearing                                              |
 | `fairway`      | shape, widthStart, widthEnd                                              |
+| `boundary`     | foliage                                                                  |
 | `ob`, `hazard` | invert                                                                   |
 | `water`        | inPlay                                                                   |
+
+`boundary.foliage` is the one thing about a property the app cannot see, and the
+PDGA acreage chart is indexed by it. There is deliberately no default — the chart
+publishes three densities and marks none typical, so an unset value means the
+area is measured and reported without a comparison. See `acreage.ts`.
 
 **Elevation is absent everywhere on purpose.** It is sampled from terrain, not
 typed in, and offering a box for it would invite a number nobody measured.
@@ -337,7 +343,7 @@ whoever the course was sent to.
 Played number · distance · effective length · par suggestion · course and layout
 totals · layout skill level · layout playability · tee and drop-zone footprints ·
 tee bearing · fairway centreline and corridor polygon · putting circles · hole
-label position · elevation
+label position · polygon area and course acreage · elevation
 
 ## Not in the document at all
 

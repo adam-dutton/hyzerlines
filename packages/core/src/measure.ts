@@ -49,6 +49,44 @@ export function pathLength(coordinates: readonly Position[]): number {
 }
 
 /**
+ * The area enclosed by a ring, in square metres.
+ *
+ * The spherical excess formula, not the shoelace formula on a projected plane.
+ * That matters here in a way it does not for a fairway corridor: a corridor is a
+ * few hundred metres of drawing aid, while this number goes on a page shown to a
+ * parks department or a landowner, and a property can span kilometres. The
+ * tangent-plane approximation `geometry.ts` uses is excellent over one hole and
+ * starts to drift over a whole site.
+ *
+ *   A = R² · |Σ (λᵢ₊₁ − λᵢ)(2 + sin φᵢ + sin φᵢ₊₁)| / 2
+ *
+ * Exact for a spherical polygon with great-circle edges, and no more expensive
+ * than the flat version. Absolute, so winding order does not matter — a designer
+ * drawing a boundary clockwise gets the same acreage as one drawing it the other
+ * way.
+ *
+ * The ring is treated as closed; pass it open, the way polygons are stored.
+ * No antimeridian handling, for the same reason `boundsOf` has none.
+ */
+export function ringArea(ring: readonly Position[]): number {
+  if (ring.length < 3) return 0;
+
+  let total = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const [lng1, lat1] = ring[i]!;
+    const [lng2, lat2] = ring[(i + 1) % ring.length]!;
+    total +=
+      toRadians(lng2 - lng1) * (2 + Math.sin(toRadians(lat1)) + Math.sin(toRadians(lat2)));
+  }
+  return Math.abs((total * EARTH_RADIUS * EARTH_RADIUS) / 2);
+}
+
+/** A feature's enclosed area in square metres, or null when it encloses nothing. */
+export function featureArea(feature: Feature): number | null {
+  return feature.geometry.type === 'polygon' ? ringArea(feature.geometry.coordinates) : null;
+}
+
+/**
  * A representative point for any feature.
  *
  * Points are themselves; lines use their first vertex, because a fairway is

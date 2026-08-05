@@ -123,9 +123,21 @@ export class CourseStore {
     this.#emit();
   }
 
-  /** Called by the persistence layer once a write lands. */
-  markClean(): void {
-    if (!this.#dirty) return;
+  /**
+   * Called by the persistence layer once a write lands.
+   *
+   * Takes the document that was actually written, because a save is
+   * asynchronous and editing does not stop while one is in flight. A write that
+   * started before the last edit landed after it, and clearing `dirty` on that
+   * basis is how an edit gets lost: the autosave is driven by `dirty`, so a
+   * document wrongly marked clean never gets rescheduled, and the edit survives
+   * only until the tab is reloaded.
+   *
+   * Reference equality is the right test — every op produces a new course
+   * object, so an unchanged reference means nothing has happened since.
+   */
+  markClean(saved: Course): void {
+    if (!this.#dirty || saved !== this.#course) return;
     this.#dirty = false;
     this.#emit();
   }

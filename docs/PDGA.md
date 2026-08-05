@@ -493,7 +493,7 @@ fairway the moment it has a tee and a target, the check works from the first hol
 rather than waiting for anyone to draw a route. "Far enough apart" and "too
 close to" are separation distances the document declines to put a number on, and
 this project does not supply numbers the PDGA has not published — least of all a
-safety one. Dispersion-based separation is PR 7's problem, and it will be built on
+safety one. Dispersion-based separation is PR 12's problem, and it will be built on
 a stated model rather than an invented constant.
 
 **Mandatories**, p5:
@@ -743,7 +743,6 @@ on it yet:
 - **Maximum dogleg lengths** — needs a dogleg corner in the document model.
 - **Maximum water carries** — needs a carry to be identifiable from geometry.
 - **Basket rim height** — not derivable from imagery, and probably never will be.
-- **Acreage chart** — needs a course boundary polygon to compare against.
 - **Fairway corridor widths** (`[ELEMENTS]` p1) — descriptive of typical
   practice, not a threshold. Explicitly **not** the source for the corridor the
   app draws; see "Derived geometry" above.
@@ -751,10 +750,34 @@ on it yet:
 - **Basket rim height** and the **18" water depth** best practice — recorded,
   not checkable from imagery.
 
+### The acreage chart, now that it is used — `[ACREAGE]`
+
+Transcribed in PR 4 and unused until PR 7, for one reason: it compares against
+the size of a property, and nothing in the document described a property. A drawn
+`boundary` is that thing.
+
+Two decisions about how it is read, both of the "do not invent" kind:
+
+**The comparison is a range, not a number.** Every row publishes three course
+scales — Minimum (par ~56), Average (~61), Championship (~67) — and all three are
+legitimate. The app cannot know which one a designer is building, so it reports
+whether the site falls inside the span rather than picking a column and calling
+the rest wrong.
+
+**Foliage density has no default.** The chart is indexed by it, it is the one
+thing about a property that cannot be seen from imagery, and none of the three
+columns is marked typical. With no density set the area is measured and reported
+and the comparison is simply withheld — see `acreage.ts`.
+
+Green has no row at all, so `ACREAGE.green` is null rather than a plausible set of
+zeroes. `acreageRange` returns null for it, and the caller has to notice.
+
+---
+
 ## What is deliberately absent
 
 - **Safety separation distances between fairways.** No source document publishes
-  one. See PR 7.
+  one. See PR 12.
 - **Par by Hole Length and Hole Difficulty charts** (`[PAR]` p11) and the
   **foliage-density par charts** (`[PAR]` p7). Both are images rather than tables
   and cannot be transcribed as figures.

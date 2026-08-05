@@ -151,7 +151,7 @@ export const KIND_DEFINITIONS: Record<FeatureKind, KindDefinition> = {
   casualArea: { label: 'Casual area', geometry: 'polygon' },
   requiredRelief: { label: 'Required relief', geometry: 'polygon' },
 
-  boundary: { label: 'Property boundary', geometry: 'polygon' },
+  boundary: { label: 'Property boundary', geometry: 'polygon', command: 'tool.boundary' },
   notedArea: { label: 'Noted area', geometry: 'polygon' },
   notedPoint: { label: 'Noted point', geometry: 'point' },
   path: { label: 'Path', geometry: 'line', command: 'tool.path' },
@@ -332,9 +332,30 @@ export function fieldsFor(kind: FeatureKind): readonly FieldDefinition[] {
      */
     case 'water':
       return [{ key: 'inPlay', label: 'In play', type: 'boolean' }];
+    /*
+     * Foliage density is the one thing about a property the app cannot see.
+     *
+     * [ACREAGE] indexes its chart by skill level and density, and density is a
+     * fact about the land that only somebody who has walked it knows. There is
+     * deliberately no default: the chart publishes three columns and picking one
+     * would be inventing guidance, so an unset density means the acreage is
+     * measured and reported without a comparison.
+     */
+    case 'boundary':
+      return [
+        {
+          key: 'foliage',
+          label: 'Foliage',
+          type: 'select',
+          options: [
+            { value: 'scattered', label: 'Scattered trees' },
+            { value: 'average', label: 'Average woods' },
+            { value: 'corridor', label: 'Dense corridors' },
+          ],
+        },
+      ];
     case 'casualArea':
     case 'requiredRelief':
-    case 'boundary':
     case 'notedArea':
     case 'notedPoint':
     case 'path':

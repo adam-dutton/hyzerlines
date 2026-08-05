@@ -64,6 +64,33 @@ export function formatRange(minMeters: number, maxMeters: number, units: UnitSys
 }
 
 /**
+ * Format an area for display.
+ *
+ * **Acres in imperial, hectares in metric**, not square feet or square metres.
+ * A property boundary is quoted in acres by every parks department, landowner
+ * and land registry the sport deals with — and it is the unit the PDGA's own
+ * acreage chart is published in, which is what makes a measured site comparable
+ * with it at all.
+ *
+ * Small areas fall back to squared linear units, because "0.01 acres" for a tee
+ * pad apron is a number nobody can picture.
+ */
+const SQUARE_METRES_PER_ACRE = 4046.8564224;
+const SQUARE_METRES_PER_HECTARE = 10000;
+
+export function formatArea(squareMeters: number, units: UnitSystem): string {
+  if (units === 'metric') {
+    return squareMeters >= SQUARE_METRES_PER_HECTARE
+      ? `${trim(squareMeters / SQUARE_METRES_PER_HECTARE)} ha`
+      : `${Math.round(squareMeters).toLocaleString()} m²`;
+  }
+  const acres = squareMeters / SQUARE_METRES_PER_ACRE;
+  return acres >= 0.1
+    ? `${trim(acres)} acres`
+    : `${Math.round(toFeet(toFeet(squareMeters))).toLocaleString()} ft²`;
+}
+
+/**
  * Two decimals at most, and none that are only zeros. `500.00 mi` reads as a
  * precision claim the number does not deserve; `500 mi` is the same value
  * without the noise.

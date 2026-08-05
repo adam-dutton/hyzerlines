@@ -12,6 +12,7 @@ import {
 } from './layouts.js';
 import { activeLayout, featureIndex } from './schema.js';
 import { courseFairways } from './pairView.js';
+import { ACREAGE_HOLE_MIX, courseAcreage } from './acreage.js';
 import {
   courseLengthMeters,
   metersToFeet,
@@ -550,6 +551,53 @@ const fairwaysCross: Rule = {
 };
 
 /**
+ * [ACREAGE] publishes how much land an 18-hole course of a given skill level
+ * and foliage density takes.
+ *
+ * Three conditions gate it, each because the alternative would be inventing
+ * something. There has to be a **boundary** drawn, or there is no site to
+ * measure. The course needs a **skill level**, which a layout mixing tee colours
+ * does not have. And the boundary needs a **foliage density**, which nothing in
+ * the imagery reveals and which the chart is indexed by.
+ *
+ * Informational, and the message says which end of the published span the site
+ * missed and what mix of holes that column assumes — because "too small" is
+ * really "too small for eighteen holes at that mix", and a designer fitting
+ * twelve on it is doing something the chart does not cover.
+ */
+const acreageOutsideRange: Rule = {
+  id: 'pdga.acreage-outside-range',
+  title: 'Site outside the acreage guidance for its skill level',
+  severity: 'info',
+  authority: 'pdga',
+  source: SOURCES.acreage.title,
+  revision: SOURCES.acreage.revision,
+  docUrl: SOURCES.acreage.url,
+  run: ({ course }) => {
+    const acreage = courseAcreage(course);
+    if (!acreage.guidance || !acreage.verdict || acreage.verdict === 'inside') return [];
+    if (!acreage.skill) return [];
+
+    const level = SKILL_LEVEL_INFO[acreage.skill].label;
+    const acres = Math.round(acreage.acres * 10) / 10;
+    const { minAcres, maxAcres } = acreage.guidance;
+
+    const scale =
+      acreage.verdict === 'below' ? acreage.guidance.minScale : acreage.guidance.maxScale;
+    const mix = ACREAGE_HOLE_MIX[scale];
+
+    return [
+      finding(
+        acreageOutsideRange,
+        acreage.verdict === 'below'
+          ? `${acres} acres is under the ${minAcres}–${maxAcres} the chart gives for a ${level} course in these woods. Its smallest column assumes 18 holes at par ${mix.par}.`
+          : `${acres} acres is more than the ${minAcres}–${maxAcres} a ${level} course needs in these woods — room for a longer layout than the chart's par ${mix.par} championship column.`,
+      ),
+    ];
+  },
+};
+
+/**
  * PDGA-sourced rules.
  *
  * Every entry must carry `source` and `revision`, and its figure must be
@@ -561,6 +609,7 @@ export const PDGA_RULES: readonly Rule[] = [
   holeTooShort,
   fairwaysCross,
   courseLengthOutsideRange,
+  acreageOutsideRange,
 ];
 
 export const ALL_RULES: readonly Rule[] = [...STRUCTURAL_RULES, ...PDGA_RULES];

@@ -32,6 +32,19 @@ const FT = 0.3048;
 export const feetToMeters = (feet: number): number => feet * FT;
 export const metersToFeet = (meters: number): number => meters / FT;
 
+/**
+ * Square metres to acres. Also exact by definition.
+ *
+ * The international acre: 4840 square yards, or 66 × 660 feet. Not a PDGA
+ * figure — a unit definition, which is why it sits with the foot conversion
+ * rather than in a cited table. [ACREAGE] publishes its chart in acres, so this
+ * is what lets a measured boundary be compared with it.
+ */
+const SQUARE_METRES_PER_ACRE = 4046.8564224;
+export const squareMetersToAcres = (squareMeters: number): number =>
+  squareMeters / SQUARE_METRES_PER_ACRE;
+export const acresToSquareMeters = (acres: number): number => acres * SQUARE_METRES_PER_ACRE;
+
 /* ------------------------------------------------------------------------- */
 /* Skill levels                                                               */
 /* ------------------------------------------------------------------------- */
@@ -645,6 +658,57 @@ export const ACREAGE: Record<SkillLevel, Record<FoliageDensity, AcreageRow> | nu
   },
   green: null,
 };
+
+export const FOLIAGE_DENSITIES = ['scattered', 'average', 'corridor'] as const;
+
+/** The three course scales each acreage row publishes. */
+export const COURSE_SCALES = ['minimum', 'average', 'championship'] as const;
+export type CourseScale = (typeof COURSE_SCALES)[number];
+
+export interface AcreageRange {
+  /** The smallest and largest acreage the chart publishes for this row. */
+  minAcres: number;
+  maxAcres: number;
+  /** Which scale each end is, so a finding can name it. */
+  minScale: CourseScale;
+  maxScale: CourseScale;
+}
+
+/**
+ * What [ACREAGE] says an 18-hole course of this level and density needs.
+ *
+ * Returns null where the chart has no row — Green, which the document does not
+ * cover. A caller has to notice that rather than being handed a plausible number
+ * the PDGA never published.
+ *
+ * The range spans the chart's own three columns, from Minimum (par ~56) to
+ * Championship (~67). It is deliberately not narrowed to one of them: the app
+ * cannot know which scale a designer is building, and all three are published as
+ * legitimate. A boundary inside the span is inside published guidance.
+ */
+export function acreageRange(skill: SkillLevel, density: FoliageDensity): AcreageRange | null {
+  const row = ACREAGE[skill]?.[density];
+  if (!row) return null;
+
+  // Ordered smallest to largest in every published row, but sorted rather than
+  // assumed — a transcription slip should surface as a wrong range, not as a
+  // silently inverted comparison.
+  const byAcres: { scale: CourseScale; acres: number }[] = COURSE_SCALES.map((scale) => ({
+    scale,
+    acres: row[scale].acres,
+  }));
+  byAcres.sort((a, b) => a.acres - b.acres);
+
+  const low = byAcres[0]!;
+  const high = byAcres[byAcres.length - 1]!;
+
+  return {
+    minAcres: low.acres,
+    maxAcres: high.acres,
+    minScale: low.scale,
+    maxScale: high.scale,
+  };
+}
 
 /** Citation strings, so findings can say where a figure came from. */
 export const SOURCES = {

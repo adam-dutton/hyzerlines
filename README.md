@@ -101,6 +101,14 @@ real numbers, said in exactly those words in
 [`docs/PDGA.md`](docs/PDGA.md#derived-geometry--what-is-sourced-and-what-is-ours),
 and every width it produces is overridable.
 
+Areas work the same way. A drawn property boundary is measured with the spherical
+excess formula rather than a flat approximation — the difference is invisible over
+one hole and real over a whole site — and compared against the PDGA's acreage
+chart as a **range**, since that chart publishes three legitimate course scales
+and the app cannot know which one you are building. The comparison needs a foliage
+density, which is the one thing about a property that cannot be seen from
+imagery, so you set it and nothing is assumed if you do not.
+
 Checks are advisory and every one is dismissible. `packages/core/src/pdga.test.ts`
 restates the published figures independently of the tables the code reads, so a
 typo fails the build.

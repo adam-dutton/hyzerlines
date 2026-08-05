@@ -3,6 +3,7 @@ export * from './pdga.js';
 export * from './features.js';
 export * from './measure.js';
 export * from './geometry.js';
+export * from './acreage.js';
 export * from './holes.js';
 export * from './membership.js';
 export * from './move.js';

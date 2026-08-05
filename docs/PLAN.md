@@ -43,8 +43,8 @@ current as PRs land.
 | **4.5** | UI/UX: navigation, docked panels, layout, camera framing                           | ✅ done |
 | **5**   | Document model v2: pairs, layouts, migration                                       | ✅ done |
 | **6**   | Derived geometry: tee footprints, pair picker, fairway corridors, vertex editing   | ✅ done |
-| **7**   | Boundaries and acreage                                                             | next    |
-| **8**   | Layouts and routing: named layouts, skip, repeat, reorder                          |         |
+| **7**   | Boundaries and acreage                                                             | ✅ done |
+| **8**   | Layouts and routing: named layouts, skip, repeat, reorder                          | next    |
 | **9**   | Expanded palette: relief areas, noted areas, drop zones, invert, circles           |         |
 | **10**  | Terrain: DEM sampling, elevation profiles, hillshade                               |         |
 | **11**  | Parametric flight model, shot editor, disc database                                |         |
@@ -425,7 +425,70 @@ case it does not cover.
 only. Other kinds carry a `holeId` too, but for them it is scope rather than
 membership — an OB line belonging to hole 4 is a different claim from a tee being
 one of hole 4's tees — and overloading one control with both meanings would make
-neither clear. PR 7 gives scope its own.
+neither clear. PR 7 gives scope its own control.
+
+---
+
+## PR 7 — what landed
+
+The acreage chart has been transcribed since PR 4 and unused, for exactly one
+reason: it compares against the size of a property, and nothing in the document
+described a property. A drawn **boundary** is that thing, so this PR is mostly
+about making one drawable and then honestly comparable.
+
+**Area is measured with the spherical excess formula**, not the shoelace formula
+on a projected plane. That distinction does not matter for a fairway corridor —
+a few hundred metres of drawing aid — and matters a great deal here: this number
+goes on a page shown to a parks department or a landowner, and a property can
+span kilometres, where the tangent-plane approximation `geometry.ts` uses starts
+to drift. Same cost, no approximation.
+
+**The boundary gets a tool** (`Y`), and every polygon now reports its area and
+perimeter in the feature panel. Areas are quoted in **acres**, because that is
+the unit every land registry, parks department and the PDGA's own chart uses;
+metric gets hectares. Small areas fall back to square feet or metres, since "0.01
+acres" for a tee apron is a number nobody can picture.
+
+**Two decisions about reading the chart**, both of the do-not-invent kind:
+
+The comparison is a **range, not a number**. Every row publishes three course
+scales — Minimum at par ~56, Average ~61, Championship ~67 — and all three are
+legitimate. The app cannot know which one is being built, so it reports whether
+the site falls inside the span rather than picking a column and calling the rest
+wrong. The finding names the mix the relevant column assumes, because "too small"
+really means "too small for eighteen holes at that mix".
+
+**Foliage density has no default.** The chart is indexed by it; it is the one
+thing about a property that cannot be seen from imagery or inferred from the
+drawing; and none of the three columns is marked typical. So it is a property of
+the boundary the designer sets, and with it unset the area is still measured and
+reported — only the comparison is withheld. Green has no row at all, so
+`acreageRange` returns null for it rather than a plausible set of zeroes.
+
+Also landed: the **scope control** deferred from PR 6. An OB line, a hazard or a
+path can now say which hole it is about — scope, a different claim from a tee
+being one of hole 4's tees, which is why it is a separate control rather than the
+same one overloaded.
+
+And a **lost-edit bug in the autosave**, found by a browser test that kept
+insisting a par override did not survive a reload. It did not. `markClean()` took
+no argument, so a write that started before an edit and finished after it marked
+the document clean anyway — and since the autosave is driven by `dirty`, nothing
+ever rescheduled. The edit was real in memory and gone on refresh, which is the
+worst shape a persistence bug can take. `markClean` now names the document that
+was written and declines to clean anything newer.
+
+### Deliberately not in this PR
+
+**Whether the course actually fits inside its boundary.** Geometrically easy, and
+a different question from acreage: a 30-acre site can be the wrong 30 acres. It
+needs point-in-polygon and a decision about what "outside" means for a corridor
+that clips a corner, and it belongs with the safety work at PR 12 where the same
+containment machinery is needed anyway.
+
+**Multiple boundaries with conflicting densities.** The largest one wins, which
+is the only defensible pick without asking a question the interface has not
+asked. A park split by a road is the real case and it is usually one density.
 
 ---
 
@@ -525,7 +588,7 @@ the tool should not nag.
 one. `[ELEMENTS]` says fairways should be "far enough apart so errant throws
 aren't regularly in the wrong fairway" and puts no number on it. A plausible
 invented separation distance is the single most dangerous number this app could
-get wrong, so PR 7 will derive it from a stated dispersion model instead — a
+get wrong, so PR 12 will derive it from a stated dispersion model instead — a
 number the designer can see the reasoning for, not a constant attributed to a
 standard that does not contain it.
 

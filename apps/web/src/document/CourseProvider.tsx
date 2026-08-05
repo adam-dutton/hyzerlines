@@ -120,11 +120,14 @@ export function CourseProvider({ children }: { children: ReactNode }) {
     if (hydrating || !state.dirty) return;
 
     if (timerRef.current) clearTimeout(timerRef.current);
+    const writing = state.course;
     timerRef.current = setTimeout(() => {
       setSaveStatus('saving');
-      void saveCourse(state.course).then((result) => {
+      void saveCourse(writing).then((result) => {
         if (result.ok) {
-          store.markClean();
+          // Names the document that was written, so an edit made while the
+          // write was in flight leaves the course dirty and schedules another.
+          store.markClean(writing);
           setSaveStatus('saved');
           setSaveError(null);
         } else {
