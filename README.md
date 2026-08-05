@@ -166,11 +166,13 @@ modifier to reach for. Wheel zoom anchors to the pointer, and opening a course
 frames what is drawn rather than restoring wherever you last stopped scrolling.
 
 Tool keys (`T` tee, `B` basket, `P` path, `O` out of bounds…) place features.
-Anything drawn can be dragged to move it; dragging a tee or basket brings its
-fairway along. Select a hole, a line or an area and it grows handles: drag one to
-move a vertex, click a hollow one between two vertices to insert, `Alt`-click to
-remove. Doing that to a hole's fairway is how a straight shot becomes a routed
-one.
+Points and lines can be dragged to move them, and dragging a tee or basket brings
+its fairway along. Areas cannot: a property boundary can cover the whole
+viewport, and a map you can no longer pan is a worse trade than an area you
+reshape by its handles. Select a hole, a line or an area and it grows handles:
+drag one to move a vertex, click a hollow one between two vertices to insert,
+`Alt`-click to remove. Doing that to a hole's fairway is how a straight shot
+becomes a routed one.
 
 Clicking anything belonging to a hole selects the **hole**; clicking again drills
 into the feature.

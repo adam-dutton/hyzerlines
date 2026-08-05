@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-import { clickMap, course, openEditor, place, rail } from './fixtures';
+import { clickMap, course, dragCanvas, openEditor, place, rail } from './fixtures';
 
 /**
  * Boundaries and acreage, through the real UI.
@@ -72,5 +72,33 @@ test.describe('acreage', () => {
     });
 
     await expect(page.getByText(/The PDGA chart gives \d+–\d+ acres/)).toBeVisible();
+  });
+
+  /*
+   * An area is usually the biggest thing on the screen, so if its fill were a
+   * drag target the map would stop panning: you reach for the one gesture used
+   * constantly and take the boundary with you instead. Only a browser can
+   * answer this — it is a question about hit-testing and which handler claims
+   * the pointer.
+   */
+  test('dragging across an area pans the map and leaves the area where it was', async ({
+    page,
+  }) => {
+    await openEditor(page, { zoom: 15 });
+    await drawBoundary(page);
+    await page.keyboard.press('Escape');
+
+    const ringOf = async () =>
+      (await course(page)).features.find((f) => f.kind === 'boundary')!.geometry.coordinates;
+    const before = await ringOf();
+    const center = () => page.evaluate(() => window.hyzerlinesMap!.getCenter().toArray());
+    const centerBefore = await center();
+
+    // Well inside the boundary, so the press lands on its fill.
+    await dragCanvas(page, [500, 400], [640, 300]);
+    await page.waitForTimeout(300);
+
+    expect(await ringOf()).toEqual(before);
+    expect(await center()).not.toEqual(centerBefore);
   });
 });

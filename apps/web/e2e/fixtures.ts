@@ -149,6 +149,26 @@ export const rail = (page: Page) => page.getByRole('toolbar', { name: 'Tools' })
 export const clickMap = (page: Page, x: number, y: number) =>
   page.locator('canvas.maplibregl-canvas').click({ position: { x, y } });
 
+/**
+ * Press, move and release across the canvas, in canvas-relative pixels.
+ *
+ * Stepped rather than a single jump: MapLibre and our own drag handlers both
+ * decide a gesture has begun from movement between events, and one instant hop
+ * can be swallowed as a click.
+ */
+export async function dragCanvas(
+  page: Page,
+  from: [number, number],
+  to: [number, number],
+): Promise<void> {
+  const box = await page.locator('canvas.maplibregl-canvas').boundingBox();
+  if (!box) throw new Error('no canvas');
+  await page.mouse.move(box.x + from[0], box.y + from[1]);
+  await page.mouse.down();
+  await page.mouse.move(box.x + to[0], box.y + to[1], { steps: 8 });
+  await page.mouse.up();
+}
+
 /** Draw a point feature with the named tool, then clear the auto-selection. */
 export async function place(page: Page, tool: string, x: number, y: number): Promise<void> {
   await rail(page).getByRole('button', { name: tool, exact: true }).click();

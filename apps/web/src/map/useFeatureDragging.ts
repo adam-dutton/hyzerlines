@@ -2,17 +2,20 @@ import { useEffect, useRef } from 'react';
 import type maplibregl from 'maplibre-gl';
 import type { Position } from '@hyzerlines/core';
 
-import { INTERACTIVE_LAYERS } from './featureLayers';
+import { DRAGGABLE_LAYERS } from './featureLayers';
 import { VERTEX_LAYERS } from './useVertexEditing';
 
 /**
  * Moving a feature by dragging it.
  *
  * Distinct from vertex editing, which reshapes one point of a line. This picks
- * the whole thing up: a basket to the other side of the clearing, an OB boundary
- * back from the road. Everything drawn can be moved — a course is adjusted far
- * more often than it is drawn, and re-placing a feature to move it two metres is
- * the kind of friction that stops people iterating.
+ * the whole thing up: a basket to the other side of the clearing, a path back
+ * from the road. A course is adjusted far more often than it is drawn, and
+ * re-placing a feature to move it two metres is the kind of friction that stops
+ * people iterating.
+ *
+ * Areas are the exception, and `DRAGGABLE_LAYERS` says why: they are large
+ * enough to cover the map, and a drag that lands on one has to keep panning.
  *
  * Vertex handles win. They are installed above these layers and their own
  * mousedown handler calls `preventDefault`, so grabbing a corner of a fairway
@@ -59,7 +62,7 @@ export function useFeatureDragging({ map, enabled, onMove }: UseFeatureDraggingA
         return;
       }
 
-      const hit = map.queryRenderedFeatures(e.point, { layers: [...INTERACTIVE_LAYERS] })[0];
+      const hit = map.queryRenderedFeatures(e.point, { layers: [...DRAGGABLE_LAYERS] })[0];
       const id = hit?.properties?.['id'];
       // Hole labels are selectable but not draggable: the number's position is
       // derived from the hole's geometry, so there is nothing there to move.

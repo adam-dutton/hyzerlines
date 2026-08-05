@@ -480,6 +480,23 @@ export const INTERACTIVE_LAYERS = [
 ] as const;
 
 /**
+ * Layers a drag can pick a feature up by. Everything interactive except areas.
+ *
+ * An area is usually the biggest thing on the screen — a property boundary can
+ * cover the entire viewport — so making its fill a drag target means the map
+ * stops panning. You go to push the view across and take the boundary with you
+ * instead, and the one gesture used constantly loses to one used almost never.
+ * Areas are still selectable, still reshapeable by their vertex handles; they
+ * just do not slide under the cursor.
+ *
+ * `derived-footprint` stays: a tee pad is drawn as an area but it *is* its tee,
+ * a point a few metres across, and dragging the pad is how you move the tee.
+ */
+export const DRAGGABLE_LAYERS = INTERACTIVE_LAYERS.filter(
+  (layer) => layer !== 'features-polygon-fill',
+);
+
+/**
  * Convert the document's features into GeoJSON for MapLibre.
  *
  * Polygon rings are stored open — see features.ts — so the closing point is

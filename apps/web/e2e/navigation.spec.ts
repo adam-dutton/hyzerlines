@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-import { openEditor, rail } from './fixtures';
+import { dragCanvas, openEditor, rail } from './fixtures';
 
 /**
  * Navigation tools, through the real browser.
@@ -49,15 +49,6 @@ const reset = (page: Page) =>
       zoom: 16,
     }),
   );
-
-async function dragCanvas(page: Page, from: [number, number], to: [number, number]) {
-  const box = await page.locator('canvas.maplibregl-canvas').boundingBox();
-  if (!box) throw new Error('no canvas');
-  await page.mouse.move(box.x + from[0], box.y + from[1]);
-  await page.mouse.down();
-  await page.mouse.move(box.x + to[0], box.y + to[1], { steps: 8 });
-  await page.mouse.up();
-}
 
 test.describe('navigation tools', () => {
   test('the cursor tracks the tool, and Z restores the previous one', async ({ page }) => {
