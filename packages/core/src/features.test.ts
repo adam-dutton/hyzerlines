@@ -105,19 +105,19 @@ describe('feature kinds', () => {
   });
 
   it('guards against storing a geometry the kind cannot use', () => {
-    expect(geometryMatchesKind('basket', point())).toBe(true);
-    expect(geometryMatchesKind('basket', polygon())).toBe(false);
+    expect(geometryMatchesKind('target', point())).toBe(true);
+    expect(geometryMatchesKind('target', polygon())).toBe(false);
     expect(geometryMatchesKind('ob', polygon())).toBe(true);
     expect(geometryMatchesKind('fairway', line())).toBe(true);
     expect(geometryMatchesKind('fairway', point())).toBe(false);
   });
 
   it('falls back to the kind label when unnamed', () => {
-    const basket = createFeature('basket', point());
-    expect(featureName(basket)).toBe('Basket');
+    const basket = createFeature('target', point());
+    expect(featureName(basket)).toBe('Target');
     expect(featureName({ ...basket, label: 'Hole 4 pin' })).toBe('Hole 4 pin');
     // Whitespace is not a name.
-    expect(featureName({ ...basket, label: '   ' })).toBe('Basket');
+    expect(featureName({ ...basket, label: '   ' })).toBe('Target');
   });
 });
 
@@ -148,7 +148,7 @@ describe('inspector field definitions', () => {
 
 describe('feature ops', () => {
   const withFeature = (): { course: ReturnType<typeof createCourse>; feature: Feature } => {
-    const feature = createFeature('basket', point());
+    const feature = createFeature('target', point());
     const { course } = applyOp(createCourse(), { type: 'addFeature', feature });
     return { course, feature };
   };
@@ -292,7 +292,7 @@ describe('features in the document', () => {
     let course = createCourse({ name: 'With features' });
     for (const [kind, geometry] of [
       ['tee', point()],
-      ['basket', point(-93.2, 44.95)],
+      ['target', point(-93.2, 44.95)],
       ['fairway', line()],
       ['ob', polygon()],
     ] as const) {

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { positionSchema } from './geo.js';
+import { SKILL_LEVELS, SKILL_LEVEL_INFO } from './pdga.js';
 
 /**
  * Course features — everything you draw on the land.
@@ -46,15 +47,34 @@ export const geometrySchema = z.discriminatedUnion('type', [
 export type Geometry = z.infer<typeof geometrySchema>;
 export type GeometryType = Geometry['type'];
 
+/**
+ * Everything that can be drawn.
+ *
+ * `casualArea` and `requiredRelief` are separate kinds rather than one kind
+ * with a flag, because the Rules of Play make them different things: 806.03
+ * lets a player *optionally* relocate without penalty, while 806.04 requires
+ * it. A designer drawing one is making a specific claim about how the hole
+ * plays, and the map styles them differently so the claim is visible.
+ */
 export const FEATURE_KINDS = [
+  // Play
   'tee',
-  'basket',
-  'mando',
+  'target',
   'fairway',
-  'path',
+  'mando',
+  'dropzone',
+  // Regulated areas — see REGULATED_AREAS in pdga.ts
   'ob',
   'hazard',
+  'casualArea',
+  'requiredRelief',
+  // Reference
+  'boundary',
+  'notedArea',
+  'notedPoint',
+  'path',
   'water',
+  'terrain',
 ] as const;
 
 export const featureKindSchema = z.enum(FEATURE_KINDS);
@@ -66,6 +86,24 @@ export const featureSchema = z.object({
   geometry: geometrySchema,
   /** User-visible name. Empty means "fall back to the kind's label". */
   label: z.string().default(''),
+  /**
+   * Which hole this belongs to. Null means course-level.
+   *
+   * Scope, not a second collection. An OB boundary at the course level and one
+   * on a single hole are the same thing seen at different ranges — modelling
+   * them as separate arrays would give every rule, renderer and exporter two
+   * code paths that drift, and re-scoping later would mean moving between
+   * collections rather than editing a field.
+   */
+  holeId: z.string().nullable().default(null),
+  /**
+   * Free tags, e.g. `elevated`, `round`, `suspended`.
+   *
+   * One shared mechanism across every kind that wants them rather than a
+   * per-kind list, so a tag means the same thing wherever it appears and
+   * filtering by one can work across the whole document.
+   */
+  tags: z.array(z.string()).default([]),
   /**
    * Kind-specific values, described by `fieldsFor` below.
    *
@@ -85,17 +123,32 @@ export interface KindDefinition {
   geometry: GeometryType;
   /** Command id in the keyboard registry, when the kind has a dedicated tool. */
   command?: string;
+  /**
+   * A point whose real extent is a rectangle derived from width, length and
+   * bearing — see `TEEING_AREA` in pdga.ts. The stored point is the front
+   * centre, and the footprint extends backwards from it.
+   */
+  placedRectangle?: true;
 }
 
 export const KIND_DEFINITIONS: Record<FeatureKind, KindDefinition> = {
-  tee: { label: 'Tee pad', geometry: 'point', command: 'tool.tee' },
-  basket: { label: 'Basket', geometry: 'point', command: 'tool.basket' },
+  tee: { label: 'Tee pad', geometry: 'point', command: 'tool.tee', placedRectangle: true },
+  target: { label: 'Target', geometry: 'point', command: 'tool.basket' },
+  fairway: { label: 'Fairway', geometry: 'line', command: 'tool.fairway' },
   mando: { label: 'Mandatory', geometry: 'point', command: 'tool.mando' },
-  fairway: { label: 'Fairway line', geometry: 'line', command: 'tool.fairway' },
-  path: { label: 'Path', geometry: 'line' },
+  dropzone: { label: 'Drop zone', geometry: 'point', placedRectangle: true },
+
   ob: { label: 'Out of bounds', geometry: 'polygon', command: 'tool.ob' },
   hazard: { label: 'Hazard', geometry: 'polygon' },
+  casualArea: { label: 'Casual area', geometry: 'polygon' },
+  requiredRelief: { label: 'Required relief', geometry: 'polygon' },
+
+  boundary: { label: 'Property boundary', geometry: 'polygon' },
+  notedArea: { label: 'Noted area', geometry: 'polygon' },
+  notedPoint: { label: 'Noted point', geometry: 'point' },
+  path: { label: 'Path', geometry: 'line' },
   water: { label: 'Water', geometry: 'polygon' },
+  terrain: { label: 'Terrain feature', geometry: 'polygon' },
 };
 
 /**
@@ -108,7 +161,7 @@ export const KIND_DEFINITIONS: Record<FeatureKind, KindDefinition> = {
 export interface FieldDefinition {
   key: string;
   label: string;
-  type: 'text' | 'number' | 'select';
+  type: 'text' | 'number' | 'select' | 'boolean';
   /** For `select`. */
   options?: readonly { value: string; label: string }[];
   /** For `number`. Values are stored metric; the UI converts for display. */
@@ -131,32 +184,92 @@ const MANDO_SIDES = [
   { value: 'over', label: 'Pass over' },
 ] as const;
 
+const MANDO_TYPES = [
+  { value: 'tree', label: 'Tree' },
+  { value: 'pole', label: 'Pole' },
+  { value: 'marker', label: 'Marker' },
+] as const;
+
+const TARGET_TYPES = [
+  { value: 'basket', label: 'Basket' },
+  { value: 'object', label: 'Object' },
+] as const;
+
+/**
+ * Whether the hardware is actually there.
+ *
+ * Separate from whether a layout uses the position. A course can have five pin
+ * positions with two baskets in the ground, and the difference decides whether
+ * a layout can be played today — not whether it is a valid design.
+ */
+const INSTALL_STATUS = [
+  { value: 'installed', label: 'Installed' },
+  { value: 'position-only', label: 'Position only' },
+] as const;
+
+/**
+ * Tee colour is the skill level.
+ *
+ * [ELEMENTS] p3: "The designated color for each set of tees used for course
+ * layout identification on scorecards should match one of the four recognized
+ * player skill levels that set of tees was designed for: Gold, Blue, White or
+ * Red." Green is included because the par tables cover it even though the
+ * design guidelines stop at four.
+ *
+ * A select rather than free text, because this drives which PDGA par band the
+ * hole is read against — a typo would silently re-band the course.
+ */
+const TEE_COLORS = SKILL_LEVELS.map((level) => ({
+  value: level,
+  label: SKILL_LEVEL_INFO[level].label,
+}));
+
+/** Shared by the two kinds that are a point plus a derived rectangle. */
+const placedRectangleFields: readonly FieldDefinition[] = [
+  { key: 'surface', label: 'Surface', type: 'select', options: TEE_SURFACES },
+  { key: 'width', label: 'Width', type: 'number', unit: 'meters', min: 0, max: 20 },
+  { key: 'length', label: 'Length', type: 'number', unit: 'meters', min: 0, max: 20 },
+  { key: 'bearing', label: 'Facing', type: 'number', unit: 'degrees', min: 0, max: 360 },
+];
+
 /**
  * Fields for a kind.
  *
  * Kept deliberately short. Every field is one more thing to fill in, and an
  * inspector that asks for a basket's serial number before you've routed the
- * hole is asking the wrong question at the wrong time. Hole assignment, par and
- * tee positions arrive with the hole workflow in PR 4, where they belong.
+ * hole is asking the wrong question at the wrong time.
+ *
+ * Elevation is absent everywhere on purpose: it is sampled from terrain, not
+ * typed in, and offering a box for it would invite a number nobody measured.
  */
 export function fieldsFor(kind: FeatureKind): readonly FieldDefinition[] {
   switch (kind) {
     case 'tee':
       return [
-        { key: 'surface', label: 'Surface', type: 'select', options: TEE_SURFACES },
-        // Pad dimensions are what the PDGA checks in PR 4, so they are stored
-        // in meters now rather than retrofitted later.
-        { key: 'width', label: 'Width', type: 'number', unit: 'meters', min: 0, max: 20 },
-        { key: 'length', label: 'Length', type: 'number', unit: 'meters', min: 0, max: 20 },
+        { key: 'color', label: 'Colour', type: 'select', options: TEE_COLORS },
+        ...placedRectangleFields,
+        { key: 'status', label: 'Status', type: 'select', options: INSTALL_STATUS },
+        { key: 'standalone', label: 'Not part of a hole', type: 'boolean' },
       ];
-    case 'basket':
+    case 'dropzone':
+      return placedRectangleFields;
+    case 'target':
       return [
-        { key: 'model', label: 'Target model', type: 'text', placeholder: 'e.g. Mach X5' },
+        { key: 'pinId', label: 'Pin', type: 'text', placeholder: 'A' },
+        { key: 'type', label: 'Type', type: 'select', options: TARGET_TYPES },
+        { key: 'model', label: 'Model', type: 'text', placeholder: 'e.g. Mach X5' },
+        { key: 'color', label: 'Colour', type: 'text', placeholder: 'e.g. white' },
+        { key: 'status', label: 'Status', type: 'select', options: INSTALL_STATUS },
+        // A practice basket belongs to the course, not to a hole, and should
+        // not be reported forever as something you forgot to assign.
+        { key: 'standalone', label: 'Not part of a hole', type: 'boolean' },
       ];
     case 'mando':
       return [
         { key: 'side', label: 'Rule', type: 'select', options: MANDO_SIDES },
+        { key: 'type', label: 'Object', type: 'select', options: MANDO_TYPES },
         { key: 'height', label: 'Height', type: 'number', unit: 'meters', min: 0, max: 60 },
+        { key: 'bearing', label: 'Facing', type: 'number', unit: 'degrees', min: 0, max: 360 },
       ];
     case 'fairway':
       return [
@@ -171,21 +284,29 @@ export function fieldsFor(kind: FeatureKind): readonly FieldDefinition[] {
           ],
         },
       ];
+    /*
+     * Invert turns the polygon inside out: everything OUTSIDE it is the
+     * regulated area. Common for "the course is inside this line", and the
+     * reason a property boundary and an inverted OB look so similar on screen
+     * while meaning different things.
+     */
     case 'ob':
-      return [
-        {
-          key: 'rule',
-          label: 'Penalty',
-          type: 'select',
-          options: [
-            { value: 'stroke', label: 'One stroke' },
-            { value: 'rethrow', label: 'Rethrow' },
-          ],
-        },
-      ];
-    case 'path':
     case 'hazard':
+      return [{ key: 'invert', label: 'Everything outside', type: 'boolean' }];
+    /*
+     * [RULES] 806.03.B — water that is in-bounds and not declared in play is a
+     * casual area by default. The flag exists so the document says which it is
+     * rather than leaving a drawn pond ambiguous.
+     */
     case 'water':
+      return [{ key: 'inPlay', label: 'In play', type: 'boolean' }];
+    case 'casualArea':
+    case 'requiredRelief':
+    case 'boundary':
+    case 'notedArea':
+    case 'notedPoint':
+    case 'path':
+    case 'terrain':
       return [];
   }
 }
@@ -195,14 +316,40 @@ export function featureName(feature: Feature): string {
   return feature.label.trim() || KIND_DEFINITIONS[feature.kind].label;
 }
 
-export function createFeature(kind: FeatureKind, geometry: Geometry): Feature {
+export function createFeature(
+  kind: FeatureKind,
+  geometry: Geometry,
+  overrides: Partial<Omit<Feature, 'id' | 'kind' | 'geometry'>> = {},
+): Feature {
   return featureSchema.parse({
     id: crypto.randomUUID(),
     kind,
     geometry,
     label: '',
+    holeId: null,
+    tags: [],
     props: {},
+    ...overrides,
   });
+}
+
+/** Features belonging to a hole. Course-level features have a null holeId. */
+export function featuresOfHole(
+  features: readonly Feature[],
+  holeId: string,
+): readonly Feature[] {
+  return features.filter((f) => f.holeId === holeId);
+}
+
+/**
+ * Whether a target is a real pin position or a marker for one.
+ *
+ * A practice basket has no hole and never becomes a pin; a position-only target
+ * is a pin the course does not currently have hardware for. Both are legitimate
+ * states, and neither should be reported as a mistake.
+ */
+export function isInstalled(feature: Feature): boolean {
+  return feature.props['status'] !== 'position-only';
 }
 
 /**

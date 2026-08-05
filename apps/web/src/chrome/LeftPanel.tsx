@@ -1,19 +1,15 @@
 import { useMemo } from 'react';
 import { IconButton, Panel, cn } from '@hyzerlines/design';
-import {
-  coursePar,
-  courseLength,
-  effectivePar,
-  holeName,
-  measureHole,
-  suggestPar,
-  type Course,
-  type Finding,
-  type Hole,
-  type Op,
-} from '@hyzerlines/core';
+import { holeName, type Course, type Finding, type Hole, type Op } from '@hyzerlines/core';
 
 import { formatDistance, type UnitSystem } from '../units';
+import {
+  setHolePar,
+  totalLength,
+  totalPar,
+  viewHoles,
+  type HoleView,
+} from '../document/holeView';
 import { FindingsList } from './FindingsList';
 
 /**
@@ -33,15 +29,15 @@ import { FindingsList } from './FindingsList';
 function ParCell({
   course,
   hole,
+  view,
   onOp,
 }: {
   course: Course;
   hole: Hole;
+  view: HoleView;
   onOp: (op: Op) => void;
 }) {
-  const suggestion = suggestPar(course, hole);
-  const par = effectivePar(course, hole);
-  const overridden = hole.parOverride !== null;
+  const { suggestion, par, overridden } = view;
 
   if (par === null) {
     return <span className="w-10 text-right text-2xs text-text-disabled">—</span>;
@@ -58,7 +54,7 @@ function ParCell({
     ? [
         ...suggestion.factors.map((f) => f.label),
         suggestion.borderline ? 'Close to a band boundary — could go either way' : null,
-        overridden ? `You set this to ${hole.parOverride}; suggested ${suggestion.par}` : null,
+        overridden ? `You set this to ${par}; suggested ${suggestion.par}` : null,
       ]
         .filter(Boolean)
         .join('\n')
@@ -76,14 +72,11 @@ function ParCell({
         value={par}
         onChange={(e) => {
           const value = Number(e.target.value);
-          onOp({
-            type: 'updateHole',
-            id: hole.id,
-            // Choosing the suggested value clears the override rather than
-            // pinning it, so the hole keeps tracking the model unless the
-            // designer actually disagrees with it.
-            changes: { parOverride: value === suggestion?.par ? null : value },
-          });
+          // Choosing the suggested value clears the override rather than
+          // pinning it, so the pair keeps tracking the model unless the
+          // designer actually disagrees with it.
+          const op = setHolePar(course, hole, value === suggestion?.par ? null : value);
+          if (op) onOp(op);
         }}
         className={cn(
           'rounded bg-transparent px-1 py-0.5 font-mono text-xs tabular-nums',
@@ -128,8 +121,9 @@ export function LeftPanel({
     [course.holes],
   );
 
-  const totalPar = coursePar(course, holes);
-  const totalLength = courseLength(course, holes);
+  const views = useMemo(() => viewHoles(course, holes), [course, holes]);
+  const par = totalPar(views.values());
+  const length = totalLength(views.values());
 
   return (
     <div
@@ -153,7 +147,7 @@ export function LeftPanel({
             <p className="text-sm font-medium text-text-primary">Holes</p>
             {holes.length > 0 && (
               <p className="font-mono text-2xs tabular-nums text-text-muted">
-                {holes.length} · Par {totalPar} · {formatDistance(totalLength, units)}
+                {holes.length} · Par {par} · {formatDistance(length, units)}
               </p>
             )}
           </div>
@@ -176,7 +170,7 @@ export function LeftPanel({
         ) : (
           <ul className="min-h-0 flex-1 overflow-y-auto">
             {holes.map((hole) => {
-              const measurement = measureHole(course, hole);
+              const view = views.get(hole.id)!;
               const selected = hole.id === selectedHoleId;
               return (
                 <li
@@ -202,12 +196,12 @@ export function LeftPanel({
                       {holeName(hole)}
                     </span>
                     <span className="shrink-0 font-mono text-2xs tabular-nums text-text-secondary">
-                      {measurement.effective === null
+                      {view.measurement.effective === null
                         ? '—'
-                        : formatDistance(measurement.effective, units)}
+                        : formatDistance(view.measurement.effective, units)}
                     </span>
                   </button>
-                  <ParCell course={course} hole={hole} onOp={onOp} />
+                  <ParCell course={course} hole={hole} view={view} onOp={onOp} />
                 </li>
               );
             })}

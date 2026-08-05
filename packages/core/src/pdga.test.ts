@@ -22,6 +22,7 @@ import {
 import { createCourse } from './schema.js';
 import { createFeature } from './features.js';
 import { createHole } from './holes.js';
+import { createLayout, createPlay } from './layouts.js';
 import { applyOp } from './ops.js';
 import { checkCourse, PDGA_RULES } from './rules.js';
 import { distance } from './measure.js';
@@ -259,7 +260,7 @@ describe('PDGA design checks', () => {
       value: feetToMeters(3),
     }).course;
 
-    const findings = checkCourse(course, course.holes);
+    const findings = checkCourse(course);
     expect(findings.map((f) => f.ruleId)).toContain('pdga.tee-pad-undersized');
     expect(findings.find((f) => f.ruleId === 'pdga.tee-pad-undersized')?.source).toBe(
       SOURCES.elements.title,
@@ -275,9 +276,7 @@ describe('PDGA design checks', () => {
     let course = createCourse();
     const tee = createFeature('tee', pt(-93.1, 44.9));
     course = applyOp(course, { type: 'addFeature', feature: tee }).course;
-    expect(checkCourse(course, course.holes).map((f) => f.ruleId)).not.toContain(
-      'pdga.tee-pad-undersized',
-    );
+    expect(checkCourse(course).map((f) => f.ruleId)).not.toContain('pdga.tee-pad-undersized');
   });
 
   it('flags a hole under the 100 ft minimum, but not a merely unfinished one', () => {
@@ -285,18 +284,18 @@ describe('PDGA design checks', () => {
     const build = (meters: number) => {
       let course = createCourse();
       const tee = createFeature('tee', pt(-93.1, 44.9));
-      const basket = createFeature('basket', pt(-93.1, 44.9 + meters / metersPerDegreeLat));
+      const basket = createFeature('target', pt(-93.1, 44.9 + meters / metersPerDegreeLat));
       for (const f of [tee, basket]) {
         course = applyOp(course, { type: 'addFeature', feature: f }).course;
       }
-      const hole = createHole(1, { teeIds: [tee.id], basketIds: [basket.id] });
+      const hole = createHole(1, { teeIds: [tee.id], targetIds: [basket.id] });
       course = applyOp(course, { type: 'addHole', hole }).course;
       return course;
     };
 
     const ruleIds = (meters: number) => {
       const course = build(meters);
-      return checkCourse(course, course.holes).map((f) => f.ruleId);
+      return checkCourse(course).map((f) => f.ruleId);
     };
 
     // 20 m is ~66 ft.
@@ -318,13 +317,13 @@ describe('PDGA design checks', () => {
       let course = createCourse();
       legs.forEach(([from, to], i) => {
         const tee = createFeature('tee', pt(...from));
-        const basket = createFeature('basket', pt(...to));
+        const basket = createFeature('target', pt(...to));
         for (const f of [tee, basket]) {
           course = applyOp(course, { type: 'addFeature', feature: f }).course;
         }
         course = applyOp(course, {
           type: 'addHole',
-          hole: createHole(i + 1, { teeIds: [tee.id], basketIds: [basket.id] }),
+          hole: createHole(i + 1, { teeIds: [tee.id], targetIds: [basket.id] }),
         }).course;
       });
       return course;
@@ -340,9 +339,7 @@ describe('PDGA design checks', () => {
         [-93.1, 44.903],
       ],
     ]);
-    const found = checkCourse(crossing, crossing.holes).find(
-      (f) => f.ruleId === 'pdga.fairways-cross',
-    );
+    const found = checkCourse(crossing).find((f) => f.ruleId === 'pdga.fairways-cross');
     expect(found?.message).toMatch(/Hole 1 and Hole 2 cross/);
 
     // Side by side, no crossing.
@@ -356,53 +353,64 @@ describe('PDGA design checks', () => {
         [-93.099, 44.903],
       ],
     ]);
-    expect(checkCourse(parallel, parallel.holes).map((f) => f.ruleId)).not.toContain(
-      'pdga.fairways-cross',
-    );
+    expect(checkCourse(parallel).map((f) => f.ruleId)).not.toContain('pdga.fairways-cross');
   });
 
   /**
    * [SKILL] p2 quotes the range for 18 holes and gives no per-hole figure, so
    * the check must stay silent on any other hole count rather than pro-rating.
    */
-  it('only judges course length on an 18-hole course', () => {
+  it('only judges course length on an 18-play, single-colour layout', () => {
     const metersPerDegreeLat = distance([0, 44.9], [0, 45.9]);
-    const build = (holeCount: number, metersEach: number) => {
-      let course = createCourse({ skillLevel: 'white' });
-      for (let i = 0; i < holeCount; i++) {
+
+    const build = (playCount: number, metersEach: number, colors: string[] = ['white']) => {
+      let course = createCourse();
+      const plays = [];
+      for (let i = 0; i < playCount; i++) {
         const lat = 44.9 + i * 0.01;
-        const tee = createFeature('tee', pt(-93.1, lat));
-        const basket = createFeature(
-          'basket',
+        const tee = createFeature('tee', pt(-93.1, lat), {
+          props: { color: colors[i % colors.length]! },
+        });
+        const target = createFeature(
+          'target',
           pt(-93.1, lat + metersEach / metersPerDegreeLat),
         );
-        for (const f of [tee, basket]) {
+        for (const f of [tee, target]) {
           course = applyOp(course, { type: 'addFeature', feature: f }).course;
         }
-        course = applyOp(course, {
-          type: 'addHole',
-          hole: createHole(i + 1, { teeIds: [tee.id], basketIds: [basket.id] }),
-        }).course;
+        const hole = createHole(i + 1, { teeIds: [tee.id], targetIds: [target.id] });
+        course = applyOp(course, { type: 'addHole', hole }).course;
+        plays.push(createPlay(hole.id, tee.id, target.id));
       }
-      return course;
+      const layout = createLayout('Main', plays);
+      return applyOp(applyOp(course, { type: 'addLayout', layout }).course, {
+        type: 'setActiveLayout',
+        id: layout.id,
+      }).course;
     };
+
+    const ruleIds = (course: ReturnType<typeof build>) =>
+      checkCourse(course).map((f) => f.ruleId);
 
     // 18 x 50 m = 900 m ~ 2950 ft, well under White's 4500 ft minimum.
     const eighteen = build(18, 50);
-    const flagged = checkCourse(eighteen, eighteen.holes).find(
-      (f) => f.ruleId === 'pdga.course-length-outside-range',
-    );
-    expect(flagged?.message).toMatch(/shorter than the typical White range/);
+    expect(
+      checkCourse(eighteen).find((f) => f.ruleId === 'pdga.course-length-outside-range')
+        ?.message,
+    ).toMatch(/shorter than the typical White range/);
 
-    // The same holes, nine of them: no opinion.
-    const nine = build(9, 50);
-    expect(checkCourse(nine, nine.holes).map((f) => f.ruleId)).not.toContain(
-      'pdga.course-length-outside-range',
-    );
+    // The same holes, nine of them: no opinion, because the table is for 18.
+    expect(ruleIds(build(9, 50))).not.toContain('pdga.course-length-outside-range');
 
     // 18 x 100 m = 1800 m ~ 5900 ft, inside 4500-7500.
-    const inRange = build(18, 100);
-    expect(checkCourse(inRange, inRange.holes).map((f) => f.ruleId)).not.toContain(
+    expect(ruleIds(build(18, 100))).not.toContain('pdga.course-length-outside-range');
+
+    /*
+     * Mixed tee colours have no skill level, and every published range is per
+     * level — so there is no range to be outside of. Silence is the only
+     * honest answer; averaging the two would be inventing a figure.
+     */
+    expect(ruleIds(build(18, 50, ['white', 'red']))).not.toContain(
       'pdga.course-length-outside-range',
     );
   });

@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { createCourse, parseCourse, DOCUMENT_VERSION } from './schema.js';
+import { activeLayout, createCourse, parseCourse, DOCUMENT_VERSION } from './schema.js';
 import { applyOp, canCoalesce, isUndoable, COALESCE_WINDOW_MS, type Op } from './ops.js';
 import { CourseStore } from './store.js';
 import { serializeCourse, deserializeCourse, suggestedFilename } from './file.js';
-import { DEFAULT_SKILL_LEVEL } from './pdga.js';
 
 describe('schema', () => {
   it('creates a valid course', () => {
@@ -46,19 +45,19 @@ describe('schema', () => {
   });
 
   /**
-   * `skillLevel` was added after version 1 shipped, defaulted rather than
-   * required so that no format bump — and no migration — was needed. Courses
-   * saved before it existed must still open, or PR 4's autosaves are lost.
+   * Every total is computed over a layout's plays, so a document without one
+   * would make "what is the par" a special case everywhere it is asked.
    */
-  it('fills in a skill level for documents saved before the field existed', () => {
-    const { skillLevel: _omitted, ...older } = createCourse();
-    const result = parseCourse(older);
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.course.skillLevel).toBe(DEFAULT_SKILL_LEVEL);
+  it('gives a new course one layout, and makes it active', () => {
+    const course = createCourse();
+    expect(course.layouts).toHaveLength(1);
+    expect(activeLayout(course)?.id).toBe(course.activeLayoutId);
   });
 
-  it('rejects a skill level that is not one of the five', () => {
-    expect(parseCourse({ ...createCourse(), skillLevel: 'platinum' }).ok).toBe(false);
+  /** A pointer at a layout that is gone would break every total silently. */
+  it('falls back to the first layout when the active id is stale', () => {
+    const course = { ...createCourse(), activeLayoutId: 'nope' };
+    expect(activeLayout(course)).toBe(course.layouts[0]);
   });
 });
 
@@ -82,7 +81,7 @@ describe('applyOp', () => {
     const ops: Op[] = [
       { type: 'setName', name: 'Something else' },
       { type: 'setBasemap', basemapId: 'osm' },
-      { type: 'setSkillLevel', skillLevel: 'gold' },
+      { type: 'setNotes', notes: 'Watch the pond on 7.' },
       { type: 'setView', view: { center: [-93.1, 44.9], zoom: 16, bearing: 30, pitch: 20 } },
     ];
 

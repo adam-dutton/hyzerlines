@@ -1,9 +1,10 @@
 import { z } from 'zod';
 
 import { viewSchema, type View } from './geo.js';
-import { featureSchema } from './features.js';
+import { featureSchema, type Feature } from './features.js';
 import { holeSchema } from './holes.js';
-import { skillLevelSchema, DEFAULT_SKILL_LEVEL } from './pdga.js';
+import { createPair, pairSchema } from './pairs.js';
+import { createLayout, createPlay, layoutSchema, type Layout } from './layouts.js';
 
 /**
  * The course document.
@@ -16,33 +17,38 @@ import { skillLevelSchema, DEFAULT_SKILL_LEVEL } from './pdga.js';
  */
 
 /** Bumped whenever a change requires migrating existing documents. */
-export const DOCUMENT_VERSION = 1;
+export const DOCUMENT_VERSION = 2;
 
 export const courseSchema = z.object({
   /** Format version of this document, for migration on load. */
   version: z.literal(DOCUMENT_VERSION),
   id: z.string().min(1),
   name: z.string(),
+  notes: z.string().default(''),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   view: viewSchema,
   basemapId: z.string().min(1),
 
-  /**
-   * The PDGA skill level this course is designed for.
-   *
-   * Par bands, course length ranges and throw distances all differ by level —
-   * a 700 ft hole is a par 4 for Gold and a par 5 for Red — so a course that
-   * does not say who it is for cannot have its par computed at all.
-   *
-   * Defaulted rather than required, which is what keeps documents written
-   * before this field existed loading without a format bump: zod fills it in,
-   * and the designer sees the level they can change in the top bar.
-   */
-  skillLevel: skillLevelSchema.default(DEFAULT_SKILL_LEVEL),
-
   features: z.array(featureSchema).default([]),
   holes: z.array(holeSchema).default([]),
+
+  /**
+   * Tee-to-target records, stored sparsely.
+   *
+   * Only pairs carrying something the geometry cannot derive — an overridden
+   * par, a drawn fairway — need a record. See pairs.ts.
+   */
+  pairs: z.array(pairSchema).default([]),
+
+  /**
+   * How the course is played. See layouts.ts.
+   *
+   * A course always has at least one, created on migration or on first use;
+   * without one there is no defined answer to "what is the par".
+   */
+  layouts: z.array(layoutSchema).default([]),
+  activeLayoutId: z.string().nullable().default(null),
 
   /**
    * Rule ids the designer has silenced for this course.
@@ -66,19 +72,40 @@ const DEFAULT_VIEW: View = {
 
 export function createCourse(overrides: Partial<Course> = {}): Course {
   const now = new Date().toISOString();
+  /*
+   * A course is born with one empty layout.
+   *
+   * Without one there is no defined answer to "what is the par" — every total
+   * is computed over a layout's plays, and a document with no layout would make
+   * that a special case in the scorecard, the checks and every export.
+   */
+  const layout = createLayout('Main');
   return courseSchema.parse({
     version: DOCUMENT_VERSION,
     id: crypto.randomUUID(),
     name: 'Untitled course',
+    notes: '',
     createdAt: now,
     updatedAt: now,
     view: DEFAULT_VIEW,
     basemapId: 'esri-imagery',
-    skillLevel: DEFAULT_SKILL_LEVEL,
     features: [],
     holes: [],
+    pairs: [],
+    layouts: [layout],
+    activeLayoutId: layout.id,
     ...overrides,
   });
+}
+
+/** The layout in force, or the first one. Never null for a valid document. */
+export function activeLayout(course: Course): Layout | undefined {
+  return course.layouts.find((l) => l.id === course.activeLayoutId) ?? course.layouts[0];
+}
+
+/** Features by id — every consumer needs this and none should build it twice. */
+export function featureIndex(course: Course): Map<string, Feature> {
+  return new Map(course.features.map((f) => [f.id, f]));
 }
 
 export interface ParseFailure {
@@ -140,22 +167,145 @@ export function parseCourse(input: unknown): ParseResult {
  *
  * Sequential rather than jump-to-latest: each step only has to understand the
  * shape immediately before it, which is what keeps migrations reviewable once
- * there are several. There are none yet — version 1 is the first format — so
- * this is the seam, not the logic.
+ * there are several.
  */
 function migrate(input: Record<string, unknown>, from: number): Record<string, unknown> {
   let doc = input;
   let version = from;
 
-  // Each future migration takes the form:
-  //   if (version === 1) { doc = { ...doc, version: 2, /* changes */ }; version = 2; }
+  if (version === 1) {
+    doc = migrateV1ToV2(doc);
+    version = 2;
+  }
 
   if (version !== DOCUMENT_VERSION) {
-    // Unreachable today. Left explicit so a forgotten migration surfaces as a
-    // validation failure with a clear message rather than a confusing zod error.
+    // Left explicit so a forgotten migration surfaces as a validation failure
+    // with a clear message rather than a confusing zod error.
     doc = { ...doc, version: DOCUMENT_VERSION };
     version = DOCUMENT_VERSION;
   }
 
   return doc;
+}
+
+/* ------------------------------------------------------------------------- */
+/* v1 → v2                                                                    */
+/* ------------------------------------------------------------------------- */
+
+/** The shape of a v1 hole, for the migration to read. */
+interface V1Hole {
+  id?: unknown;
+  number?: unknown;
+  name?: unknown;
+  teeIds?: unknown;
+  basketIds?: unknown;
+  fairwayId?: unknown;
+  parOverride?: unknown;
+}
+
+const asArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
+const asStrings = (value: unknown): string[] =>
+  asArray(value).filter((v): v is string => typeof v === 'string');
+
+/**
+ * Version 1 to version 2.
+ *
+ * What changes, and why each is safe:
+ *
+ * **`basket` becomes `target`.** A rename only; the geometry and props survive.
+ *
+ * **Par moves from the hole to the pair.** v1 stored one `parOverride` per
+ * hole, which was only ever true of one tee-and-pin combination. It is carried
+ * onto the pair formed by the hole's first tee and first target — the pair the
+ * v1 app was actually measuring when the designer set it. Overrides on holes
+ * with no tee or no target have nothing to attach to and are dropped; that
+ * combination was already unmeasurable, so no number is lost.
+ *
+ * **The fairway moves the same way**, onto the same pair.
+ *
+ * **`course.skillLevel` disappears.** In v2 the level comes from tee colours,
+ * so the v1 value is written onto every tee that has no colour of its own. That
+ * preserves the pars the designer was seeing, which a course-level default
+ * would not once tees started carrying their own levels.
+ *
+ * **A default layout is created**, playing every hole in number order using its
+ * first tee and first target. Holes that cannot form a pair are skipped rather
+ * than added as broken plays — a layout is what is *played*, and a hole with no
+ * basket is not.
+ *
+ * **v1 tee points become front-centre by definition.** They were placed with no
+ * defined semantic and carried no bearing, so nothing is being reinterpreted
+ * against the designer's intent; the point simply gains a meaning it did not
+ * have. Bearing is left unset for PR 6 to seed from the target.
+ */
+function migrateV1ToV2(input: Record<string, unknown>): Record<string, unknown> {
+  const skillLevel = typeof input['skillLevel'] === 'string' ? input['skillLevel'] : null;
+
+  const features = asArray(input['features']).map((raw) => {
+    const feature = { ...(raw as Record<string, unknown>) };
+    if (feature['kind'] === 'basket') feature['kind'] = 'target';
+
+    // The course-wide level becomes a per-tee one; without it, every par the
+    // designer had set would silently re-compute against a different band.
+    if (feature['kind'] === 'tee' && skillLevel) {
+      const props = { ...((feature['props'] as Record<string, unknown>) ?? {}) };
+      if (typeof props['color'] !== 'string') props['color'] = skillLevel;
+      feature['props'] = props;
+    }
+    return feature;
+  });
+
+  const pairs: ReturnType<typeof createPair>[] = [];
+  const plays: ReturnType<typeof createPlay>[] = [];
+
+  const v1Holes = asArray(input['holes']) as V1Hole[];
+  const holes = v1Holes.map((hole) => {
+    const teeIds = asStrings(hole.teeIds);
+    const targetIds = asStrings(hole.basketIds);
+    const teeId = teeIds[0];
+    const targetId = targetIds[0];
+
+    if (teeId && targetId) {
+      const parOverride = typeof hole.parOverride === 'number' ? hole.parOverride : null;
+      const fairwayId = typeof hole.fairwayId === 'string' ? hole.fairwayId : null;
+
+      // Only worth a record if it carries something. A pair with neither is
+      // implied by the hole and costs nothing to leave out.
+      if (parOverride !== null || fairwayId !== null) {
+        pairs.push(createPair(teeId, targetId, { parOverride, fairwayId }));
+      }
+      if (typeof hole.id === 'string') plays.push(createPlay(hole.id, teeId, targetId));
+    }
+
+    return {
+      id: hole.id,
+      number: hole.number,
+      name: typeof hole.name === 'string' ? hole.name : '',
+      notes: '',
+      teeIds,
+      targetIds,
+    };
+  });
+
+  // Playing order, which in v1 was the only order there was.
+  plays.sort((a, b) => {
+    const numberOf = (holeId: string) =>
+      (holes.find((h) => h.id === holeId)?.number as number | undefined) ?? 0;
+    return numberOf(a.holeId) - numberOf(b.holeId);
+  });
+
+  const layout = createLayout('Main', plays);
+
+  const migrated: Record<string, unknown> = {
+    ...input,
+    version: 2,
+    notes: '',
+    features,
+    holes,
+    pairs,
+    layouts: [layout],
+    activeLayoutId: layout.id,
+  };
+  delete migrated['skillLevel'];
+  return migrated;
 }

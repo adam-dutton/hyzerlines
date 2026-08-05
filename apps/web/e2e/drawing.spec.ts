@@ -71,10 +71,10 @@ async function openEditor(page: Page): Promise<void> {
 /**
  * The tool rail, as a scope.
  *
- * Tool buttons are named for what they draw ("Basket"), and so are controls
- * elsewhere that refer to the same things ("Select Basket" in the hole
+ * Tool buttons are named for what they draw ("Target"), and so are controls
+ * elsewhere that refer to the same things ("Select Target" in the hole
  * properties). Playwright matches accessible names as substrings by default, so
- * an unscoped `getByRole('button', { name: 'Basket' })` will start resolving to
+ * an unscoped `getByRole('button', { name: 'Target' })` will start resolving to
  * two elements the moment a hole is selected. Scoping to the toolbar means
  * these tests fail for real reasons rather than for naming collisions.
  */
@@ -89,12 +89,12 @@ test.describe('drawing', () => {
   test('places a point feature and opens the inspector on it', async ({ page }) => {
     await openEditor(page);
 
-    await rail(page).getByRole('button', { name: 'Basket' }).click();
+    await rail(page).getByRole('button', { name: 'Target' }).click();
     await clickMap(page, 500, 400);
 
     // Selecting what was just drawn is the behaviour under test: the next thing
     // you want is almost always to name it.
-    const inspector = page.getByText('Basket', { exact: true }).first();
+    const inspector = page.getByText('Target', { exact: true }).first();
     await expect(inspector).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'Feature name' })).toBeVisible();
   });
@@ -114,7 +114,7 @@ test.describe('drawing', () => {
   test('draws a multi-point line and finishes on Enter', async ({ page }) => {
     await openEditor(page);
 
-    await rail(page).getByRole('button', { name: 'Fairway line' }).click();
+    await rail(page).getByRole('button', { name: 'Fairway' }).click();
     await clickMap(page, 400, 300);
     await clickMap(page, 500, 350);
     await clickMap(page, 600, 320);
@@ -148,7 +148,7 @@ test.describe('drawing', () => {
   test('a drawn feature is undoable and survives a reload', async ({ page }) => {
     await openEditor(page);
 
-    await rail(page).getByRole('button', { name: 'Basket' }).click();
+    await rail(page).getByRole('button', { name: 'Target' }).click();
     await clickMap(page, 520, 380);
 
     const undo = page.getByRole('button', { name: 'Undo' });
@@ -200,7 +200,7 @@ test.describe('drawing', () => {
   test('inspector edits are undoable', async ({ page }) => {
     await openEditor(page);
 
-    await rail(page).getByRole('button', { name: 'Basket' }).click();
+    await rail(page).getByRole('button', { name: 'Target' }).click();
     await clickMap(page, 500, 400);
 
     const name = page.getByRole('textbox', { name: 'Feature name' });
@@ -219,7 +219,7 @@ test.describe('drawing', () => {
     await openEditor(page);
 
     await page.keyboard.press('b');
-    await expect(rail(page).getByRole('button', { name: 'Basket' })).toHaveAttribute(
+    await expect(rail(page).getByRole('button', { name: 'Target' })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
@@ -240,7 +240,7 @@ test.describe('drawing', () => {
   test('a selected feature is actually flagged selected on the map', async ({ page }) => {
     await openEditor(page);
 
-    await rail(page).getByRole('button', { name: 'Basket' }).click();
+    await rail(page).getByRole('button', { name: 'Target' }).click();
     await clickMap(page, 500, 400);
     await expect(page.getByRole('textbox', { name: 'Feature name' })).toBeVisible();
 
@@ -266,7 +266,7 @@ test.describe('drawing', () => {
   test('deleting removes the feature and closes the inspector', async ({ page }) => {
     await openEditor(page);
 
-    await rail(page).getByRole('button', { name: 'Basket' }).click();
+    await rail(page).getByRole('button', { name: 'Target' }).click();
     await clickMap(page, 500, 400);
     await expect(page.getByRole('textbox', { name: 'Feature name' })).toBeVisible();
 

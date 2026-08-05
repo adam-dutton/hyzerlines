@@ -15,6 +15,7 @@
  *   [SKILL]      PDGA Course Design Player Skill Level Guidelines
  *   [ELEMENTS]   Disc Golf Course Design Elements
  *   [ACREAGE]    Disc Golf Course Acreage Guide
+ *   [RULES]      Official Rules and Regulations of Disc Golf, Rev. Jan 1 2026
  *
  * UNITS: feet are canonical, because that is how the PDGA publishes them and
  * how the sport measures. The documents also print metric tables, but those are
@@ -330,6 +331,126 @@ export const BASKET_RIM_HEIGHT_CM = { nominal: 82, tolerance: 6, min: 76, max: 8
  */
 export const FORCED_WATER_MAX_DEPTH = { inches: 18, cm: 50 } as const;
 
+/* ------------------------------------------------------------------------- */
+/* Rules of play — [RULES]                                                    */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * The teeing area — [RULES] 802.04.A.
+ *
+ * "A teeing area, or tee, is the area bounded by the edges of a tee pad, if
+ * provided. Otherwise, it is the area extending three meters perpendicularly
+ * behind the designated tee line. The tee line is the line at the front of the
+ * teeing area, or the line between the outside edges of two tee markers."
+ *
+ * This is why a tee is stored as a point at the FRONT CENTRE of the pad, with
+ * the footprint extending backwards: the tee line is the front, and the front
+ * is what hole length is measured from ([ELEMENTS] p2).
+ *
+ * `defaultDepthM` is the rules' fallback for a tee with no pad — not a guess.
+ */
+export const TEEING_AREA = { defaultDepthM: 3 } as const;
+
+/**
+ * Rings drawn around a target.
+ *
+ * Three figures with three different provenances, and the app says which is
+ * which rather than presenting them as a uniform set of "PDGA circles":
+ *
+ *   C1        10 m. A real rule. [RULES] 806.01.A: "Any throw made from within
+ *             10 meters of the target, as measured from the front of the lie to
+ *             the base of the target, is a putt."
+ *
+ *   C2        20 m. The figure IS in the rules — [RULES] 802.03.C.1 gives a
+ *             player 30 seconds to throw "within 20 meters of the target" — but
+ *             as a pace-of-play threshold, not as a named circle. "Circle 2" is
+ *             what players call it, not what the rules call it.
+ *
+ *   bullseye  3 m. Not in the rules at all. Widely used in leagues and for stat
+ *             tracking, and labelled here as exactly that. The rules mention
+ *             3 m only in the unit conversion table and as the teeing area
+ *             depth above; neither is a circle.
+ *
+ * All three are measured from the BASE of the target, per 806.01.A.
+ */
+export const TARGET_CIRCLES = [
+  {
+    id: 'bullseye',
+    label: 'Bullseye',
+    radiusM: 3,
+    authority: 'community',
+    note: 'League and stat-tracking convention. Not a PDGA figure.',
+  },
+  {
+    id: 'c1',
+    label: 'Circle 1',
+    radiusM: 10,
+    authority: 'rules',
+    note: 'The putting area — Rules of Play 806.01.A.',
+  },
+  {
+    id: 'c2',
+    label: 'Circle 2',
+    radiusM: 20,
+    authority: 'rules-adjacent',
+    note: "Rules of Play 802.03.C.1 uses 20 m as the throw-time threshold. “Circle 2” is the players' name for it, not the rules'.",
+  },
+] as const;
+
+export type TargetCircleId = (typeof TARGET_CIRCLES)[number]['id'];
+
+/**
+ * Regulated areas — [RULES] 806.
+ *
+ * Transcribed because the distinctions decide what a designer is claiming when
+ * they draw one, and two of them are easy to conflate.
+ */
+export const REGULATED_AREAS = {
+  /** 806.02.A — "an area ... from which a disc may not be played". One throw. */
+  outOfBounds: { penaltyThrows: 1, rule: '806.02' },
+  /**
+   * 806.03.A — "allows for optional relocation without penalty". The player
+   * *may* take relief; they are not required to.
+   */
+  casualArea: { penaltyThrows: 0, relief: 'optional', rule: '806.03' },
+  /**
+   * 806.04 — played as out-of-bounds but with no penalty throw, and the player
+   * may NOT play from the previous lie. Required, not optional: this is the
+   * distinction that makes it a separate kind from a casual area.
+   */
+  requiredRelief: { penaltyThrows: 0, relief: 'required', rule: '806.04' },
+  /** 806.05.D — one penalty throw, and "no impact on the location of the lie". */
+  hazard: { penaltyThrows: 1, rule: '806.05' },
+} as const;
+
+/**
+ * Water is casual by default — [RULES] 806.03.B.
+ *
+ * "By default, any body of water that is in-bounds and has not been explicitly
+ * declared by the Tournament Director to be in play is a casual area."
+ *
+ * So a drawn body of water means "casual" unless the designer says otherwise,
+ * which is why the water kind carries an `inPlay` flag rather than leaving the
+ * question open.
+ */
+export const WATER_IS_CASUAL_BY_DEFAULT = true;
+
+/**
+ * Mandatory routes — [RULES] 804.01.
+ *
+ * "The restricted plane is a vertical plane marked by one or more objects or
+ * other markers which define the edges of the space." (804.01.B)
+ *
+ * "If part of a thrown disc clearly enters into a restricted plane, the player
+ * receives one penalty throw. The lie for the next throw is the drop zone for
+ * that mandatory. If no drop zone has been designated, the lie for the next
+ * throw is the previous lie." (804.01.C)
+ *
+ * That last sentence is why a mandatory owns a specific drop zone rather than
+ * merely being near one.
+ */
+export const MANDATORY = { penaltyThrows: 1, rule: '804.01' } as const;
+
 /**
  * Typical 18-hole course length ranges in FEET — [SKILL] p2.
  *
@@ -546,5 +667,10 @@ export const SOURCES = {
     title: 'Disc Golf Course Acreage Guide',
     revision: 'undated',
     url: 'https://www.pdga.com/files/AcreageChart_0.pdf',
+  },
+  rules: {
+    title: 'Official Rules and Regulations of Disc Golf',
+    revision: 'Rev. Jan 1, 2026',
+    url: 'https://www.pdga.com/rules',
   },
 } as const;

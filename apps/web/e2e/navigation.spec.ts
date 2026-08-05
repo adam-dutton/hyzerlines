@@ -135,7 +135,7 @@ test.describe('navigation tools', () => {
     expect(await cursor(page)).toBe('default');
 
     // Drawing tools aim rather than drag.
-    await rail(page).getByRole('button', { name: 'Basket', exact: true }).click();
+    await rail(page).getByRole('button', { name: 'Target', exact: true }).click();
     expect(await cursor(page)).toBe('crosshair');
   });
 
@@ -156,7 +156,7 @@ test.describe('navigation tools', () => {
     await reset(page);
     const before = await center(page);
 
-    await rail(page).getByRole('button', { name: 'Basket', exact: true }).click();
+    await rail(page).getByRole('button', { name: 'Target', exact: true }).click();
     await dragCanvas(page, [600, 400], [480, 300]);
     await page.waitForTimeout(300);
 

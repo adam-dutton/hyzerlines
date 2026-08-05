@@ -2,7 +2,8 @@ import type { Course } from './schema.js';
 import type { View } from './geo.js';
 import type { Feature, Geometry } from './features.js';
 import type { Hole } from './holes.js';
-import type { SkillLevel } from './pdga.js';
+import type { Pair } from './pairs.js';
+import type { Layout } from './layouts.js';
 
 /**
  * Every mutation to a course goes through an operation.
@@ -19,15 +20,30 @@ export type Op =
   | { type: 'setName'; name: string }
   | { type: 'setView'; view: View }
   | { type: 'setBasemap'; basemapId: string }
-  | { type: 'setSkillLevel'; skillLevel: SkillLevel }
+  | { type: 'setNotes'; notes: string }
   | { type: 'addFeature'; feature: Feature }
   | { type: 'removeFeature'; id: string }
   | { type: 'setGeometry'; id: string; geometry: Geometry }
   | { type: 'setLabel'; id: string; label: string }
   | { type: 'setProp'; id: string; key: string; value: string | number | boolean | undefined }
+  | { type: 'setTags'; id: string; tags: string[] }
+  | { type: 'setFeatureHole'; id: string; holeId: string | null }
   | { type: 'addHole'; hole: Hole }
   | { type: 'removeHole'; id: string }
   | { type: 'updateHole'; id: string; changes: Partial<Omit<Hole, 'id'>> }
+  /**
+   * Upsert, because pairs are sparse.
+   *
+   * A pair has no record until it carries something, so "set the par on this
+   * tee-and-target" has to be able to create the record — and the inverse of
+   * creating one is removing it, not setting it back to empty.
+   */
+  | { type: 'setPair'; pair: Pair }
+  | { type: 'removePair'; id: string }
+  | { type: 'addLayout'; layout: Layout }
+  | { type: 'removeLayout'; id: string }
+  | { type: 'updateLayout'; id: string; changes: Partial<Omit<Layout, 'id'>> }
+  | { type: 'setActiveLayout'; id: string | null }
   | { type: 'setDismissed'; ruleIds: string[] };
 
 export interface ApplyResult {
@@ -47,7 +63,7 @@ export interface ApplyResult {
  * designer reaches for undo and is most alarmed to have it do the wrong thing.
  */
 export function isUndoable(op: Op): boolean {
-  return op.type !== 'setView';
+  return op.type !== 'setView' && op.type !== 'setActiveLayout';
 }
 
 /**
@@ -85,15 +101,10 @@ export function applyOp(course: Course, op: Op): ApplyResult {
         undoable,
       );
 
-    /*
-     * Undoable, unlike the camera. Changing the skill level re-pars every hole
-     * that has no override, which is a substantial and easily-mistaken edit —
-     * exactly the kind of thing ⌘Z should take back.
-     */
-    case 'setSkillLevel':
+    case 'setNotes':
       return result(
-        { ...course, skillLevel: op.skillLevel },
-        { type: 'setSkillLevel', skillLevel: course.skillLevel },
+        { ...course, notes: op.notes },
+        { type: 'setNotes', notes: course.notes },
         undoable,
       );
 
@@ -143,6 +154,30 @@ export function applyOp(course: Course, op: Op): ApplyResult {
       );
     }
 
+    case 'setTags': {
+      const existing = course.features.find((f) => f.id === op.id);
+      if (!existing) return noop(course, op);
+      return result(
+        mapFeature(course, op.id, (f) => ({ ...f, tags: op.tags })),
+        { type: 'setTags', id: op.id, tags: existing.tags },
+        undoable,
+      );
+    }
+
+    /*
+     * Re-scoping between course level and a hole is a field edit, which is the
+     * whole reason scope is a property rather than a second collection.
+     */
+    case 'setFeatureHole': {
+      const existing = course.features.find((f) => f.id === op.id);
+      if (!existing) return noop(course, op);
+      return result(
+        mapFeature(course, op.id, (f) => ({ ...f, holeId: op.holeId })),
+        { type: 'setFeatureHole', id: op.id, holeId: existing.holeId },
+        undoable,
+      );
+    }
+
     case 'addHole':
       return result(
         { ...course, holes: [...course.holes, op.hole] },
@@ -179,6 +214,94 @@ export function applyOp(course: Course, op: Op): ApplyResult {
         undoable,
       );
     }
+
+    /*
+     * An upsert, because pairs are sparse.
+     *
+     * The inverse of creating a pair is removing it, not blanking it — a pair
+     * that exists with nothing in it would be a record the document has no
+     * reason to carry, and it would come back on every undo.
+     */
+    case 'setPair': {
+      const existing = course.pairs.find(
+        (p) => p.teeId === op.pair.teeId && p.targetId === op.pair.targetId,
+      );
+      return result(
+        {
+          ...course,
+          pairs: existing
+            ? course.pairs.map((p) => (p.id === existing.id ? op.pair : p))
+            : [...course.pairs, op.pair],
+        },
+        existing ? { type: 'setPair', pair: existing } : { type: 'removePair', id: op.pair.id },
+        undoable,
+      );
+    }
+
+    case 'removePair': {
+      const existing = course.pairs.find((p) => p.id === op.id);
+      if (!existing) return noop(course, op);
+      return result(
+        { ...course, pairs: course.pairs.filter((p) => p.id !== op.id) },
+        { type: 'setPair', pair: existing },
+        undoable,
+      );
+    }
+
+    case 'addLayout':
+      return result(
+        { ...course, layouts: [...course.layouts, op.layout] },
+        { type: 'removeLayout', id: op.layout.id },
+        undoable,
+      );
+
+    case 'removeLayout': {
+      const existing = course.layouts.find((l) => l.id === op.id);
+      if (!existing) return noop(course, op);
+      const remaining = course.layouts.filter((l) => l.id !== op.id);
+      return result(
+        {
+          ...course,
+          layouts: remaining,
+          // Never leave the document pointing at a layout that is gone.
+          activeLayoutId:
+            course.activeLayoutId === op.id
+              ? (remaining[0]?.id ?? null)
+              : course.activeLayoutId,
+        },
+        { type: 'addLayout', layout: existing },
+        undoable,
+      );
+    }
+
+    case 'updateLayout': {
+      const existing = course.layouts.find((l) => l.id === op.id);
+      if (!existing) return noop(course, op);
+      const inverseChanges: Partial<Omit<Layout, 'id'>> = {};
+      for (const key of Object.keys(op.changes) as (keyof Omit<Layout, 'id'>)[]) {
+        (inverseChanges as Record<string, unknown>)[key] = existing[key];
+      }
+      return result(
+        {
+          ...course,
+          layouts: course.layouts.map((l) => (l.id === op.id ? { ...l, ...op.changes } : l)),
+        },
+        { type: 'updateLayout', id: op.id, changes: inverseChanges },
+        undoable,
+      );
+    }
+
+    /*
+     * Not undoable, for the same reason the camera is not: switching layouts is
+     * looking at the course a different way, not changing it. Undo after a
+     * switch should take back your last edit, not put the view back.
+     */
+    case 'setActiveLayout':
+      return result(
+        { ...course, activeLayoutId: op.id },
+        { type: 'setActiveLayout', id: course.activeLayoutId },
+        undoable,
+      );
 
     case 'setDismissed':
       return result(

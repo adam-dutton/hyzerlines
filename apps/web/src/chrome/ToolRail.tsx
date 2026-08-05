@@ -132,7 +132,7 @@ function ObIcon() {
 /** Tools that get a rail slot, in the order they are used designing a hole. */
 const TOOLS: { kind: FeatureKind; icon: () => React.ReactElement }[] = [
   { kind: 'tee', icon: TeeIcon },
-  { kind: 'basket', icon: BasketIcon },
+  { kind: 'target', icon: BasketIcon },
   { kind: 'fairway', icon: FairwayIcon },
   { kind: 'mando', icon: MandoIcon },
   { kind: 'ob', icon: ObIcon },

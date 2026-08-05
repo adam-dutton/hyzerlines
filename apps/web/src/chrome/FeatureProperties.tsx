@@ -90,6 +90,29 @@ function Field({
     );
   }
 
+  if (field.type === 'boolean') {
+    return (
+      <Row label={field.label}>
+        <input
+          type="checkbox"
+          aria-label={field.label}
+          checked={raw === true}
+          onChange={(e) =>
+            onOp({
+              type: 'setProp',
+              id: feature.id,
+              key: field.key,
+              // Unset rather than false, so a document does not accumulate
+              // every flag anyone ever toggled and toggled back.
+              value: e.target.checked ? true : undefined,
+            })
+          }
+          className="h-4 w-4 rounded border-border-default bg-surface-inset accent-accent-solid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+        />
+      </Row>
+    );
+  }
+
   if (field.type === 'select') {
     return (
       <Row label={field.label}>

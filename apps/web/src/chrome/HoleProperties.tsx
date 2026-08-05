@@ -1,15 +1,8 @@
 import { TextField, cn } from '@hyzerlines/design';
-import {
-  effectivePar,
-  featureName,
-  measureHole,
-  suggestPar,
-  type Course,
-  type Hole,
-  type Op,
-} from '@hyzerlines/core';
+import { featureName, type Course, type Hole, type Op } from '@hyzerlines/core';
 
 import { formatDistance, type UnitSystem } from '../units';
+import { setHolePar, viewHole } from '../document/holeView';
 import { Row, SectionTitle, sectionClass } from './propertyRow';
 
 /**
@@ -76,13 +69,21 @@ export function HoleProperties({
   onDelete: () => void;
   onRevealFeature: (id: string) => void;
 }) {
-  const measurement = measureHole(course, hole);
-  const suggestion = suggestPar(course, hole);
-  const par = effectivePar(course, hole);
-  const overridden = hole.parOverride !== null;
+  const { measurement, suggestion, par, overridden, pair } = viewHole(course, hole);
 
   const update = (changes: Partial<Omit<Hole, 'id'>>) =>
     onOp({ type: 'updateHole', id: hole.id, changes });
+
+  /*
+   * Par is set on the PAIR, not the hole — a hole with three tees and three
+   * pins has nine of them. This panel still shows the first tee to the first
+   * pin, which is what the app did before; the pair picker in PR 6 turns that
+   * into a choice.
+   */
+  const setPar = (value: number | null) => {
+    const op = setHolePar(course, hole, value);
+    if (op) onOp(op);
+  };
 
   return (
     <>
@@ -129,7 +130,7 @@ export function HoleProperties({
               disabled={par === null}
               onChange={(e) => {
                 const value = Number(e.target.value);
-                update({ parOverride: value === suggestion?.par ? null : value });
+                setPar(value === suggestion?.par ? null : value);
               }}
               className={cn(
                 'rounded-md border border-border-default bg-surface-inset px-2 py-1 font-mono text-xs tabular-nums',
@@ -148,7 +149,7 @@ export function HoleProperties({
             {overridden && (
               <button
                 type="button"
-                onClick={() => update({ parOverride: null })}
+                onClick={() => setPar(null)}
                 className="text-2xs text-text-muted underline-offset-2 hover:text-text-secondary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
               >
                 Reset
@@ -218,7 +219,7 @@ export function HoleProperties({
         <Row label="Basket">
           <AssignedFeature
             course={course}
-            id={hole.basketIds[0]}
+            id={hole.targetIds[0]}
             fallback="None"
             onReveal={onRevealFeature}
           />
@@ -226,7 +227,7 @@ export function HoleProperties({
         <Row label="Fairway">
           <AssignedFeature
             course={course}
-            id={hole.fairwayId}
+            id={pair?.fairwayId}
             fallback="None"
             onReveal={onRevealFeature}
           />
