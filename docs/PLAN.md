@@ -42,8 +42,8 @@ current as PRs land.
 | **4**   | Hole workflow, distances, PDGA par and advisory checks                             | ✅ done |
 | **4.5** | UI/UX: navigation, docked panels, layout, camera framing                           | ✅ done |
 | **5**   | Document model v2: pairs, layouts, migration                                       | ✅ done |
-| **6**   | Derived geometry: tee footprints, pair picker, fairway lines and areas             | next    |
-| **7**   | Boundaries and acreage                                                             |         |
+| **6**   | Derived geometry: tee footprints, pair picker, fairway corridors, vertex editing   | ✅ done |
+| **7**   | Boundaries and acreage                                                             | next    |
 | **8**   | Layouts and routing: named layouts, skip, repeat, reorder                          |         |
 | **9**   | Expanded palette: relief areas, noted areas, drop zones, invert, circles           |         |
 | **10**  | Terrain: DEM sampling, elevation profiles, hillshade                               |         |
@@ -265,6 +265,71 @@ no target is dropped** — that combination was unmeasurable in v1 too, so no
 number a designer could ever see is lost. And **dangling references are kept**,
 so the structural check can still report them rather than the migration quietly
 tidying away evidence of a problem.
+
+---
+
+## PR 6 — what landed
+
+Geometry the document does not store. A tee is a point but a tee is a pad; a
+fairway is a line but a fairway is ground you can land on. Both second shapes are
+now computed on every render in `packages/core/src/geometry.ts` and never written
+back — a cached polygon is a polygon that is wrong for exactly as long as it takes
+someone to notice.
+
+**Everything works in metres.** The module builds a local east/north tangent plane
+and does its offsets there. Buffering a polyline in degrees would make a corridor
+40% fatter north-to-south than east-to-west at this latitude — the same
+1/cos(latitude) error `measure.ts` already refuses for distance, except this one
+would be visible and still look plausible.
+
+**The tee pad extends backwards from the point.** The stored coordinate is the
+front centre, because that is the tee line and the tee line is what hole length is
+measured from. Anchoring at the pad's centre instead would silently add half a pad
+length to every hole on the course, which is exactly the kind of error this project
+exists to not make. With no bearing from the feature or the caller the rectangle is
+withheld rather than drawn facing north.
+
+**The fairway corridor tapers from the tee pad's width to Circle 1's 10 m**,
+interpolated by distance along the line rather than by vertex index — index would
+balloon a dogleg to full width inside its first short leg. The two endpoints are
+published figures; **the taper between them is ours**, and both docs say so.
+Sharp doglegs get a mitre limit, and a corridor that folds through itself is
+reported as a finding rather than quietly drawn, because a folded polygon has
+stopped describing ground.
+
+**The pair picker replaced a lie.** Since PR 5 the panels had been answering every
+question with the hole's first tee and first pin — correct for one of a two-pin
+hole's four throws and silently wrong for the rest. `representativePair` now takes
+the active layout's play when there is one, the hole panel lets the designer pick
+another, and the panel says out loud when the shot on screen is not the one the
+routing plays. `apps/web/src/document/holeView.ts`, the shim that held this
+together, is deleted.
+
+**Lines and areas can be reshaped.** Drag a vertex, click a midpoint to insert
+one, Alt-click to remove — refused below two points for a line and three for an
+area. Edits go straight into the document, one op per pointer move, so the length
+in the panel and the corridor under the cursor track the vertex live; `canCoalesce`
+folds the run into a single undo entry.
+
+The browser tests grew a `geometry.spec.ts` for the parts only a browser can
+answer, and the five near-identical PNG encoders across the e2e files collapsed
+into one `fixtures.ts`. Two of the new tests were confirmed by reverting the fix
+they guard and watching them fail: without `preventDefault` on a handle's
+mousedown MapLibre pans the ground instead of moving the vertex, and without the
+handle guard a click five pixels off a line's centre deselects the feature you are
+editing and takes every handle with it.
+
+### Deliberately not in this PR
+
+**Per-vertex widths.** A fairway carries two widths, not one per point. The
+document's `props` map holds scalars, so an array would need a schema change and a
+migration — and the shape people actually want, a corridor that opens up from tee
+to green, is already what the taper does. Worth revisiting when someone hits the
+case it does not cover.
+
+**A gesture id on ops.** Undo coalescing is time-based, so a drag paused for more
+than 700 ms mid-gesture splits into two entries. Rare enough not to justify
+threading a gesture through the op model yet.
 
 ---
 

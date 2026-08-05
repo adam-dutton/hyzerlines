@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
-import { deflateSync } from 'node:zlib';
+
+import { openEditor, rail } from './fixtures';
 
 /**
  * Navigation tools, through the real browser.
@@ -13,72 +14,12 @@ import { deflateSync } from 'node:zlib';
  * our own inline style fell back to its hand rather than to an arrow.
  */
 
-function fakeTile(): Buffer {
-  const W = 256;
-  const H = 256;
-  const raw = Buffer.alloc((W * 3 + 1) * H);
-  let o = 0;
-  for (let y = 0; y < H; y++) {
-    raw[o++] = 0;
-    for (let x = 0; x < W; x++) {
-      const on = ((x >> 5) + (y >> 5)) % 2 === 0;
-      raw[o++] = on ? 0x2f : 0x25;
-      raw[o++] = on ? 0x5a : 0x46;
-      raw[o++] = on ? 0x33 : 0x2a;
-    }
-  }
-  const table = [...Array<number>(256)].map((_, n) => {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    return c >>> 0;
-  });
-  const crc = (buf: Buffer): number => {
-    let c = 0xffffffff;
-    for (const b of buf) c = table[(c ^ b) & 0xff]! ^ (c >>> 8);
-    return (c ^ 0xffffffff) >>> 0;
-  };
-  const chunk = (type: string, data: Buffer): Buffer => {
-    const len = Buffer.alloc(4);
-    len.writeUInt32BE(data.length);
-    const td = Buffer.concat([Buffer.from(type, 'ascii'), data]);
-    const c = Buffer.alloc(4);
-    c.writeUInt32BE(crc(td));
-    return Buffer.concat([len, td, c]);
-  };
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(W, 0);
-  ihdr.writeUInt32BE(H, 4);
-  ihdr[8] = 8;
-  ihdr[9] = 2;
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk('IHDR', ihdr),
-    chunk('IDAT', deflateSync(raw)),
-    chunk('IEND', Buffer.alloc(0)),
-  ]);
-}
-
 interface MapHandle {
   jumpTo: (options: unknown) => void;
   getZoom: () => number;
   getCenter: () => { toArray: () => [number, number] };
   unproject: (point: [number, number]) => { lng: number; lat: number };
 }
-
-async function openEditor(page: Page): Promise<void> {
-  const tile = fakeTile();
-  await page.route('**://server.arcgisonline.com/**', (route) =>
-    route.fulfill({ status: 200, contentType: 'image/png', body: tile }),
-  );
-  await page.goto('/');
-  await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
-  const skip = page.getByRole('button', { name: /Skip/ });
-  if (await skip.isVisible().catch(() => false)) await skip.click();
-  await expect(skip).toBeHidden();
-  await page.waitForTimeout(300);
-}
-
-const rail = (page: Page) => page.getByRole('toolbar', { name: 'Tools' });
 
 /**
  * The cursor as the browser resolves it, on the element MapLibre styles.

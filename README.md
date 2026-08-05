@@ -93,6 +93,14 @@ three rings drawn around a target have three different provenances — Circle 1 
 rather than as a circle, and the 3 m bullseye is league convention that appears in
 no PDGA document at all. Each is labelled with which it is.
 
+The same discipline applies to shapes. The fairway corridor drawn around a
+centreline runs from the tee pad's own width to Circle 1's 10 m at the target —
+two published figures — but **the taper between them is the app's, not the
+PDGA's**, which publishes no fairway width at all. It is a drawing aid anchored to
+real numbers, said in exactly those words in
+[`docs/PDGA.md`](docs/PDGA.md#derived-geometry--what-is-sourced-and-what-is-ours),
+and every width it produces is overridable.
+
 Checks are advisory and every one is dismissible. `packages/core/src/pdga.test.ts`
 restates the published figures independently of the tables the code reads, so a
 typo fails the build.
@@ -110,6 +118,23 @@ on the course.
 [`docs/MODEL.md`](docs/MODEL.md) is the full reference, including how version 1
 documents migrate.
 
+### Shapes the file does not contain
+
+A tee is stored as a point, but a tee is a pad. A fairway is stored as a line,
+but a fairway is ground you can land on. Both second shapes are computed from the
+first on every render and never written back — a stored polygon stays correct
+until somebody drags the point it came from.
+
+The pad extends _backwards_ from its point, because the point is the front centre:
+that is the tee line, and the tee line is where hole length is measured from.
+Anchoring at the middle of the pad instead would add half a pad length to every
+hole on the course, invisibly.
+
+All of it is computed in metres on a local tangent plane rather than in degrees.
+Offsetting a line in degrees gives you a corridor 40% fatter north-to-south than
+east-to-west at Minneapolis latitude — the same error that makes Web Mercator
+distances wrong, except this one you can see.
+
 ### Keyboard model
 
 Every shortcut is declared once, in `packages/design/src/keymap.ts`. Tooltips,
@@ -125,7 +150,9 @@ A plain drag pans, from every tool except Zoom — there is no pan tool and no
 modifier to reach for. Wheel zoom anchors to the pointer, and opening a course
 frames what is drawn rather than restoring wherever you last stopped scrolling.
 
-Tool keys (`T` tee, `B` basket, `O` out of bounds…) place features.
+Tool keys (`T` tee, `B` basket, `O` out of bounds…) place features. Select a line
+or an area and it grows handles: drag one to move a vertex, click a hollow one
+between two vertices to insert, `Alt`-click to remove.
 
 ## Contributing
 

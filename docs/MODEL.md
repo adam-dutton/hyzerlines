@@ -147,7 +147,7 @@ styles them differently so the claim is visible.
 | `target`       | pinId, type, model, color, status, standalone                            |
 | `dropzone`     | surface, width, length, bearing                                          |
 | `mando`        | side, type, height, bearing                                              |
-| `fairway`      | shape                                                                    |
+| `fairway`      | shape, widthStart, widthEnd                                              |
 | `ob`, `hazard` | invert                                                                   |
 | `water`        | inPlay                                                                   |
 
@@ -166,8 +166,40 @@ _backwards_ along the reverse of `bearing`.
 
 The stored point is therefore also the measuring point:
 [ELEMENTS] p2 measures hole length "from front of the tee". The footprint
-polygon is derived, never stored, and falls back to 3 m deep when no pad
-dimensions are set.
+polygon is derived, never stored.
+
+Its defaults come from two documents, for two different reasons:
+
+| Missing  | Falls back to              | Why that figure                                                                         |
+| -------- | -------------------------- | --------------------------------------------------------------------------------------- |
+| `length` | 3 m — [RULES] 802.04.A     | With no pad, that _is_ the teeing area. Not a typical value, the legal extent.          |
+| `width`  | 2 m (6 ft) — [ELEMENTS] p2 | The rules never dimension a tee line's width, so the guideline's own "typical" is used. |
+
+`bearing` has no default at all. Without one the footprint is **withheld** and
+only the point renders — the app supplies the tee-to-target bearing where it has
+one, and a rectangle drawn at an invented angle would look deliberate.
+
+### A fairway's corridor is derived from its line
+
+The stored geometry is the centreline. The area it covers is a variable-width
+buffer around it, recomputed on every edit: half the width to either side of each
+vertex, mitred at the corners, cut square at both ends.
+
+The width **tapers by distance along the line** — not by vertex index, which
+would balloon a dogleg's corridor to full width inside the first short leg:
+
+| Width         | Comes from                                                               |
+| ------------- | ------------------------------------------------------------------------ |
+| At the tee    | The tee pad's own width. Falls back to the typical pad width, floor 1 m. |
+| At the target | 10 m — Circle 1's radius, [RULES] 806.01.A.                              |
+
+**The taper is ours, not the PDGA's.** The PDGA publishes no fairway width. What
+this does is draw a straight line between two figures that _are_ published, and
+say so; `widthStart` and `widthEnd` override both ends per fairway.
+
+A turn sharper than the corridor is wide makes the inside edge fold through
+itself. That is reported as a structural finding rather than silently drawn — a
+folded polygon has stopped describing ground.
 
 ### Status is hardware, not design
 
@@ -200,11 +232,33 @@ The course does **not** carry one. A tee's colour _is_ its level:
 
 ---
 
+---
+
+## Which shot a hole is shown as
+
+A hole with two tees and two pins is four throws. A panel describing "this hole"
+has to pick one, and `representativePair` is the single place that choice is made:
+
+1. **The active layout's play for that hole**, when it has one. That is the shot
+   a card would print and a player would throw.
+2. Otherwise the hole's **first tee and first target** — the best guess available
+   for a corridor nobody has routed yet.
+
+A hole played twice in one layout resolves to its first play; the scorecard lists
+both, because it is a list of plays rather than a list of holes.
+
+The designer can override the choice in the hole panel. That selection is
+**interface state, not document state** — like which layer is selected in an
+editor. Storing it would autosave it, land it on the undo stack, and travel to
+whoever the course was sent to.
+
+---
+
 ## Derived, never stored
 
 Played number · distance · effective length · par suggestion · course and layout
 totals · layout skill level · layout playability · tee and drop-zone footprints ·
-fairway area polygon · elevation
+fairway corridor polygon · elevation
 
 ## Not in the document at all
 
@@ -213,6 +267,7 @@ fairway area polygon · elevation
 | "Save as default" — surface, colour, dimensions | localStorage, keyed by tee colour |
 | Target circle overlays                          | View setting                      |
 | Par readout show/hide                           | View setting                      |
+| Which pair a hole panel is describing           | Editor state, per selection       |
 
 Everything in the document is undoable, autosaved, and travels in the `.hyzer`
 file. A preference that rode along would mean different things to different

@@ -12,7 +12,7 @@ import {
 import type { UnitSystem } from '../units';
 import { CourseProperties } from './CourseProperties';
 import { FeatureProperties } from './FeatureProperties';
-import { HoleProperties } from './HoleProperties';
+import { HoleProperties, type SelectedPair } from './HoleProperties';
 
 /**
  * Properties, for whatever is in focus.
@@ -32,20 +32,25 @@ export function RightPanel({
   units,
   feature,
   hole,
+  pair,
   onOp,
   onDeleteFeature,
   onDeleteHole,
   onSelectFeature,
+  onSelectPair,
   onClearSelection,
 }: {
   course: Course;
   units: UnitSystem;
   feature: Feature | null;
   hole: Hole | null;
+  /** Which of the selected hole's shots the panel describes. */
+  pair: SelectedPair | null;
   onOp: (op: Op) => void;
   onDeleteFeature: () => void;
   onDeleteHole: () => void;
   onSelectFeature: (id: string) => void;
+  onSelectPair: (pair: SelectedPair) => void;
   onClearSelection: () => void;
 }) {
   const title = feature
@@ -106,8 +111,10 @@ export function RightPanel({
             <HoleProperties
               course={course}
               hole={hole}
+              pair={pair}
               units={units}
               onOp={onOp}
+              onSelectPair={onSelectPair}
               onDelete={onDeleteHole}
               onRevealFeature={onSelectFeature}
             />

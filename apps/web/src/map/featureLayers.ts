@@ -17,6 +17,8 @@ import { FEATURE_KINDS, type Feature } from '@hyzerlines/core';
  */
 
 export const FEATURES_SOURCE = 'course-features';
+export const DERIVED_SOURCE = 'derived-geometry';
+export const HANDLES_SOURCE = 'edit-handles';
 
 /** Build a MapLibre `match` expression over feature kinds from the tokens. */
 function colorByKind(role: 'stroke' | 'fill'): ExpressionSpecification {
@@ -65,6 +67,46 @@ const CASING_COLOR: ExpressionSpecification = [
 const LINE_WIDTH: ExpressionSpecification = ['case', selected, 4, 2.5];
 const LINE_CASING_WIDTH: ExpressionSpecification = ['case', selected, 8, 6];
 const POINT_RADIUS: ExpressionSpecification = ['case', selected, 9, 7];
+
+/**
+ * Derived geometry: tee and drop-zone pads, fairway corridors.
+ *
+ * Installed BEFORE the feature layers, so they sit underneath, and left out of
+ * `INTERACTIVE_LAYERS`, so they never take a click. Both matter — the pad is a
+ * consequence of the point, and a designer who could grab either would have to
+ * work out which one is the real feature.
+ *
+ * Drawn as a fill with a dashed hairline instead of a solid outline. That is the
+ * conventional grammar for "computed", and it keeps a tee pad from looking like
+ * a small polygon somebody drew by hand.
+ */
+export function derivedLayers(): LayerSpecification[] {
+  return [
+    {
+      id: 'derived-fill',
+      type: 'fill',
+      source: DERIVED_SOURCE,
+      paint: {
+        'fill-color': colorByKind('fill'),
+        // Fainter than a drawn area of the same kind: it is context for the
+        // feature on top of it, not a thing in its own right.
+        'fill-opacity': 0.55,
+      },
+    },
+    {
+      id: 'derived-outline',
+      type: 'line',
+      source: DERIVED_SOURCE,
+      layout: { 'line-join': 'round' },
+      paint: {
+        'line-color': colorByKind('stroke'),
+        'line-width': 1,
+        'line-opacity': 0.7,
+        'line-dasharray': [3, 2],
+      },
+    },
+  ];
+}
 
 export function featureLayers(): LayerSpecification[] {
   return [
@@ -126,6 +168,45 @@ export function featureLayers(): LayerSpecification[] {
         // The casing, as a stroke rather than a second layer.
         'circle-stroke-color': CASING_COLOR,
         'circle-stroke-width': ['case', selected, 3, 2],
+      },
+    },
+  ];
+}
+
+/**
+ * Vertex handles for the shape being reshaped.
+ *
+ * Installed last, above everything, because they are the smallest targets on
+ * screen and losing a hit test to the line they sit on would make them feel
+ * broken. Solid for a real vertex, hollow for the midpoint that becomes one —
+ * the same distinction every vector editor draws, so it needs no explanation.
+ */
+export function vertexLayers(): LayerSpecification[] {
+  return [
+    {
+      id: 'edit-midpoint',
+      type: 'circle',
+      source: HANDLES_SOURCE,
+      filter: ['==', ['get', 'role'], 'midpoint'],
+      paint: {
+        // Hollow: the map shows through, so it reads as a slot rather than a point.
+        'circle-color': 'rgba(0, 0, 0, 0)',
+        'circle-radius': 4,
+        'circle-stroke-color': featureColors.handle.stroke,
+        'circle-stroke-width': 1.5,
+        'circle-opacity': 1,
+      },
+    },
+    {
+      id: 'edit-vertex',
+      type: 'circle',
+      source: HANDLES_SOURCE,
+      filter: ['==', ['get', 'role'], 'vertex'],
+      paint: {
+        'circle-color': featureColors.handle.fill,
+        'circle-radius': 5,
+        'circle-stroke-color': featureColors.handle.stroke,
+        'circle-stroke-width': 2,
       },
     },
   ];

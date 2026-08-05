@@ -15,6 +15,21 @@ export const rowLabelClass = 'text-xs text-text-secondary';
 /** A group of rows, separated from its neighbours by a hairline. */
 export const sectionClass = 'border-b border-border-subtle px-3 py-2 last:border-b-0';
 
+/**
+ * A native select, dressed to match `TextField`.
+ *
+ * Native rather than a custom listbox: a `<select>` gets keyboard behaviour,
+ * type-ahead and the platform's own touch picker for free, and every one of
+ * those is worse in a hand-rolled replacement. The design system will grow a
+ * real component when a select needs something native cannot do — icons in
+ * options, or a search field — and not before.
+ */
+export const selectClass = [
+  'rounded-md border border-border-default bg-surface-inset px-2 py-1 text-xs text-text-primary',
+  'focus:border-border-accent focus:outline-none focus:ring-2 focus:ring-focus-ring/40',
+  'disabled:text-text-disabled',
+].join(' ');
+
 export function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 py-1.5">

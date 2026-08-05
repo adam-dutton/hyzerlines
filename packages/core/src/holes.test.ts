@@ -274,6 +274,48 @@ describe('design checks', () => {
     expect(checkCourse(course).map((f) => f.ruleId)).toContain('structural.unassigned-feature');
   });
 
+  it('reports a fairway that turns tighter than its corridor is wide', () => {
+    let course = createCourse();
+
+    // A hairpin, with a corridor far too wide to get around it. The inside
+    // edge folds through itself and the polygon stops describing ground.
+    const fairway = createFeature(
+      'fairway',
+      {
+        type: 'line',
+        coordinates: [
+          [-93.1, 44.9],
+          [-93.1, 44.9004],
+          [-93.09996, 44.9],
+        ],
+      },
+      { props: { widthStart: 60, widthEnd: 60 } },
+    );
+    course = applyOp(course, { type: 'addFeature', feature: fairway }).course;
+
+    expect(checkCourse(course).map((f) => f.ruleId)).toContain(
+      'structural.corridor-self-intersects',
+    );
+
+    // The same line with a corridor narrow enough to make the turn is fine.
+    course = applyOp(course, {
+      type: 'setProp',
+      id: fairway.id,
+      key: 'widthStart',
+      value: 2,
+    }).course;
+    course = applyOp(course, {
+      type: 'setProp',
+      id: fairway.id,
+      key: 'widthEnd',
+      value: 2,
+    }).course;
+
+    expect(checkCourse(course).map((f) => f.ruleId)).not.toContain(
+      'structural.corridor-self-intersects',
+    );
+  });
+
   it('honours dismissals', () => {
     const course = applyOp(createCourse(), { type: 'addHole', hole: createHole(1) }).course;
     const dismissed = checkCourse(course, ['structural.hole-missing-tee']);

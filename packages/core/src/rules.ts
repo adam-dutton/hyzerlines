@@ -11,6 +11,7 @@ import {
   type Layout,
 } from './layouts.js';
 import { activeLayout, featureIndex } from './schema.js';
+import { courseCorridors } from './pairView.js';
 import {
   courseLengthMeters,
   metersToFeet,
@@ -305,6 +306,42 @@ const unassignedTargets: Rule = {
   },
 };
 
+/**
+ * A dogleg the corridor cannot get around.
+ *
+ * The corridor is a derived polygon — the centreline pushed out to either side
+ * by half the fairway width. When the line turns more sharply than the corridor
+ * is wide, the inside edge folds through itself and the polygon stops describing
+ * ground: it doubles back over land it has already covered.
+ *
+ * Structural, not PDGA. The PDGA publishes nothing about corner radii; this is
+ * arithmetic about a shape the app itself drew. The fix is a wider turn or a
+ * narrower fairway, and the finding says which feature to grab.
+ */
+const corridorFoldsOver: Rule = {
+  id: 'structural.corridor-self-intersects',
+  title: 'Fairway corridor folds over itself',
+  severity: 'warning',
+  authority: 'structural',
+  run: ({ course }) =>
+    [...courseCorridors(course).values()]
+      .filter((corridor) => corridor.selfIntersects)
+      .map((corridor) => {
+        const fairway = course.features.find((f) => f.id === corridor.fairwayId);
+        const name = fairway
+          ? fairway.label.trim() || KIND_DEFINITIONS.fairway.label
+          : KIND_DEFINITIONS.fairway.label;
+        return finding(
+          corridorFoldsOver,
+          `${name} turns more sharply than it is wide, so its corridor overlaps itself.`,
+          {
+            featureId: corridor.fairwayId,
+            ...(fairway?.holeId ? { holeId: fairway.holeId } : {}),
+          },
+        );
+      }),
+};
+
 export const STRUCTURAL_RULES: readonly Rule[] = [
   holeNeedsTee,
   holeNeedsTarget,
@@ -312,6 +349,7 @@ export const STRUCTURAL_RULES: readonly Rule[] = [
   duplicateNumbers,
   degenerateHole,
   fairwayDetached,
+  corridorFoldsOver,
   unassignedTargets,
 ];
 

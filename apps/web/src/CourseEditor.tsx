@@ -5,7 +5,9 @@ import {
   createFeature,
   createHole,
   createPair,
+  findPair,
   geometryMatchesKind,
+  representativePair,
   type Feature,
   type FeatureKind,
   type Finding,
@@ -17,11 +19,14 @@ import {
 import { useMap } from './map/MapContext';
 import { FeatureLayer } from './map/FeatureLayer';
 import { useDrawing, drawingPreview } from './map/useDrawing';
+import { derivedGeometry } from './map/derived';
+import { useVertexEditing } from './map/useVertexEditing';
 import { useNavigation } from './map/useNavigation';
 import { frameFeatures } from './map/frame';
 import type { Tool } from './map/tools';
 import { ToolRail } from './chrome/ToolRail';
 import { RightPanel } from './chrome/RightPanel';
+import type { SelectedPair } from './chrome/HoleProperties';
 import { LeftPanel } from './chrome/LeftPanel';
 import { useShortcuts } from './keyboard/useShortcuts';
 import type { UnitSystem } from './units';
@@ -42,11 +47,47 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
   const [tool, setTool] = useState<Tool>('select');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedHoleId, setSelectedHoleId] = useState<string | null>(null);
+  const [pairChoice, setPairChoice] = useState<SelectedPair | null>(null);
 
   const selected = course.features.find((f) => f.id === selectedId) ?? null;
   const selectedHole = course.holes.find((h) => h.id === selectedHoleId) ?? null;
 
+  /*
+   * Which of the hole's shots the panels are describing.
+   *
+   * Derived rather than stored in an effect, and self-healing: a choice is kept
+   * only while it is still a shot the hole offers, so deleting the pin you were
+   * measuring to falls back to the representative pair instead of leaving the
+   * panel describing a throw that no longer exists.
+   *
+   * Not in the document. Which shot you are inspecting is a view of the course,
+   * like which layer is selected in an editor — putting it in the file would
+   * autosave it, land it on the undo stack, and travel to whoever you sent the
+   * course to.
+   */
+  const selectedPair = useMemo<SelectedPair | null>(() => {
+    if (!selectedHole) return null;
+    if (
+      pairChoice &&
+      selectedHole.teeIds.includes(pairChoice.teeId) &&
+      selectedHole.targetIds.includes(pairChoice.targetId)
+    ) {
+      return pairChoice;
+    }
+    return representativePair(course, selectedHole);
+  }, [course, selectedHole, pairChoice]);
+
   const findings = useMemo(() => checkCourse(course, course.dismissedRules), [course]);
+
+  /*
+   * Tee pads and fairway corridors, recomputed whenever the features change.
+   *
+   * Cheap enough to do on every edit — a few dozen multiplications per feature —
+   * and the alternative is caching derived geometry, which is the one thing this
+   * whole approach exists to avoid. A cached pad is a pad that is wrong for
+   * exactly as long as it takes someone to notice.
+   */
+  const derived = useMemo(() => derivedGeometry(course), [course]);
 
   /**
    * Create a hole from what is already drawn.
@@ -118,12 +159,18 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
   const selectHole = useCallback((id: string | null) => {
     setSelectedHoleId(id);
     if (id) setSelectedId(null);
+    // A new hole starts on its own representative shot rather than inheriting
+    // the last hole's tee, which would almost never be one of its own.
+    setPairChoice(null);
   }, []);
 
   /** Frame whatever a finding points at, so it can be seen rather than read. */
   const reveal = useCallback(
     (finding: Finding) => {
-      if (finding.holeId) setSelectedHoleId(finding.holeId);
+      if (finding.holeId) {
+        setSelectedHoleId(finding.holeId);
+        setPairChoice(null);
+      }
       if (finding.featureId) {
         setSelectedId(finding.featureId);
         const feature = course.features.find((f) => f.id === finding.featureId);
@@ -176,6 +223,23 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
     tool: nav.effective,
     onCommit: commitFeature,
     onDone: backToSelect,
+  });
+
+  /*
+   * Reshaping, live only for a selected line or area under the select tool.
+   *
+   * Gated on the tool because handles are hit targets: leaving them up while the
+   * fairway tool is active would mean a click meant to place a vertex grabs an
+   * existing one instead. Gated on the drawing state for the same reason.
+   */
+  const editing = useVertexEditing({
+    map,
+    feature: selected,
+    enabled: nav.effective === 'select' && !drawing.active,
+    onGeometry: useCallback(
+      (id: string, geometry: Geometry) => dispatch({ type: 'setGeometry', id, geometry }),
+      [dispatch],
+    ),
   });
 
   const deleteSelected = useCallback(() => {
@@ -244,25 +308,21 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
       // so leaving it inert now would be the odd choice.
       'view.zoomSelection': () => {
         if (!map) return;
+        /*
+         * A hole frames the shot you are looking at, not every shape it owns.
+         * Framing all three tees and all three pins of a long hole zooms out
+         * far enough that the throw you were inspecting is a smudge.
+         */
+        const holeIds = selectedPair
+          ? [
+              selectedPair.teeId,
+              selectedPair.targetId,
+              findPair(course.pairs, selectedPair.teeId, selectedPair.targetId)?.fairwayId,
+            ].filter((id): id is string => typeof id === 'string')
+          : [];
         const target = selected
           ? [selected]
-          : selectedHole
-            ? course.features.filter((f) =>
-                [
-                  ...selectedHole.teeIds,
-                  ...selectedHole.targetIds,
-                  ...course.pairs
-                    .filter(
-                      (p) =>
-                        selectedHole.teeIds.includes(p.teeId) &&
-                        selectedHole.targetIds.includes(p.targetId),
-                    )
-                    .map((p) => p.fairwayId),
-                ]
-                  .filter((id): id is string => id !== null && id !== undefined)
-                  .includes(f.id),
-              )
-            : [];
+          : course.features.filter((f) => holeIds.includes(f.id));
         // Nothing selected means "fit everything", which is what a user
         // pressing a zoom-to key with an empty selection is reaching for.
         frameFeatures(map, target.length > 0 ? target : course.features, { duration: 400 });
@@ -291,6 +351,8 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
         selectedId={selectedId}
         onSelect={selectFeature}
         preview={drawingPreview(nav.effective, drawing.pending, drawing.cursor)}
+        derived={derived}
+        handles={editing.handles}
         selectable={nav.effective === 'select'}
       />
 
@@ -332,10 +394,12 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
             units={units}
             feature={selected}
             hole={selectedHole}
+            pair={selectedPair}
             onOp={handleOp}
             onDeleteFeature={deleteSelected}
             onDeleteHole={deleteSelectedHole}
             onSelectFeature={selectFeature}
+            onSelectPair={setPairChoice}
             onClearSelection={() => {
               setSelectedId(null);
               setSelectedHoleId(null);

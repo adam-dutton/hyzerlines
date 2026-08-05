@@ -1,45 +1,50 @@
 import { TextField, cn } from '@hyzerlines/design';
-import { featureName, type Course, type Hole, type Op } from '@hyzerlines/core';
+import {
+  activeLayout,
+  featureName,
+  layoutName,
+  pairView,
+  setPairPar,
+  type Course,
+  type Feature,
+  type Hole,
+  type Op,
+} from '@hyzerlines/core';
 
 import { formatDistance, type UnitSystem } from '../units';
-import { setHolePar, viewHole } from '../document/holeView';
-import { Row, SectionTitle, sectionClass } from './propertyRow';
+import { Row, SectionTitle, sectionClass, selectClass } from './propertyRow';
 
 /**
  * Properties of the selected hole.
  *
  * The scorecard on the left answers "how does this course read as a round".
- * This answers "what is this hole made of" — the number, the par and the
- * reasoning behind it, the measurements, and which drawn features it claims.
+ * This answers "what is this hole made of" — which shot you are looking at, the
+ * par and the reasoning behind it, and the measurements that produced it.
  *
- * Par gets more room here than the scorecard can give it. In the list it is a
- * digit with a tooltip; here the effective length, the band it fell into and
- * the skill level it was read against are all on screen at once, because that
- * is the difference between a number you can argue with and one you either
- * accept blindly or ignore.
+ * ## The shot is chosen, not assumed
+ *
+ * A hole with two tees and two pins is four different throws, with four lengths
+ * and possibly four pars. Until this panel let you say which one you meant, it
+ * showed the first tee to the first pin and called that "the hole" — a number
+ * that was right for one of the four and silently wrong for the rest.
+ *
+ * So the picker comes first, above the par it determines. It appears only when
+ * there is genuinely a choice to make; a one-tee, one-pin hole gets the plain
+ * links it always had, because a dropdown with one option asks a question that
+ * has no other answer.
  */
 
-function AssignedFeature({
-  course,
-  id,
-  fallback,
-  onReveal,
-}: {
-  course: Course;
-  id: string | null | undefined;
-  fallback: string;
-  onReveal: (id: string) => void;
-}) {
-  const feature = id ? course.features.find((f) => f.id === id) : undefined;
+/** The stored pair a panel is describing. Held by the editor, not the document. */
+export interface SelectedPair {
+  teeId: string;
+  targetId: string;
+}
 
-  if (!feature) {
-    return <span className="text-xs text-text-disabled">{fallback}</span>;
-  }
-
+function RevealButton({ feature, onReveal }: { feature: Feature; onReveal: () => void }) {
   return (
     <button
       type="button"
-      onClick={() => onReveal(feature.id)}
+      onClick={onReveal}
       /*
        * Named for the action, not just the feature. An unnamed tee reads as
        * "Tee pad", which is also the name of the rail button that draws one —
@@ -54,35 +59,132 @@ function AssignedFeature({
   );
 }
 
+/**
+ * One end of the shot: a picker when there is a choice, a link when there is not.
+ *
+ * The reveal button survives either way — selecting the tee you are measuring
+ * from is the most common next action from here, and it should not disappear
+ * just because the hole grew a second pin.
+ */
+function EndPicker({
+  label,
+  ids,
+  value,
+  course,
+  onChange,
+  onReveal,
+}: {
+  label: string;
+  ids: readonly string[];
+  value: string | null;
+  course: Course;
+  onChange: (id: string) => void;
+  onReveal: (id: string) => void;
+}) {
+  const features = ids
+    .map((id) => course.features.find((f) => f.id === id))
+    .filter((f): f is Feature => f !== undefined);
+
+  const current = value ? course.features.find((f) => f.id === value) : undefined;
+
+  if (features.length === 0) {
+    return (
+      <Row label={label}>
+        <span className="text-xs text-text-disabled">None</span>
+      </Row>
+    );
+  }
+
+  if (features.length === 1) {
+    return (
+      <Row label={label}>
+        <RevealButton feature={features[0]!} onReveal={() => onReveal(features[0]!.id)} />
+      </Row>
+    );
+  }
+
+  return (
+    <Row label={label}>
+      <span className="flex min-w-0 items-center gap-1.5">
+        <select
+          aria-label={`${label} for this hole`}
+          value={value ?? ''}
+          onChange={(e) => onChange(e.target.value)}
+          className={cn(selectClass, 'max-w-[8rem] truncate')}
+        >
+          {features.map((feature) => (
+            <option key={feature.id} value={feature.id}>
+              {featureName(feature)}
+            </option>
+          ))}
+        </select>
+        {current && (
+          <button
+            type="button"
+            onClick={() => onReveal(current.id)}
+            aria-label={`Select ${featureName(current)}`}
+            className="shrink-0 text-2xs text-text-muted underline-offset-2 hover:text-text-secondary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+          >
+            Show
+          </button>
+        )}
+      </span>
+    </Row>
+  );
+}
+
 export function HoleProperties({
   course,
   hole,
+  pair,
   units,
   onOp,
+  onSelectPair,
   onDelete,
   onRevealFeature,
 }: {
   course: Course;
   hole: Hole;
+  /** Which shot the panel is describing. Null when the hole has none yet. */
+  pair: SelectedPair | null;
   units: UnitSystem;
   onOp: (op: Op) => void;
+  onSelectPair: (pair: SelectedPair) => void;
   onDelete: () => void;
   onRevealFeature: (id: string) => void;
 }) {
-  const { measurement, suggestion, par, overridden, pair } = viewHole(course, hole);
+  const view = pair ? pairView(course, pair.teeId, pair.targetId) : null;
+  const measurement = view?.measurement;
+  const suggestion = view?.suggestion ?? null;
+  const par = view?.par ?? null;
+  const overridden = view?.overridden ?? false;
+
+  const fairway = view?.pair?.fairwayId
+    ? course.features.find((f) => f.id === view.pair!.fairwayId)
+    : undefined;
+
+  /*
+   * Whether the routing plays this exact shot.
+   *
+   * Worth saying out loud: the panel defaults to the routed pair, so a designer
+   * who changes the picker is now looking at a shot the layout does not use.
+   * Without this line that difference is invisible, and the par they set would
+   * seem not to reach the scorecard.
+   */
+  const layout = activeLayout(course);
+  const routed = layout?.plays.find((play) => play.holeId === hole.id);
+  const showingRouted =
+    routed !== undefined &&
+    pair !== null &&
+    routed.teeId === pair.teeId &&
+    routed.targetId === pair.targetId;
 
   const update = (changes: Partial<Omit<Hole, 'id'>>) =>
     onOp({ type: 'updateHole', id: hole.id, changes });
 
-  /*
-   * Par is set on the PAIR, not the hole — a hole with three tees and three
-   * pins has nine of them. This panel still shows the first tee to the first
-   * pin, which is what the app did before; the pair picker in PR 6 turns that
-   * into a choice.
-   */
   const setPar = (value: number | null) => {
-    const op = setHolePar(course, hole, value);
-    if (op) onOp(op);
+    if (!pair) return;
+    onOp(setPairPar(course, pair.teeId, pair.targetId, value));
   };
 
   return (
@@ -118,6 +220,40 @@ export function HoleProperties({
       </div>
 
       <div className={sectionClass}>
+        <SectionTitle>Shot</SectionTitle>
+        <EndPicker
+          label="Tee"
+          ids={hole.teeIds}
+          value={pair?.teeId ?? null}
+          course={course}
+          onChange={(teeId) => pair && onSelectPair({ ...pair, teeId })}
+          onReveal={onRevealFeature}
+        />
+        <EndPicker
+          label="Target"
+          ids={hole.targetIds}
+          value={pair?.targetId ?? null}
+          course={course}
+          onChange={(targetId) => pair && onSelectPair({ ...pair, targetId })}
+          onReveal={onRevealFeature}
+        />
+        <Row label="Fairway">
+          {fairway ? (
+            <RevealButton feature={fairway} onReveal={() => onRevealFeature(fairway.id)} />
+          ) : (
+            <span className="text-xs text-text-disabled">None</span>
+          )}
+        </Row>
+        {routed && layout && (
+          <p className="mt-1 text-2xs leading-4 text-text-muted">
+            {showingRouted
+              ? `Played as this shot in ${layoutName(layout)}.`
+              : `${layoutName(layout)} plays a different tee or pin — this shot is not in the routing.`}
+          </p>
+        )}
+      </div>
+
+      <div className={sectionClass}>
         <SectionTitle>Par</SectionTitle>
         <Row label="Par">
           <span className="flex items-center gap-1.5">
@@ -133,10 +269,9 @@ export function HoleProperties({
                 setPar(value === suggestion?.par ? null : value);
               }}
               className={cn(
-                'rounded-md border border-border-default bg-surface-inset px-2 py-1 font-mono text-xs tabular-nums',
-                'focus:border-border-accent focus:outline-none focus:ring-2 focus:ring-focus-ring/40',
-                'disabled:text-text-disabled',
-                overridden ? 'text-text-accent' : 'text-text-primary',
+                selectClass,
+                'font-mono tabular-nums',
+                overridden && 'text-text-accent',
               )}
             >
               {par === null && <option value="">—</option>}
@@ -190,48 +325,18 @@ export function HoleProperties({
         <SectionTitle>Measurements</SectionTitle>
         <Row label="Tee to basket">
           <span className="font-mono text-xs tabular-nums text-text-primary">
-            {measurement.straight === null ? '—' : formatDistance(measurement.straight, units)}
+            {measurement?.straight == null ? '—' : formatDistance(measurement.straight, units)}
           </span>
         </Row>
         {/* Only shown when a fairway exists: a routed length identical to the
             straight one would imply a route that isn't there. */}
-        {measurement.routed !== null && (
+        {measurement?.routed != null && (
           <Row label="Along the fairway">
             <span className="font-mono text-xs tabular-nums text-text-primary">
               {formatDistance(measurement.routed, units)}
             </span>
           </Row>
         )}
-      </div>
-
-      <div className={sectionClass}>
-        <SectionTitle>Features</SectionTitle>
-        {/* Short labels, because the value beside them is usually the kind's
-            own name — "Tee pad: Tee pad" is a row that says nothing twice. */}
-        <Row label="Tee">
-          <AssignedFeature
-            course={course}
-            id={hole.teeIds[0]}
-            fallback="None"
-            onReveal={onRevealFeature}
-          />
-        </Row>
-        <Row label="Basket">
-          <AssignedFeature
-            course={course}
-            id={hole.targetIds[0]}
-            fallback="None"
-            onReveal={onRevealFeature}
-          />
-        </Row>
-        <Row label="Fairway">
-          <AssignedFeature
-            course={course}
-            id={pair?.fairwayId}
-            fallback="None"
-            onReveal={onRevealFeature}
-          />
-        </Row>
       </div>
 
       <div className={sectionClass}>

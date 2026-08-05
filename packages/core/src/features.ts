@@ -271,6 +271,14 @@ export function fieldsFor(kind: FeatureKind): readonly FieldDefinition[] {
         { key: 'height', label: 'Height', type: 'number', unit: 'meters', min: 0, max: 60 },
         { key: 'bearing', label: 'Facing', type: 'number', unit: 'degrees', min: 0, max: 360 },
       ];
+    /*
+     * The two widths describe the CORRIDOR, not the line.
+     *
+     * Left empty, they are derived — the tee pad's width at the tee, tapering
+     * to Circle 1's radius at the target (see FAIRWAY_CORRIDOR in geometry.ts).
+     * They exist because that taper is ours rather than the PDGA's, and a
+     * default nobody can argue with is a default nobody should be stuck with.
+     */
     case 'fairway':
       return [
         {
@@ -282,6 +290,22 @@ export function fieldsFor(kind: FeatureKind): readonly FieldDefinition[] {
             { value: 'hyzer', label: 'Hyzer' },
             { value: 'anhyzer', label: 'Anhyzer' },
           ],
+        },
+        {
+          key: 'widthStart',
+          label: 'Width at tee',
+          type: 'number',
+          unit: 'meters',
+          min: 0,
+          max: 200,
+        },
+        {
+          key: 'widthEnd',
+          label: 'Width at target',
+          type: 'number',
+          unit: 'meters',
+          min: 0,
+          max: 200,
         },
       ];
     /*

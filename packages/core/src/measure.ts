@@ -12,8 +12,14 @@ import type { Feature } from './features.js';
  * Everything here returns meters. Conversion happens only at display.
  */
 
-/** IUGG mean Earth radius, meters. */
-const EARTH_RADIUS = 6371008.8;
+/**
+ * IUGG mean Earth radius, meters.
+ *
+ * Exported because `geometry.ts` builds its local tangent plane from the same
+ * sphere. Two radii would mean a corridor whose width disagreed, very slightly,
+ * with the distance printed beside it.
+ */
+export const EARTH_RADIUS = 6371008.8;
 
 const toRadians = (degrees: number): number => (degrees * Math.PI) / 180;
 
@@ -134,7 +140,13 @@ export function pathsCross(a: readonly Position[], b: readonly Position[]): bool
 const cross = (o: Position, p: Position, q: Position): number =>
   (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0]);
 
-function segmentsCross(p1: Position, p2: Position, p3: Position, p4: Position): boolean {
+/**
+ * Whether two segments properly cross.
+ *
+ * Exported for `ringSelfIntersects` in geometry.ts, which asks the same question
+ * of a polygon's own edges.
+ */
+export function segmentsCross(p1: Position, p2: Position, p3: Position, p4: Position): boolean {
   const d1 = cross(p3, p4, p1);
   const d2 = cross(p3, p4, p2);
   const d3 = cross(p1, p2, p3);

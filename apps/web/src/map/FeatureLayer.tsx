@@ -4,7 +4,17 @@ import { feature as featureColors } from '@hyzerlines/design';
 import type { Feature } from '@hyzerlines/core';
 
 import { useMap } from './MapContext';
-import { FEATURES_SOURCE, INTERACTIVE_LAYERS, featureLayers, toGeoJSON } from './featureLayers';
+import {
+  DERIVED_SOURCE,
+  FEATURES_SOURCE,
+  HANDLES_SOURCE,
+  INTERACTIVE_LAYERS,
+  derivedLayers,
+  featureLayers,
+  toGeoJSON,
+  vertexLayers,
+} from './featureLayers';
+import { VERTEX_LAYERS } from './useVertexEditing';
 
 const PREVIEW_SOURCE = 'drawing-preview';
 
@@ -13,6 +23,10 @@ interface FeatureLayerProps {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   preview: GeoJSON.FeatureCollection;
+  /** Tee pads and fairway corridors, computed from the features above. */
+  derived: GeoJSON.FeatureCollection;
+  /** Vertex and midpoint handles for the shape being reshaped. */
+  handles: GeoJSON.FeatureCollection;
   /** Clicks select only when the select tool is active. */
   selectable: boolean;
 }
@@ -30,6 +44,8 @@ export function FeatureLayer({
   selectedId,
   onSelect,
   preview,
+  derived,
+  handles,
   selectable,
 }: FeatureLayerProps) {
   const { map } = useMap();
@@ -42,6 +58,18 @@ export function FeatureLayer({
     if (!map) return;
 
     const install = () => {
+      /*
+       * Derived geometry goes in first, because MapLibre draws in insertion
+       * order and a tee pad must sit under the tee point it was computed from.
+       * Installing it after would bury the thing you actually click.
+       */
+      if (!map.getSource(DERIVED_SOURCE)) {
+        map.addSource(DERIVED_SOURCE, { type: 'geojson', data: derived });
+      }
+      for (const layer of derivedLayers()) {
+        if (!map.getLayer(layer.id)) map.addLayer(layer);
+      }
+
       if (!map.getSource(FEATURES_SOURCE)) {
         map.addSource(FEATURES_SOURCE, {
           type: 'geojson',
@@ -60,6 +88,9 @@ export function FeatureLayer({
       }
       if (!map.getSource(PREVIEW_SOURCE)) {
         map.addSource(PREVIEW_SOURCE, { type: 'geojson', data: preview });
+      }
+      if (!map.getSource(HANDLES_SOURCE)) {
+        map.addSource(HANDLES_SOURCE, { type: 'geojson', data: handles });
       }
 
       for (const layer of featureLayers()) {
@@ -81,6 +112,11 @@ export function FeatureLayer({
           },
         });
       }
+      // Above everything: the smallest targets on screen must win hit-testing.
+      for (const layer of vertexLayers()) {
+        if (!map.getLayer(layer.id)) map.addLayer(layer);
+      }
+
       if (!map.getLayer('preview-vertex')) {
         map.addLayer({
           id: 'preview-vertex',
@@ -121,6 +157,18 @@ export function FeatureLayer({
     const source = map.getSource<GeoJSONSource>(PREVIEW_SOURCE);
     source?.setData(preview);
   }, [map, preview]);
+
+  useEffect(() => {
+    if (!map) return;
+    const source = map.getSource<GeoJSONSource>(DERIVED_SOURCE);
+    source?.setData(derived);
+  }, [map, derived]);
+
+  useEffect(() => {
+    if (!map) return;
+    const source = map.getSource<GeoJSONSource>(HANDLES_SOURCE);
+    source?.setData(handles);
+  }, [map, handles]);
 
   /*
    * Selection is a feature-state flag rather than a property, so selecting
@@ -164,14 +212,29 @@ export function FeatureLayer({
   useEffect(() => {
     if (!map || !selectable) return;
 
+    /*
+     * A handle is never a selection target.
+     *
+     * Vertex handles sit directly on top of the shape they belong to, so a
+     * click that lands on one would otherwise fall through and re-select — or,
+     * after Alt-clicking a vertex away, land on empty ground and deselect the
+     * feature you were still editing, taking every remaining handle with it.
+     */
+    const overHandle = (e: MapMouseEvent): boolean =>
+      map.getLayer('edit-vertex') !== undefined &&
+      map.queryRenderedFeatures(e.point, { layers: [...VERTEX_LAYERS] }).length > 0;
+
     const handleClick = (e: MapMouseEvent) => {
+      if (overHandle(e)) return;
       const hits = map.queryRenderedFeatures(e.point, { layers: [...INTERACTIVE_LAYERS] });
       const id = hits[0]?.properties?.['id'];
       onSelect(typeof id === 'string' ? id : null);
     };
 
-    // Pointer feedback on hover, so features read as clickable.
+    // Pointer feedback on hover, so features read as clickable. Handles own
+    // their own cursor, set by useVertexEditing.
     const handleMove = (e: MapMouseEvent) => {
+      if (overHandle(e)) return;
       const hits = map.queryRenderedFeatures(e.point, { layers: [...INTERACTIVE_LAYERS] });
       map.getCanvas().style.cursor = hits.length > 0 ? 'pointer' : '';
     };

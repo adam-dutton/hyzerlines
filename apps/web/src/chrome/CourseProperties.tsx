@@ -7,13 +7,15 @@ import {
   COURSE_LENGTH_FT,
   COURSE_LENGTH_HOLE_COUNT,
   feetToMeters,
+  totalLength,
+  totalPar,
+  viewHoles,
   SKILL_LEVEL_INFO,
   type Course,
   type Op,
 } from '@hyzerlines/core';
 
 import { formatDistance, formatRange, type UnitSystem } from '../units';
-import { totalLength, totalPar, viewHoles } from '../document/holeView';
 import { Row, SectionTitle, sectionClass } from './propertyRow';
 
 /**
