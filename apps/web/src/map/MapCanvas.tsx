@@ -4,6 +4,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 
 import { basemapById, styleForBasemap, type Basemap } from './basemaps';
 import { MapContext, type MapViewState } from './MapContext';
+import { useOrbit } from './useOrbit';
 
 interface MapCanvasProps {
   basemapId: string;
@@ -69,7 +70,8 @@ export function MapCanvas({ basemapId, children, onViewChange }: MapCanvasProps)
       attributionControl: false,
       // Aerial detail matters more than bandwidth here.
       maxZoom: 21,
-      dragRotate: true,
+      // Ours, not MapLibre's own — see useOrbit for why.
+      dragRotate: false,
       // Two-finger rotate constantly fires by accident while panning on trackpads.
       touchPitch: false,
     });
@@ -114,6 +116,8 @@ export function MapCanvas({ basemapId, children, onViewChange }: MapCanvasProps)
     // Intentionally empty: the map is created once. See the comment above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useOrbit(map);
 
   // Basemap changes swap the style, preserving camera and any future overlays.
   useEffect(() => {

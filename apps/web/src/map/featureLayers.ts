@@ -86,30 +86,85 @@ const LINE_CASING_WIDTH: ExpressionSpecification = ['case', selected, 8, 6];
 const POINT_RADIUS: ExpressionSpecification = ['case', selected, 9, 7];
 
 /**
- * A point marker fades out once the shape it stands for is legible.
+ * A dash pattern and the casing pattern that lines up underneath it.
  *
- * Only affects features that have a derived footprint — everything else stays
- * at full strength. The window is z17 to z18.5: a typical 2 m pad is about four
- * screen pixels across at 17 and twelve at 18.5, which is where it stops being
- * a smudge and starts being a rectangle you could point at.
+ * `line-dasharray` is measured in line widths, so a casing twice as wide as its
+ * stroke needs half the dash numbers to break in the same places. Get that wrong
+ * and the casing fills the gaps — which is exactly how a dashed line ends up
+ * looking solid, and is what made selected fairways read as solid strokes: the
+ * gaps were there, filled in by a casing in a near-identical blue.
+ *
+ * The ratio has to be constant for this to hold, so widths that vary with
+ * selection vary together.
+ */
+function casingDash(dash: readonly [number, number], ratio: number): [number, number] {
+  return [dash[0] / ratio, dash[1] / ratio];
+}
+
+/** Casing width as a multiple of stroke width, wherever a dash has to align. */
+const CASING_RATIO = 2.2;
+
+const CENTRELINE_DASH = [3, 2] as const;
+const CENTRELINE_WIDTH: ExpressionSpecification = ['case', selected, 4, 2.5];
+const CENTRELINE_CASING_WIDTH: ExpressionSpecification = [
+  'case',
+  selected,
+  4 * CASING_RATIO,
+  2.5 * CASING_RATIO,
+];
+
+/**
+ * A property boundary is a note about the land, not a thing on it.
+ *
+ * So it gets the thinnest dotted line on the map and no fill at all. The fill
+ * was the real problem: a boundary is routinely the largest shape on screen, and
+ * a translucent wash over the whole site dims the imagery a designer is reading
+ * the terrain from — every tree line and every fall of ground goes through it.
+ * A dotted outline says the same thing and takes nothing away.
+ */
+const BOUNDARY_DASH = [1, 2] as const;
+const BOUNDARY_WIDTH: ExpressionSpecification = ['case', selected, 2, 1.25];
+const BOUNDARY_CASING_WIDTH: ExpressionSpecification = [
+  'case',
+  selected,
+  2 * CASING_RATIO,
+  1.25 * CASING_RATIO,
+];
+
+const isBoundary: ExpressionSpecification = ['==', ['get', 'kind'], 'boundary'];
+
+/**
+ * The plain point marker is suppressed once a feature has a footprint.
+ *
+ * Permanently, not just once the pad is legible: `derived-front` — the front
+ * line of the pad itself — now owns the job of standing in for a footprint
+ * that is too small to see. A dot and a front line both fading in and out at
+ * once would be two markers answering the same question.
  */
 const POINT_OPACITY: ExpressionSpecification = [
-  /*
-   * The interpolate has to be outermost, and the per-feature test inside it.
-   *
-   * MapLibre only accepts `zoom` as the direct input to a top-level `step` or
-   * `interpolate`; wrapping it in a `case` fails validation and takes the whole
-   * layer down with it, which presents as points that simply never draw. So the
-   * fade runs for every point and the endpoint decides whether it goes anywhere:
-   * 1 → 0 for a feature with a pad, 1 → 1 for everything else.
-   */
+  'case',
+  ['coalesce', ['get', 'hasFootprint'], false],
+  0,
+  1,
+];
+
+/**
+ * The front line fades in as the pad it stands for fades out of legibility.
+ *
+ * The crossover is z18: below it the pad is a smudge and the line is what
+ * reads, above it the pad itself is big enough to see and the line steps
+ * aside. `zoom` has to be the direct input to a top-level `interpolate` —
+ * MapLibre rejects it wrapped in anything else, which fails the whole layer
+ * silently rather than just this expression.
+ */
+const FRONT_OPACITY: ExpressionSpecification = [
   'interpolate',
   ['linear'],
   ['zoom'],
   17,
   1,
-  18.5,
-  ['case', ['coalesce', ['get', 'hasFootprint'], false], 0, 1],
+  18,
+  0,
 ];
 
 /**
@@ -130,6 +185,7 @@ const POINT_OPACITY: ExpressionSpecification = [
 export function derivedLayers(): LayerSpecification[] {
   const isCorridor: ExpressionSpecification = ['==', ['get', 'derived'], 'corridor'];
   const isFootprint: ExpressionSpecification = ['==', ['get', 'derived'], 'footprint'];
+  const isFront: ExpressionSpecification = ['==', ['get', 'derived'], 'front'];
   const isCentreline: ExpressionSpecification = ['==', ['get', 'derived'], 'centreline'];
 
   return [
@@ -161,6 +217,15 @@ export function derivedLayers(): LayerSpecification[] {
         ],
       },
     },
+    /*
+     * No outline. A corridor is a drawing aid, not a boundary anyone has
+     * actually drawn, and a stroke around it read as a claim about where the
+     * fairway stops that the app has no business making. The fill alone says
+     * "the room this shot has" without pretending to a precision it doesn't
+     * have — and at the target end, where the corridor now rounds to the
+     * same radius as Circle 1, a stroke would have cut a visible seam across
+     * a ring the map is already drawing there.
+     */
     {
       id: 'derived-corridor',
       type: 'fill',
@@ -173,56 +238,83 @@ export function derivedLayers(): LayerSpecification[] {
         'fill-opacity': ['case', selected, 0.8, 0.5],
       },
     },
-    {
-      id: 'derived-corridor-outline',
-      type: 'line',
-      source: DERIVED_SOURCE,
-      filter: isCorridor,
-      layout: { 'line-join': 'round' },
-      paint: {
-        'line-color': selectableColor('stroke'),
-        'line-width': 1,
-        'line-opacity': 0.6,
-        'line-dasharray': [3, 2],
-      },
-    },
     /*
-     * The centreline, cased like any other vector.
+     * The centreline, cased like any other vector, and always dashed.
      *
-     * Dashed until the designer bends it. A straight line is a consequence of
-     * where the tee and the pin are; a shaped one is a decision, and the two
-     * should not look alike.
+     * Always: a fairway is a drawing aid the app worked out, not a thing on the
+     * ground, and it should say so whether or not anybody has bent it. It used
+     * to go solid once shaped, which put the two most similar-looking marks on
+     * the map — a routed fairway and a drawn path — one keystroke apart.
+     *
+     * Butt caps, not round: round caps swell each dash into a lozenge and close
+     * the gaps at this width.
      */
     {
       id: 'derived-centreline-casing',
       type: 'line',
       source: DERIVED_SOURCE,
       filter: isCentreline,
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': CASING_COLOR, 'line-width': LINE_CASING_WIDTH },
+      layout: { 'line-join': 'round', 'line-cap': 'butt' },
+      paint: {
+        'line-color': CASING_COLOR,
+        'line-width': CENTRELINE_CASING_WIDTH,
+        'line-dasharray': casingDash(CENTRELINE_DASH, CASING_RATIO),
+      },
     },
     {
       id: 'derived-centreline',
       type: 'line',
       source: DERIVED_SOURCE,
       filter: isCentreline,
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      layout: { 'line-join': 'round', 'line-cap': 'butt' },
       paint: {
         'line-color': selectableColor('stroke'),
-        'line-width': LINE_WIDTH,
-        'line-dasharray': ['case', ['get', 'shaped'], ['literal', [1, 0]], ['literal', [3, 2]]],
+        'line-width': CENTRELINE_WIDTH,
+        'line-dasharray': [...CENTRELINE_DASH],
+      },
+    },
+    /*
+     * The front line: what stands for a pad before it is big enough to see.
+     *
+     * A single stroke along the pad's own front edge — front-left corner to
+     * front-right, exactly the tee line [RULES] measures from — rather than a
+     * dot, so that even the substitute marker is a real measurement rather
+     * than an arbitrary circle. Solid, not dashed: like the pad itself, this
+     * is a physical edge, not a drawing aid.
+     */
+    {
+      id: 'derived-front-casing',
+      type: 'line',
+      source: DERIVED_SOURCE,
+      filter: isFront,
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: {
+        'line-color': CASING_COLOR,
+        'line-width': CENTRELINE_CASING_WIDTH,
+        'line-opacity': FRONT_OPACITY,
       },
     },
     {
-      id: 'derived-footprint',
-      type: 'fill',
+      id: 'derived-front',
+      type: 'line',
       source: DERIVED_SOURCE,
-      filter: isFootprint,
+      filter: isFront,
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: {
-        'fill-color': selectableColor('fill'),
-        'fill-opacity': ['case', selected, 0.95, 0.75],
+        'line-color': selectableColor('stroke'),
+        'line-width': CENTRELINE_WIDTH,
+        'line-opacity': FRONT_OPACITY,
       },
     },
+    /*
+     * A tee pad is solid ground, not an annotation, so it is drawn as one:
+     * an opaque fill and nothing else. No coloured outline — the fill's own
+     * edge already is the pad's edge — and the fill stays fully opaque
+     * whether or not it is selected, so selection reads entirely from its
+     * colour (white to accent) rather than from a stroke appearing on top of
+     * it. The casing stays: against sand or bleached grass a solid pad can
+     * still lose its edge without the dark ring underneath it.
+     */
     {
       id: 'derived-footprint-casing',
       type: 'line',
@@ -232,15 +324,11 @@ export function derivedLayers(): LayerSpecification[] {
       paint: { 'line-color': CASING_COLOR, 'line-width': ['case', selected, 5, 3.5] },
     },
     {
-      id: 'derived-footprint-outline',
-      type: 'line',
+      id: 'derived-footprint',
+      type: 'fill',
       source: DERIVED_SOURCE,
       filter: isFootprint,
-      layout: { 'line-join': 'round' },
-      paint: {
-        'line-color': selectableColor('stroke'),
-        'line-width': ['case', selected, 2.5, 1.5],
-      },
+      paint: { 'fill-color': selectableColor('fill'), 'fill-opacity': 1 },
     },
   ];
 }
@@ -270,13 +358,26 @@ function basketLayer(
 }
 
 export function featureLayers(): LayerSpecification[] {
+  const isArea: ExpressionSpecification = ['==', ['geometry-type'], 'Polygon'];
+  /*
+   * Boundaries are split out rather than styled by a `case` inside one layer.
+   *
+   * `line-dasharray` takes no data-driven expression — MapLibre accepts only a
+   * constant or a zoom function — so "dashed for one kind, solid for the rest"
+   * cannot be written as a paint expression at all. Two filtered layers is the
+   * supported way to say it, and the filters are exact complements so nothing
+   * is drawn twice or missed.
+   */
+  const isPlainArea: ExpressionSpecification = ['all', isArea, ['!', isBoundary]];
+  const isBoundaryArea: ExpressionSpecification = ['all', isArea, isBoundary];
+
   return [
     // --- Areas. Fill first so outlines sit on top of their own fill.
     {
       id: 'features-polygon-fill',
       type: 'fill',
       source: FEATURES_SOURCE,
-      filter: ['==', ['geometry-type'], 'Polygon'],
+      filter: isPlainArea,
       paint: {
         'fill-color': selectableColor('fill'),
         'fill-opacity': ['case', selected, 0.9, 0.7],
@@ -286,7 +387,7 @@ export function featureLayers(): LayerSpecification[] {
       id: 'features-polygon-casing',
       type: 'line',
       source: FEATURES_SOURCE,
-      filter: ['==', ['geometry-type'], 'Polygon'],
+      filter: isPlainArea,
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: { 'line-color': CASING_COLOR, 'line-width': LINE_CASING_WIDTH },
     },
@@ -294,9 +395,35 @@ export function featureLayers(): LayerSpecification[] {
       id: 'features-polygon-stroke',
       type: 'line',
       source: FEATURES_SOURCE,
-      filter: ['==', ['geometry-type'], 'Polygon'],
+      filter: isPlainArea,
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: { 'line-color': selectableColor('stroke'), 'line-width': LINE_WIDTH },
+    },
+
+    // The property boundary: no fill, a thin dotted outline. See BOUNDARY_DASH.
+    {
+      id: 'features-boundary-casing',
+      type: 'line',
+      source: FEATURES_SOURCE,
+      filter: isBoundaryArea,
+      layout: { 'line-join': 'round', 'line-cap': 'butt' },
+      paint: {
+        'line-color': CASING_COLOR,
+        'line-width': BOUNDARY_CASING_WIDTH,
+        'line-dasharray': casingDash(BOUNDARY_DASH, CASING_RATIO),
+      },
+    },
+    {
+      id: 'features-boundary-stroke',
+      type: 'line',
+      source: FEATURES_SOURCE,
+      filter: isBoundaryArea,
+      layout: { 'line-join': 'round', 'line-cap': 'butt' },
+      paint: {
+        'line-color': selectableColor('stroke'),
+        'line-width': BOUNDARY_WIDTH,
+        'line-dasharray': [...BOUNDARY_DASH],
+      },
     },
 
     /*
@@ -463,9 +590,12 @@ export function vertexLayers(): LayerSpecification[] {
 /**
  * Layers that should respond to clicks, topmost first.
  *
- * `derived-footprint` is in here despite being derived geometry, because a tee
- * pad *is* its tee — it carries the tee's id and the point beneath it is not
- * drawn. It sits last so that anything standing on a pad still wins the click.
+ * `derived-footprint` and `derived-front` are in here despite being derived
+ * geometry, because a tee pad *is* its tee — they carry the tee's own id, and
+ * the point beneath both is not drawn. They sit last so that anything
+ * standing on a pad still wins the click. The two never overlap in visibility
+ * — `FRONT_OPACITY` and the footprint's own size cross over at the same
+ * zoom — so their order relative to each other does not matter.
  *
  * `derived-centreline` is not: a fairway with no stored feature has no id to
  * select, and clicking one should reach whatever is under it.
@@ -476,8 +606,36 @@ export const INTERACTIVE_LAYERS = [
   'features-point',
   'features-line-stroke',
   'features-polygon-fill',
+  /*
+   * A boundary has no fill, so its outline is the only thing to click, and the
+   * casing is used rather than the stroke because it is the wider of the two —
+   * a 1.25 px dotted line is not a target anybody can hit. It carries the same
+   * feature id, so which one answers makes no difference to the caller.
+   */
+  'features-boundary-casing',
+  'derived-front',
   'derived-footprint',
 ] as const;
+
+/** The layers that stand for a drawn area, whichever way it is styled. */
+const AREA_LAYERS: readonly string[] = ['features-polygon-fill', 'features-boundary-casing'];
+
+/**
+ * Layers a drag can pick a feature up by. Everything interactive except areas.
+ *
+ * An area is usually the biggest thing on the screen — a property boundary can
+ * cover the entire viewport — so making its fill a drag target means the map
+ * stops panning. You go to push the view across and take the boundary with you
+ * instead, and the one gesture used constantly loses to one used almost never.
+ * Areas are still selectable, still reshapeable by their vertex handles; they
+ * just do not slide under the cursor.
+ *
+ * `derived-footprint` stays: a tee pad is drawn as an area but it *is* its tee,
+ * a point a few metres across, and dragging the pad is how you move the tee.
+ */
+export const DRAGGABLE_LAYERS = INTERACTIVE_LAYERS.filter(
+  (layer) => !AREA_LAYERS.includes(layer),
+);
 
 /**
  * Convert the document's features into GeoJSON for MapLibre.

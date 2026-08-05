@@ -160,7 +160,7 @@ export interface FeatureColor {
 const CASING = 'rgb(8 9 11 / 0.85)';
 
 /**
- * Every feature is white, for now.
+ * Every feature is white, for now — except out of bounds.
  *
  * A deliberate monochrome pass. The palette below had a hue per kind, which
  * reads well on a legend and badly on satellite imagery: fifteen saturated
@@ -177,6 +177,22 @@ const WHITE = '#ffffff';
 const WHITE_FILL = 'rgb(255 255 255 / 0.18)';
 const mono = { stroke: WHITE, fill: WHITE_FILL, casing: CASING };
 
+/**
+ * Out of bounds is the one exception, and it earns it.
+ *
+ * Red for OB is not a styling choice this project gets to make — it is what OB
+ * looks like on every course map, every tournament handout and every rulebook
+ * diagram a player has ever seen. Drawing it in the same white as a path would
+ * be withholding the one piece of information the map can convey without a
+ * label, on the only kind of area that costs a throw to land in.
+ *
+ * The other regulated areas stay white for now. They are penalties too, but
+ * they have no established colour, and inventing three more would put the map
+ * back where the monochrome pass started.
+ */
+const RED_FILL = 'rgb(255 107 100 / 0.22)';
+const ob = { stroke: primitive.red[400], fill: RED_FILL, casing: CASING };
+
 export const feature = {
   tee: mono,
   target: mono,
@@ -185,7 +201,7 @@ export const feature = {
   mando: mono,
   dropzone: mono,
 
-  ob: mono,
+  ob,
   hazard: mono,
   casualArea: mono,
   requiredRelief: mono,

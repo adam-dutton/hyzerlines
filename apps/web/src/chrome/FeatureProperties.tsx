@@ -2,6 +2,7 @@ import { TextField, shortcutFor } from '@hyzerlines/design';
 import {
   KIND_DEFINITIONS,
   assignToHole,
+  featureArea,
   holeName,
   holeOf,
   moveToFront,
@@ -13,7 +14,7 @@ import {
   type Op,
 } from '@hyzerlines/core';
 
-import { formatDistance, toFeet, toMeters, type UnitSystem } from '../units';
+import { formatArea, formatDistance, toFeet, toMeters, type UnitSystem } from '../units';
 import { Row, rowLabelClass, sectionClass, selectClass } from './propertyRow';
 
 /**
@@ -189,7 +190,9 @@ function HoleAssignment({
   feature: Feature;
   onOp: (op: Op) => void;
 }) {
-  if (feature.kind !== 'tee' && feature.kind !== 'target') return null;
+  if (feature.kind !== 'tee' && feature.kind !== 'target') {
+    return <HoleScope course={course} feature={feature} onOp={onOp} />;
+  }
 
   const list = feature.kind === 'tee' ? 'teeIds' : 'targetIds';
   const hole = holeOf(course, feature.id);
@@ -250,6 +253,52 @@ function HoleAssignment({
   );
 }
 
+/**
+ * Which hole an OB line, a hazard or a path is *about*.
+ *
+ * Scope, not membership — a different claim from a tee being one of hole 4's
+ * tees. An OB boundary at the course level and one on a single hole are the same
+ * shape seen at different ranges, and saying which lets the checks, the exports
+ * and eventually the per-hole views talk about the right subset.
+ *
+ * A single `setFeatureHole`, because nothing else has to move: the hole's arrays
+ * list only tees and targets, so there is no second field to keep in step.
+ */
+function HoleScope({
+  course,
+  feature,
+  onOp,
+}: {
+  course: Course;
+  feature: Feature;
+  onOp: (op: Op) => void;
+}) {
+  if (course.holes.length === 0) return null;
+  const holes = [...course.holes].sort((a, b) => a.number - b.number);
+
+  return (
+    <div className={sectionClass}>
+      <Row label="Belongs to">
+        <select
+          aria-label="Hole this belongs to"
+          value={feature.holeId ?? ''}
+          onChange={(e) =>
+            onOp({ type: 'setFeatureHole', id: feature.id, holeId: e.target.value || null })
+          }
+          className={selectClass}
+        >
+          <option value="">The whole course</option>
+          {holes.map((hole) => (
+            <option key={hole.id} value={hole.id}>
+              {holeName(hole)}
+            </option>
+          ))}
+        </select>
+      </Row>
+    </div>
+  );
+}
+
 export function FeatureProperties({
   course,
   feature,
@@ -287,13 +336,30 @@ export function FeatureProperties({
 
       <HoleAssignment course={course} feature={feature} onOp={onOp} />
 
-      {/* Measured, not entered. Shown for lines because a fairway's length is
-          the number a designer is actually reaching for. */}
+      {/* Measured, not entered. A line's length and an area's acreage are the
+          numbers a designer is actually reaching for. */}
       {feature.geometry.type === 'line' && (
         <div className={sectionClass}>
           <Row label="Length">
             <span className="font-mono text-xs tabular-nums text-text-primary">
               {formatDistance(pathLength(feature.geometry.coordinates), units)}
+            </span>
+          </Row>
+        </div>
+      )}
+      {feature.geometry.type === 'polygon' && (
+        <div className={sectionClass}>
+          <Row label="Area">
+            <span className="font-mono text-xs tabular-nums text-text-primary">
+              {formatArea(featureArea(feature) ?? 0, units)}
+            </span>
+          </Row>
+          <Row label="Perimeter">
+            <span className="font-mono text-xs tabular-nums text-text-primary">
+              {formatDistance(
+                pathLength([...feature.geometry.coordinates, feature.geometry.coordinates[0]!]),
+                units,
+              )}
             </span>
           </Row>
         </div>

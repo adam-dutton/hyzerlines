@@ -145,9 +145,17 @@ export function addBasketIcons(map: {
 }): void {
   const variants: [string, string, string][] = [
     [BASKET_ICON, featureColors.target.stroke, featureColors.target.casing],
-    // Selection inverts the casing to white, exactly as it does for every other
-    // feature, so a selected basket is unmistakable without changing its hue.
-    [BASKET_ICON_SELECTED, featureColors.target.stroke, featureColors.handle.stroke],
+    /*
+     * Selected: the accent, stroke and casing both, exactly as every other
+     * vector on the map does it.
+     *
+     * It used to keep the feature colour and invert the casing to white, which
+     * worked while baskets were red. The monochrome pass made every feature
+     * white and left this as a white glyph cased in white — invisible as a
+     * casing, identical to the unselected glyph, so selecting a hole lit up its
+     * tee, its corridor and its number and left the basket looking untouched.
+     */
+    [BASKET_ICON_SELECTED, featureColors.selected.stroke, featureColors.selected.casing],
   ];
 
   for (const [id, color, casing] of variants) {

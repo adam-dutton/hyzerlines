@@ -39,6 +39,48 @@ export function Row({ label, children }: { label: string; children: ReactNode })
   );
 }
 
+export const checkboxClass = [
+  'h-4 w-4 rounded border-border-default bg-surface-inset accent-accent-solid',
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+  'disabled:opacity-40',
+].join(' ');
+
+/**
+ * A labelled checkbox row.
+ *
+ * `indent` is for a switch that only means anything while its master is on —
+ * the parts of a group sit under the switch that governs them, and go disabled
+ * rather than disappearing so the group keeps its shape and you can see what
+ * turning the master back on would restore.
+ */
+export function ToggleRow({
+  label,
+  checked,
+  disabled = false,
+  indent = false,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  indent?: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <div className={`flex items-center justify-between gap-3 py-1 ${indent ? 'pl-3' : ''}`}>
+      <span className={disabled ? 'text-xs text-text-disabled' : rowLabelClass}>{label}</span>
+      <input
+        type="checkbox"
+        aria-label={label}
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className={checkboxClass}
+      />
+    </div>
+  );
+}
+
 /** A section heading, for panels with more than one group of rows. */
 export function SectionTitle({ children }: { children: ReactNode }) {
   return (

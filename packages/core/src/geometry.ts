@@ -199,8 +199,10 @@ export function footprintOf(
  *                   thing you throw from, because at the moment of release that
  *                   is exactly how much room there is.
  *
- *   at the target   10 m, the Circle 1 radius from [RULES] 806.01.A. The
- *                   corridor arrives as wide as the putting circle is deep.
+ *   at the target   20 m — Circle 1, across. [RULES] 806.01.A puts its radius
+ *                   at 10 m, so the corridor arrives exactly as wide as the
+ *                   putting circle and its edges land on the ring the map
+ *                   already draws around every target.
  *
  * The interpolation between them is a designer's convenience, nothing more. It
  * exists so a drawn line reads as ground rather than as a hairline, and every
@@ -214,8 +216,14 @@ export const FAIRWAY_CORRIDOR = {
    * legitimately be narrow, but a metre-wide corridor stops being drawable.
    */
   minimumWidthAtTeeM: 1,
-  /** Circle 1's radius — see TARGET_CIRCLES in pdga.ts. */
-  widthAtTargetM: TARGET_CIRCLES.find((c) => c.id === 'c1')!.radiusM,
+  /**
+   * Circle 1, across — see TARGET_CIRCLES in pdga.ts.
+   *
+   * A width, so it is the diameter rather than the published radius. Reading
+   * the 10 m as a width instead put the corridor's edge halfway to a ring drawn
+   * on the same map, which read as the taper failing rather than as a decision.
+   */
+  widthAtTargetM: TARGET_CIRCLES.find((c) => c.id === 'c1')!.radiusM * 2,
   /**
    * How far a dogleg's outside corner may spike past the corridor width.
    *
@@ -268,6 +276,9 @@ const len = (v: Local): number => Math.hypot(v[0], v[1]);
 /** Left-hand normal of a unit direction: rotate 90° counter-clockwise. */
 const leftNormal = (d: Local): Local => [-d[1], d[0]];
 
+/** Points along the target-end cap's semicircle. Smooth enough to read as round. */
+const TARGET_CAP_SEGMENTS = 32;
+
 /**
  * The area a fairway covers, from the line down its middle.
  *
@@ -278,9 +289,14 @@ const leftNormal = (d: Local): Local => [-d[1], d[0]];
  * short one — the corridor would balloon in the first ten metres of a
  * two-hundred-metre hole and then run parallel.
  *
- * Ends are cut square. A round cap would push the corridor past the target and
- * behind the tee line, both of which are places the hole demonstrably is not.
+ * The tee end is cut square, on the tee line — pushing it past that line would
+ * put the corridor somewhere the hole demonstrably is not. **The target end is
+ * rounded** instead, to the same radius as its own half-width, which by
+ * default is Circle 1's own 10 m: the corridor's cap and the ring the map
+ * already draws around the target become the same curve, so the fill runs
+ * into the circle rather than being cut off short of it.
  *
+
  * Returns null for a centreline that has no length — two identical points is a
  * click, not a fairway.
  */
@@ -364,9 +380,38 @@ export function fairwayCorridor(
     right.push([p[0] - offset[0], p[1] - offset[1]]);
   }
 
-  // Down one side and back the other. Open ring — the closing edge is implied,
-  // matching how polygon features are stored.
-  const ring = [...left, ...right.slice().reverse()].map((local) => fromLocal(plane, local));
+  /*
+   * The rounded cap at the target end.
+   *
+   * `left[last]` and `right[last]` are already exactly `halfAtEnd` from the
+   * target, on either side of the last segment's direction — that offset was
+   * computed in the loop above like any other vertex's. The arc between them
+   * is parametrised in the plane those two vectors span: `cos` recovers the
+   * left offset, `sin` sweeps through `forward`, which is what makes the
+   * bulge pass through the target rather than fold back into the corridor.
+   */
+  const halfAtEnd = halfWidthAt(points.length - 1);
+  const capCentre = points[points.length - 1]!;
+  const forward = directions[directions.length - 1]!;
+  const leftAtEnd = leftNormal(forward);
+
+  const arc: Local[] = [];
+  for (let i = 1; i < TARGET_CAP_SEGMENTS; i++) {
+    const phi = (Math.PI * i) / TARGET_CAP_SEGMENTS;
+    const cos = Math.cos(phi);
+    const sin = Math.sin(phi);
+    arc.push([
+      capCentre[0] + halfAtEnd * (leftAtEnd[0] * cos + forward[0] * sin),
+      capCentre[1] + halfAtEnd * (leftAtEnd[1] * cos + forward[1] * sin),
+    ]);
+  }
+
+  // Down one side, round the target, back up the other. Open ring — the
+  // closing edge (the square tee-end cap) is implied, matching how polygon
+  // features are stored.
+  const ring = [...left, ...arc, ...right.slice().reverse()].map((local) =>
+    fromLocal(plane, local),
+  );
 
   return { ring, widths, selfIntersects: ringSelfIntersects(ring) };
 }

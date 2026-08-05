@@ -314,7 +314,7 @@ describe('design checks', () => {
       }
     };
 
-    widen(60);
+    widen(150);
     expect(checkCourse(course).map((f) => f.ruleId)).toContain(
       'structural.corridor-self-intersects',
     );

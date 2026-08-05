@@ -435,6 +435,7 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
       'tool.path': () => setTool('path'),
       'tool.mando': () => setTool('mando'),
       'tool.ob': () => setTool('ob'),
+      'tool.boundary': () => setTool('boundary'),
       'edit.cancel': () => {
         // Innermost first: abandon the shape, then drop the tool, then the
         // selection. Each Escape undoes exactly one level of intent.

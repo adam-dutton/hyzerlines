@@ -1,4 +1,5 @@
 import type { Course } from './schema.js';
+import type { Display } from './display.js';
 import type { View } from './geo.js';
 import type { Feature, Geometry } from './features.js';
 import type { Hole } from './holes.js';
@@ -53,6 +54,11 @@ export type Op =
   | { type: 'updateLayout'; id: string; changes: Partial<Omit<Layout, 'id'>> }
   | { type: 'setActiveLayout'; id: string | null }
   | { type: 'setDismissed'; ruleIds: string[] }
+  /**
+   * Turn drawing aids on and off. Partial: a panel toggling one checkbox should
+   * not have to restate the other six, and the inverse restores all of them.
+   */
+  | { type: 'setDisplay'; changes: Partial<Display> }
   /**
    * Several edits that are one action.
    *
@@ -350,6 +356,16 @@ export function applyOp(course: Course, op: Op): ApplyResult {
       return result(
         { ...course, dismissedRules: op.ruleIds },
         { type: 'setDismissed', ruleIds: course.dismissedRules },
+        undoable,
+      );
+
+    case 'setDisplay':
+      return result(
+        { ...course, display: { ...course.display, ...op.changes } },
+        // The whole previous object, not just the keys that changed: undo has
+        // to land on the state that existed, and a partial inverse would leave
+        // whatever a coalesced run of toggles happened to set in between.
+        { type: 'setDisplay', changes: course.display },
         undoable,
       );
 

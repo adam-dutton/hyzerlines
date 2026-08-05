@@ -4,7 +4,7 @@ import { createFeature, type Feature } from './features.js';
 import { createHole } from './holes.js';
 import { createLayout, createPlay } from './layouts.js';
 import { createPair } from './pairs.js';
-import { distance } from './measure.js';
+import { distance, pathLength } from './measure.js';
 import { applyOp } from './ops.js';
 import { createCourse, type Course } from './schema.js';
 import { CourseStore } from './store.js';
@@ -133,7 +133,7 @@ describe('corridor widths', () => {
 
   it('starts at the tee pad width and ends at Circle 1', () => {
     const tee = createFeature('tee', point(AT), { props: { width: 4 } });
-    expect(corridorWidthsFor(fairwayWith({}), tee)).toEqual({ atStart: 4, atEnd: 10 });
+    expect(corridorWidthsFor(fairwayWith({}), tee)).toEqual({ atStart: 4, atEnd: 20 });
   });
 
   it('falls back to the typical pad width when the tee has none', () => {
@@ -159,7 +159,7 @@ describe('corridor widths', () => {
 
     const [fairway, ...rest] = courseFairways(course);
     expect(rest).toHaveLength(0);
-    expect(fairway!.corridor!.widths).toEqual({ atStart: 6, atEnd: 10 });
+    expect(fairway!.corridor!.widths).toEqual({ atStart: 6, atEnd: 20 });
     expect(fairway!.corridor!.selfIntersects).toBe(false);
   });
 });
@@ -179,8 +179,20 @@ describe('fairways are automatic', () => {
     expect(fairway!.fairwayId).toBeNull();
     expect(course.features.some((f) => f.kind === 'fairway')).toBe(false);
 
-    // Tee front to target, which is exactly what the pair measures.
-    expect(fairway!.line).toEqual([point(AT).coordinates, point(north(90)).coordinates]);
+    /*
+     * Tee front to target, in three equal segments rather than one — see
+     * `defaultFairwayLine`. Checked by distance rather than by exact
+     * coordinates: the interior points are computed on the local tangent
+     * plane, and asserting the literal floats would pin an implementation
+     * detail rather than the property that actually matters.
+     */
+    expect(fairway!.line[0]).toEqual(point(AT).coordinates);
+    expect(fairway!.line.at(-1)).toEqual(point(north(90)).coordinates);
+    expect(fairway!.line.length).toBe(4);
+    expect(pathLength(fairway!.line)).toBeCloseTo(
+      distance(point(AT).coordinates, point(north(90)).coordinates),
+      6,
+    );
     expect(fairway!.targetId).toBe(pinA.id);
   });
 

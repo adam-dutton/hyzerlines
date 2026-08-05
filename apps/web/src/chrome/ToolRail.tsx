@@ -112,6 +112,20 @@ function PathIcon() {
   );
 }
 
+function BoundaryIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
+      <path
+        d="M2.2 4.5 7.5 2l5.3 2.5v6L7.5 13 2.2 10.5Z"
+        fill="var(--hz-feature-boundary-fill)"
+        stroke="var(--hz-feature-boundary-stroke)"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function ObIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
@@ -147,6 +161,7 @@ const TOOLS: { kind: FeatureKind; icon: () => React.ReactElement }[] = [
   { kind: 'path', icon: PathIcon },
   { kind: 'mando', icon: MandoIcon },
   { kind: 'ob', icon: ObIcon },
+  { kind: 'boundary', icon: BoundaryIcon },
 ];
 
 const Divider = () => <span className="mx-1 h-5 w-px bg-border-subtle" aria-hidden="true" />;

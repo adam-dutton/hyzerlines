@@ -94,12 +94,20 @@ rather than as a circle, and the 3 m bullseye is league convention that appears 
 no PDGA document at all. Each is labelled with which it is.
 
 The same discipline applies to shapes. The fairway corridor drawn around a
-centreline runs from the tee pad's own width to Circle 1's 10 m at the target —
-two published figures — but **the taper between them is the app's, not the
-PDGA's**, which publishes no fairway width at all. It is a drawing aid anchored to
-real numbers, said in exactly those words in
+centreline runs from the tee pad's own width to the width of Circle 1 at the
+target — two published figures — but **the taper between them is the app's, not
+the PDGA's**, which publishes no fairway width at all. It is a drawing aid
+anchored to real numbers, said in exactly those words in
 [`docs/PDGA.md`](docs/PDGA.md#derived-geometry--what-is-sourced-and-what-is-ours),
 and every width it produces is overridable.
+
+Areas work the same way. A drawn property boundary is measured with the spherical
+excess formula rather than a flat approximation — the difference is invisible over
+one hole and real over a whole site — and compared against the PDGA's acreage
+chart as a **range**, since that chart publishes three legitimate course scales
+and the app cannot know which one you are building. The comparison needs a foliage
+density, which is the one thing about a property that cannot be seen from
+imagery, so you set it and nothing is assumed if you do not.
 
 Checks are advisory and every one is dismissible. `packages/core/src/pdga.test.ts`
 restates the published figures independently of the tables the code reads, so a
@@ -137,6 +145,20 @@ hole on the course, invisibly. It faces down the fairway's first segment rather
 than at the pin — on a dogleg those differ, and players stand facing the gap they
 are throwing into.
 
+Every fairway is drawn **dashed**, routed or not, because none of it is on the
+ground. A solid line is reserved for things somebody actually drew. And all of it
+switches off — per hole, or course-wide from the inspector, lines and corridors
+separately, and the same for the three rings around a basket. Those switches live
+in the document, not in the browser: turning the corridors off to read the canopy
+underneath is a decision about how the course is presented, and it should survive
+being sent to somebody.
+
+Colour is spent sparingly. Everything is white over imagery except **out of
+bounds**, which is red — not a styling choice this project gets to make, but what
+OB looks like on every course map a player has ever seen. A property boundary is
+the opposite: a thin dotted outline and no fill at all, because a translucent
+wash over the whole site dims the terrain you are reading it from.
+
 All of it is computed in metres on a local tangent plane rather than in degrees.
 Offsetting a line in degrees gives you a corridor 40% fatter north-to-south than
 east-to-west at Minneapolis latitude — the same error that makes Web Mercator
@@ -158,11 +180,13 @@ modifier to reach for. Wheel zoom anchors to the pointer, and opening a course
 frames what is drawn rather than restoring wherever you last stopped scrolling.
 
 Tool keys (`T` tee, `B` basket, `P` path, `O` out of bounds…) place features.
-Anything drawn can be dragged to move it; dragging a tee or basket brings its
-fairway along. Select a hole, a line or an area and it grows handles: drag one to
-move a vertex, click a hollow one between two vertices to insert, `Alt`-click to
-remove. Doing that to a hole's fairway is how a straight shot becomes a routed
-one.
+Points and lines can be dragged to move them, and dragging a tee or basket brings
+its fairway along. Areas cannot: a property boundary can cover the whole
+viewport, and a map you can no longer pan is a worse trade than an area you
+reshape by its handles. Select a hole, a line or an area and it grows handles:
+drag one to move a vertex, click a hollow one between two vertices to insert,
+`Alt`-click to remove. Doing that to a hole's fairway is how a straight shot
+becomes a routed one.
 
 Clicking anything belonging to a hole selects the **hole**; clicking again drills
 into the feature.

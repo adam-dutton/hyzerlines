@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { displaySchema } from './display.js';
 import { viewSchema, type View } from './geo.js';
 import { featureSchema, type Feature } from './features.js';
 import { holeSchema } from './holes.js';
@@ -58,6 +59,14 @@ export const courseSchema = z.object({
    * it should travel with the file to whoever reviews it.
    */
   dismissedRules: z.array(z.string()).default([]),
+
+  /**
+   * Which drawing aids the map shows. See display.ts for why it is in here.
+   *
+   * Additive with defaults, so a document written before this existed parses
+   * with everything on and needs no migration.
+   */
+  display: displaySchema.default({}),
 });
 
 export type Course = z.infer<typeof courseSchema>;

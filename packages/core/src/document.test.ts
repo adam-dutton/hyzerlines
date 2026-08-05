@@ -246,8 +246,26 @@ describe('CourseStore', () => {
     expect(store.getSnapshot().dirty).toBe(false);
     store.dispatch({ type: 'setName', name: 'x' });
     expect(store.getSnapshot().dirty).toBe(true);
-    store.markClean();
+    store.markClean(store.getSnapshot().course);
     expect(store.getSnapshot().dirty).toBe(false);
+  });
+
+  /*
+   * A save is asynchronous and editing does not stop while one is in flight.
+   * This is a real edit being lost, not a bookkeeping nicety: the autosave is
+   * driven by `dirty`, so a document wrongly marked clean is never written
+   * again, and the edit lives only until the tab reloads. It cost an afternoon
+   * as a par override that vanished on refresh.
+   */
+  it('stays dirty when an edit lands while a save is in flight', () => {
+    const store = new CourseStore(createCourse());
+    store.dispatch({ type: 'setName', name: 'first' });
+    const writing = store.getSnapshot().course; // what the save was handed
+
+    store.dispatch({ type: 'setName', name: 'second' });
+    store.markClean(writing); // the older write finally lands
+
+    expect(store.getSnapshot().dirty).toBe(true);
   });
 
   it('bounds history growth', () => {

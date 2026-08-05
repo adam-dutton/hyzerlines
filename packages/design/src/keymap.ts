@@ -61,6 +61,13 @@ export const shortcuts: readonly Shortcut[] = [
   { id: 'tool.basket', label: 'Basket', keys: ['b'], scope: 'map', group: 'Tools' },
   { id: 'tool.path', label: 'Path', keys: ['p'], scope: 'map', group: 'Tools' },
   { id: 'tool.ob', label: 'Out of bounds', keys: ['o'], scope: 'map', group: 'Tools' },
+  {
+    id: 'tool.boundary',
+    label: 'Property boundary',
+    keys: ['y'],
+    scope: 'map',
+    group: 'Tools',
+  },
   { id: 'tool.mando', label: 'Mandatory', keys: ['m'], scope: 'map', group: 'Tools' },
   { id: 'tool.measure', label: 'Measure', keys: ['l'], scope: 'map', group: 'Tools' },
 

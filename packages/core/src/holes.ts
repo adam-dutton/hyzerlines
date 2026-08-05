@@ -30,6 +30,19 @@ export const holeSchema = z.object({
   teeIds: z.array(z.string()).default([]),
   /** Pin positions. Multiple for courses that rotate placements. */
   targetIds: z.array(z.string()).default([]),
+  /**
+   * Whether this hole's fairway is drawn.
+   *
+   * Per hole rather than only course-wide because the reason to turn one off is
+   * local: a hole threading a tight gap is easier to judge with the canopy
+   * visible, while the rest of the course still wants its corridors. Hiding it
+   * hides the line, the corridor and the handles that reshape them — an aid you
+   * cannot see must not be an aid you can accidentally edit.
+   *
+   * It does not delete a shaped line. A fairway the designer routed stays in the
+   * document and comes back the moment this goes on again.
+   */
+  showFairway: z.boolean().default(true),
 });
 
 export type Hole = z.infer<typeof holeSchema>;
