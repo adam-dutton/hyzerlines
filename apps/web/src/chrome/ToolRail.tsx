@@ -11,19 +11,34 @@ import type { Tool } from '../map/tools';
  * column as the course panel and pushes the usable canvas sideways, while a
  * bottom bar costs only a strip of sky.
  *
- * Navigation first, then a divider, then the things that create geometry. The
- * order within each group is the order you use them designing a hole.
+ * Navigation first, then a divider, then the things that create geometry, then
+ * a divider and undo/redo. History belongs here rather than up in the document
+ * chrome: undo is a drawing action, reached mid-gesture, and the hand is
+ * already at the rail when a placement goes wrong.
  *
  * There is no pan tool. A drag pans from every tool except Zoom, so a button
  * for it would be a button for something already happening.
  *
- * Icons are drawn in the feature's own token color, so the rail and the map
- * agree without a legend — a gold square is a tee pad in both places.
+ * ## Icons are drawn in `currentColor`
+ *
+ * They used to paint from the feature tokens, so that a gold square in the rail
+ * and a gold pad on the map were self-evidently the same thing. Two changes
+ * killed that: every feature went white in the monochrome pass, and feature
+ * tokens are deliberately theme-independent because they sit on imagery. The
+ * result was white-on-white — the entire rail invisible in the light theme —
+ * and a basket that never drew in either, because it asked for
+ * `--hz-feature-basket-stroke` and the token is named for the `target` kind.
+ *
+ * `currentColor` inherits the button's own text colour, so the icons follow the
+ * theme and the active state for free. The shapes still carry the meaning.
  */
+
+/** Rail icons are drawn on a 15-unit grid and scaled by the SVG box. */
+const ICON = 22;
 
 function SelectIcon() {
   return (
-    <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
+    <svg width={ICON} height={ICON} viewBox="0 0 15 15" aria-hidden="true">
       <path
         d="M3 2.2 11.4 7 7.6 8.1 6.2 12z"
         fill="currentColor"
@@ -38,7 +53,7 @@ function SelectIcon() {
 /** A magnifier. The sign inside follows what a click would actually do. */
 function ZoomIcon({ out }: { out: boolean }) {
   return (
-    <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
+    <svg width={ICON} height={ICON} viewBox="0 0 15 15" aria-hidden="true">
       <circle cx="6.6" cy="6.6" r="4.1" fill="none" stroke="currentColor" strokeWidth="1.3" />
       <path d="M9.7 9.7 13 13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
       <path
@@ -53,28 +68,30 @@ function ZoomIcon({ out }: { out: boolean }) {
 
 function TeeIcon() {
   return (
-    <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
+    <svg width={ICON} height={ICON} viewBox="0 0 15 15" aria-hidden="true">
       <rect
         x="2.5"
         y="5"
         width="10"
         height="5"
         rx="0.8"
-        fill="var(--hz-feature-tee-fill)"
-        stroke="var(--hz-feature-tee-stroke)"
+        fill="currentColor"
+        fillOpacity="0.25"
+        stroke="currentColor"
         strokeWidth="1.4"
       />
     </svg>
   );
 }
 
+/** A basket in side elevation: the top ring, the band, the pole. */
 function BasketIcon() {
   return (
-    <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
+    <svg width={ICON} height={ICON} viewBox="0 0 15 15" aria-hidden="true">
       <path
         d="M7.5 2.2v10.6M4 5.2h7M4.6 5.2 7.5 8l2.9-2.8"
         fill="none"
-        stroke="var(--hz-feature-basket-stroke)"
+        stroke="currentColor"
         strokeWidth="1.4"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -85,11 +102,12 @@ function BasketIcon() {
 
 function MandoIcon() {
   return (
-    <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
+    <svg width={ICON} height={ICON} viewBox="0 0 15 15" aria-hidden="true">
       <path
         d="M4 12.5V2.5l7 2.6-7 2.6"
-        fill="var(--hz-feature-mando-fill)"
-        stroke="var(--hz-feature-mando-stroke)"
+        fill="currentColor"
+        fillOpacity="0.25"
+        stroke="currentColor"
         strokeWidth="1.3"
         strokeLinejoin="round"
       />
@@ -99,11 +117,11 @@ function MandoIcon() {
 
 function PathIcon() {
   return (
-    <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
+    <svg width={ICON} height={ICON} viewBox="0 0 15 15" aria-hidden="true">
       <path
         d="M2.5 12c2.5-1 4-7.5 10-9.4"
         fill="none"
-        stroke="var(--hz-feature-path-stroke)"
+        stroke="currentColor"
         strokeWidth="1.6"
         strokeLinecap="round"
         strokeDasharray="2.6 1.8"
@@ -114,13 +132,14 @@ function PathIcon() {
 
 function BoundaryIcon() {
   return (
-    <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
+    <svg width={ICON} height={ICON} viewBox="0 0 15 15" aria-hidden="true">
       <path
         d="M2.2 4.5 7.5 2l5.3 2.5v6L7.5 13 2.2 10.5Z"
-        fill="var(--hz-feature-boundary-fill)"
-        stroke="var(--hz-feature-boundary-stroke)"
+        fill="none"
+        stroke="currentColor"
         strokeWidth="1.3"
         strokeLinejoin="round"
+        strokeDasharray="1.6 1.4"
       />
     </svg>
   );
@@ -128,17 +147,48 @@ function BoundaryIcon() {
 
 function ObIcon() {
   return (
-    <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
+    <svg width={ICON} height={ICON} viewBox="0 0 15 15" aria-hidden="true">
       <rect
         x="2.4"
         y="2.4"
         width="10.2"
         height="10.2"
         rx="1"
-        fill="var(--hz-feature-ob-fill)"
-        stroke="var(--hz-feature-ob-stroke)"
+        fill="currentColor"
+        fillOpacity="0.2"
+        stroke="currentColor"
         strokeWidth="1.4"
         strokeDasharray="2.4 1.6"
+      />
+    </svg>
+  );
+}
+
+function UndoIcon() {
+  return (
+    <svg width={ICON} height={ICON} viewBox="0 0 15 15" aria-hidden="true">
+      <path
+        d="M3 7.5h6.2a3 3 0 0 1 0 6H7M3 7.5 6 4.5M3 7.5l3 3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function RedoIcon() {
+  return (
+    <svg width={ICON} height={ICON} viewBox="0 0 15 15" aria-hidden="true">
+      <path
+        d="M12 7.5H5.8a3 3 0 0 0 0 6H8M12 7.5 9 4.5M12 7.5l-3 3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
@@ -164,12 +214,16 @@ const TOOLS: { kind: FeatureKind; icon: () => React.ReactElement }[] = [
   { kind: 'boundary', icon: BoundaryIcon },
 ];
 
-const Divider = () => <span className="mx-1 h-5 w-px bg-border-subtle" aria-hidden="true" />;
+const Divider = () => <span className="mx-1 h-7 w-px bg-border-subtle" aria-hidden="true" />;
 
 export function ToolRail({
   tool,
   invertZoom,
   onToolChange,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
 }: {
   /**
    * The *effective* tool, not the chosen one.
@@ -182,6 +236,10 @@ export function ToolRail({
   /** Alt is down, so the zoom tool would zoom out. Mirrors the cursor. */
   invertZoom: boolean;
   onToolChange: (tool: Tool) => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
 }) {
   return (
     <div
@@ -192,6 +250,7 @@ export function ToolRail({
         <IconButton
           label="Select"
           command="tool.select"
+          size="lg"
           tooltipSide="top"
           active={tool === 'select'}
           onClick={() => onToolChange('select')}
@@ -202,6 +261,7 @@ export function ToolRail({
             tooltip would say "press this", which is not what it does. */}
         <IconButton
           label="Zoom — hold Z, drag a region, Alt to zoom out"
+          size="lg"
           tooltipSide="top"
           active={tool === 'zoom'}
           onClick={() => onToolChange('zoom')}
@@ -218,6 +278,7 @@ export function ToolRail({
             {...(KIND_DEFINITIONS[kind].command
               ? { command: KIND_DEFINITIONS[kind].command }
               : {})}
+            size="lg"
             tooltipSide="top"
             active={tool === kind}
             onClick={() => onToolChange(kind)}
@@ -225,6 +286,29 @@ export function ToolRail({
             <Icon />
           </IconButton>
         ))}
+
+        <Divider />
+
+        <IconButton
+          label="Undo"
+          command="edit.undo"
+          size="lg"
+          tooltipSide="top"
+          disabled={!canUndo}
+          onClick={onUndo}
+        >
+          <UndoIcon />
+        </IconButton>
+        <IconButton
+          label="Redo"
+          command="edit.redo"
+          size="lg"
+          tooltipSide="top"
+          disabled={!canRedo}
+          onClick={onRedo}
+        >
+          <RedoIcon />
+        </IconButton>
       </Panel>
     </div>
   );

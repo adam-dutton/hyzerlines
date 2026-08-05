@@ -587,6 +587,104 @@ asked. A park split by a road is the real case and it is usually one density.
 
 ---
 
+## PR 8a — the chrome, rearranged
+
+A layout pass, from using the thing on a real nine-hole course rather than on a
+two-feature fixture. Split from the panel-internals work that follows it,
+because a diff that moves every panel _and_ rewrites the inside of each one is
+one nobody can review.
+
+### Where things went
+
+**The course panel is top left, where its name already was.** The name used to
+sit alone in a card at the top of the screen while everything else about the
+course lived in the right-hand inspector — one thing described in two places, a
+screen apart, the second only visible when nothing was selected. Now the
+inspector's course view _is_ the top-left panel and the name is its heading: an
+input that looks like a title, which is what it always was. The holes list
+keeps its column beneath it, both the same width.
+
+**The properties panel is top right and shows only a selection.** It had three
+modes and now has two — a feature, or a hole. The course was never something
+you selected, and with it gone there is nothing to show when nothing is
+selected, so the panel goes away rather than sitting there empty. The old
+argument for keeping it always-present was about a workspace where it was the
+only inspector; the course column is now the constant.
+
+**The top bar is gone entirely.** Four cards spanning the top of the map, each
+holding something used a few times a session: the theme toggle, the shortcuts
+overlay, open, save, and the basemap switcher. Everything folded into one menu
+on the course header, except the two things that did not belong there.
+
+**Undo and redo went the other way, into the tool rail.** They are used
+constantly and mid-gesture; the hand is already at the rail when a placement
+goes wrong. **The basemap switcher went to the camera controls** — flipping to
+topographic to read a slope and back to satellite to read canopy is a camera
+gesture, made repeatedly, not a statement about the document.
+
+**The status bar is gone, except what it was obliged to carry.** The scale bar
+and the coordinate readout are reference numbers glanced at once an hour, and
+they cost a permanent card in the corner; the units toggle moved into the
+course menu. Provider attribution and the AGPL source link stayed, as a bare
+credit line — both are conditions on shipping this at all, and both now have a
+test rather than a comment asking people to remember.
+
+**The camera controls stack vertically**: layers, then north, then zoom. The
+`z16.4` readout is gone — a number about the tile pyramid, not about the land,
+and the scale bar it sat beside said the same thing in feet.
+
+**The tool rail is half again as large**, with `lg` added to `IconButton` for
+it. A tool is a target you hit dozens of times an hour without looking, which
+is a different job from the incidental chrome `md` is sized for.
+
+### A hole can be built from the hole down
+
+Holes could only ever be made the other way round: draw both ends, press Add
+hole, and let it guess which loose pair you meant. That is backwards for anyone
+who already knows what hole 4 is, and it left the empty hole this panel can
+create with no way to be filled. Now a tee or basket drawn while a hole is
+selected joins that hole — and the hole _keeps_ the selection, which is the
+part that makes it work. Selecting the tee just placed would deselect the hole,
+so the basket placed next would land loose: one end of hole 4, then silently a
+different job.
+
+### Three bugs, all invisible to the type checker
+
+**The basket tool icon never drew, in either theme.** It asked for
+`--hz-feature-basket-stroke`; the kind is called `target`, so the generated
+variable is `--hz-feature-target-stroke`. An undefined custom property paints
+nothing. The wordmark's basket dot had the same bug.
+
+**The whole rail was invisible in the light theme.** Its icons painted from
+feature tokens, which are deliberately theme-independent because they sit on
+imagery — and every one of them went white in the monochrome pass. White on a
+light panel. They are `currentColor` now, inheriting the button's own text
+colour, which also gets the active state for free. The old rationale (a gold
+square in the rail is a gold pad on the map) died with the monochrome pass.
+
+**Switching the basemap emptied the map until you reloaded.** `setStyle`
+discards every source and layer the app added, so `FeatureLayer` reinstalls
+them on `styledata` — but that handler is bound once and closed over the
+props from first render, which is an empty document. It re-added the sources
+with mount-time data, and the `setData` effects never fired because `features`
+had not changed. The install now reads current data from a ref. Two tests
+cover it: the choice surviving a reload, and the course surviving the switch.
+
+### Deliberately not in this PR
+
+**The inside of every panel.** Accordions in the course panel, the location and
+description fields, the parent-hole breadcrumb in the feature panel, and the
+reordering of the hole, tee, target and fairway inspectors. All of it is PR 8b.
+The course panel is capped at 45% of its column and scrolls until then, which
+is what stops it pushing the hole list out of reach — a stopgap the accordions
+retire.
+
+**Layouts.** The tab is there and says so in a sentence. A disabled tab is a
+door that does not open and does not say why, and standing the frame up now
+means the layouts PR does not also have to relitigate this panel's shape.
+
+---
+
 ## Licensing
 
 **AGPL-3.0-or-later.** The project is donation-funded and publicly hosted, and
@@ -596,8 +694,10 @@ obliges you to offer users the source. That keeps a company from taking
 donor-funded work closed and reselling it as a hosted product.
 
 Section 13 also imposes an obligation on _us_: the running app must offer its
-source to users. That is the "Source" link in the status bar — compliance, not
-decoration. Do not remove it.
+source to users. That is the "Source" link in the credit line at the bottom
+left, and the "Source code" item in the course menu — compliance, not
+decoration. Do not remove them. `chrome.spec.ts` asserts the link is on screen,
+so this survives the next person rearranging the chrome.
 
 ---
 

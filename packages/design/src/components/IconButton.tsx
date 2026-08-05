@@ -12,15 +12,24 @@ interface IconButtonProps extends Omit<ComponentPropsWithoutRef<'button'>, 'titl
   label: string;
   /** Command id from the keyboard registry; renders its binding in the tooltip. */
   command?: string;
-  size?: 'sm' | 'md';
+  size?: 'sm' | 'md' | 'lg';
   /** Reads as "currently on" — for stateful toggles rather than actions. */
   active?: boolean;
   tooltipSide?: 'top' | 'right' | 'bottom' | 'left';
 }
 
+/**
+ * `lg` is for the tool rail and nothing else, so far.
+ *
+ * A tool is a target you hit dozens of times an hour without looking, which is
+ * a different job from the incidental chrome `md` is sized for. 44px is also
+ * the smallest thing most touch guidance will call a target, and the rail is
+ * the one piece of this interface a tablet user would need to reach.
+ */
 const sizes = {
   sm: 'h-7 w-7',
   md: 'h-8 w-8',
+  lg: 'h-11 w-11',
 } as const;
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(

@@ -65,7 +65,7 @@ test.describe('drawing', () => {
     await expect(page.getByText(/points ·/)).toBeHidden();
 
     // Its length is the number a designer actually wants.
-    await expect(page.getByText('Length')).toBeVisible();
+    await expect(page.getByLabel('Properties').getByText('Length')).toBeVisible();
   });
 
   test('abandons an in-progress shape on Escape without creating anything', async ({

@@ -14,7 +14,7 @@ import { openEditor, place, waitForSave } from './fixtures';
 test.describe('holes', () => {
   test('shows an empty state until a hole exists', async ({ page }) => {
     await openEditor(page, { zoom: 16 });
-    await expect(page.getByText(/Draw a tee and a basket/)).toBeVisible();
+    await expect(page.getByText(/Add a hole, then draw its tee and basket/)).toBeVisible();
   });
 
   test('adding a hole claims the drawn tee and basket, and measures between them', async ({
@@ -117,8 +117,8 @@ test.describe('holes', () => {
   test('the tee colour sets the skill level, and re-pars the hole', async ({ page }) => {
     await openEditor(page, { zoom: 16 });
     // ~570 ft at zoom 16: par 4 for White (431-765), par 3 for Gold (186-585).
-    await place(page, 'Tee pad', 300, 500);
-    await place(page, 'Target', 700, 200);
+    await place(page, 'Tee pad', 340, 500);
+    await place(page, 'Target', 740, 200);
     await page.getByRole('button', { name: 'Add hole' }).click();
 
     const par = page.getByRole('combobox', { name: /Par for Hole 1/ });
@@ -245,6 +245,6 @@ test.describe('holes', () => {
     await expect(page.getByText('Hole 1').first()).toBeVisible();
 
     await page.getByRole('button', { name: 'Undo' }).click();
-    await expect(page.getByText(/Draw a tee and a basket/)).toBeVisible();
+    await expect(page.getByText(/Add a hole, then draw its tee and basket/)).toBeVisible();
   });
 });

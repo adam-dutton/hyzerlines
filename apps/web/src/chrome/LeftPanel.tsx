@@ -1,10 +1,8 @@
-import { useMemo } from 'react';
-import { IconButton, Panel, cn } from '@hyzerlines/design';
+import { useMemo, useState, type ReactNode } from 'react';
+import { IconButton, Panel, Tabs, cn, type TabDefinition } from '@hyzerlines/design';
 import {
   holeName,
   setPairPar,
-  totalLength,
-  totalPar,
   viewHoles,
   type Course,
   type Finding,
@@ -28,6 +26,17 @@ import { FindingsList } from './FindingsList';
  * the zoom controls and nowhere near the holes they were about; here they are
  * beneath the list they annotate, and the count is readable without opening
  * anything.
+ *
+ * ## Tabs, with one of them empty
+ *
+ * Holes and layouts are two readings of the same course — the corridors that
+ * exist, and the order somebody plays them in — so they are peers, and a tab
+ * strip is what says so. The layouts tab is here before layouts are, on
+ * purpose: it is the frame the next PR fills, and standing it up now means
+ * that PR does not also have to relitigate this panel's shape.
+ *
+ * It renders a sentence rather than being disabled. A disabled tab is a door
+ * that does not open and does not say why.
  */
 
 function ParCell({
@@ -114,6 +123,7 @@ export function LeftPanel({
   onAddHole,
   onRevealFinding,
   onDismissRule,
+  header,
 }: {
   course: Course;
   units: UnitSystem;
@@ -124,6 +134,14 @@ export function LeftPanel({
   onAddHole: () => void;
   onRevealFinding: (finding: Finding) => void;
   onDismissRule: (ruleId: string) => void;
+  /**
+   * The course panel, stacked above the holes.
+   *
+   * Passed in rather than rendered here so that this column owns the layout —
+   * the two panels have to share a width and a gap, and that is a fact about
+   * the column, not about either card.
+   */
+  header: ReactNode;
 }) {
   // Playing order, not creation order.
   const holes = useMemo(
@@ -132,8 +150,15 @@ export function LeftPanel({
   );
 
   const views = useMemo(() => viewHoles(course, holes), [course, holes]);
-  const par = totalPar(views.values());
-  const length = totalLength(views.values());
+
+  const [tab, setTab] = useState('holes');
+  const tabs = useMemo<TabDefinition[]>(
+    () => [
+      { id: 'holes', label: 'Holes', badge: holes.length },
+      { id: 'layouts', label: 'Layouts' },
+    ],
+    [holes.length],
+  );
 
   return (
     <div
@@ -142,81 +167,94 @@ export function LeftPanel({
        * cannot push the findings off the bottom of the screen. The gap at the
        * bottom clears the tool rail.
        */
-      className="pointer-events-none absolute bottom-28 left-4 top-20 flex w-64 flex-col gap-2 overflow-hidden"
+      className="pointer-events-none absolute bottom-28 left-4 top-4 flex w-72 flex-col gap-2 overflow-hidden"
       style={{ zIndex: 'var(--hz-z-chrome)' }}
     >
+      {header}
+
       <Panel
         as="section"
         elevation="raised"
         padding="none"
-        className="flex min-h-0 flex-col overflow-hidden"
-        aria-label="Holes"
+        // `flex-1` so the list takes whatever the course panel above and the
+        // findings below do not, rather than sizing to its own content and
+        // pushing the findings off the bottom of a 27-hole course.
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        aria-label="Holes and layouts"
       >
-        <header className="flex shrink-0 items-center justify-between border-b border-border-subtle px-3 py-2">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-text-primary">Holes</p>
-            {holes.length > 0 && (
-              <p className="font-mono text-2xs tabular-nums text-text-muted">
-                {holes.length} · Par {par} · {formatDistance(length, units)}
-              </p>
-            )}
-          </div>
-          <IconButton label="Add hole" size="sm" tooltipSide="right" onClick={onAddHole}>
-            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-              <path
-                d="M6 2v8M2 6h8"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </svg>
-          </IconButton>
-        </header>
+        <Tabs tabs={tabs} value={tab} onChange={setTab} label="Holes and layouts">
+          {tab === 'layouts' ? (
+            <p className="px-3 py-3 text-2xs leading-4 text-text-muted">
+              A layout is the order a course is played in — which can skip a hole, or play one
+              twice. Coming in the next release.
+            </p>
+          ) : (
+            <>
+              <div className="flex shrink-0 items-center justify-between px-3 py-1.5">
+                <span className="text-2xs text-text-muted">
+                  {holes.length === 0 ? 'None yet' : 'In playing order'}
+                </span>
+                <IconButton label="Add hole" size="sm" tooltipSide="right" onClick={onAddHole}>
+                  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                    <path
+                      d="M6 2v8M2 6h8"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </IconButton>
+              </div>
 
-        {holes.length === 0 ? (
-          <p className="px-3 py-3 text-2xs leading-4 text-text-muted">
-            Draw a tee and a basket, then add a hole to measure between them.
-          </p>
-        ) : (
-          <ul className="min-h-0 flex-1 overflow-y-auto">
-            {holes.map((hole) => {
-              const view = views.get(hole.id) ?? null;
-              const selected = hole.id === selectedHoleId;
-              return (
-                <li
-                  key={hole.id}
-                  className={cn(
-                    'flex items-center gap-2 border-b border-border-subtle pr-2 last:border-b-0',
-                    'transition-colors duration-fast hover:bg-surface-hover',
-                    selected && 'bg-surface-selected',
-                  )}
-                >
-                  {/* The row selects; the par control inside it must not, so
-                      they are siblings rather than nested — a select inside a
-                      button is invalid and swallows its own clicks. */}
-                  <button
-                    type="button"
-                    onClick={() => onSelectHole(selected ? null : hole.id)}
-                    className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-                  >
-                    <span className="w-5 shrink-0 font-mono text-2xs tabular-nums text-text-muted">
-                      {hole.number}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-xs text-text-primary">
-                      {holeName(hole)}
-                    </span>
-                    <span className="shrink-0 font-mono text-2xs tabular-nums text-text-secondary">
-                      {view?.measurement.effective == null
-                        ? '—'
-                        : formatDistance(view.measurement.effective, units)}
-                    </span>
-                  </button>
-                  <ParCell course={course} hole={hole} view={view} onOp={onOp} />
-                </li>
-              );
-            })}
-          </ul>
-        )}
+              {holes.length === 0 ? (
+                <p className="px-3 pb-3 text-2xs leading-4 text-text-muted">
+                  Add a hole, then draw its tee and basket — anything you place while a hole is
+                  selected joins it.
+                </p>
+              ) : (
+                <ul className="min-h-0 flex-1 overflow-y-auto">
+                  {holes.map((hole) => {
+                    const view = views.get(hole.id) ?? null;
+                    const selected = hole.id === selectedHoleId;
+                    return (
+                      <li
+                        key={hole.id}
+                        className={cn(
+                          'flex items-center gap-2 border-t border-border-subtle pr-2',
+                          'transition-colors duration-fast hover:bg-surface-hover',
+                          selected && 'bg-surface-selected',
+                        )}
+                      >
+                        {/* The row selects; the par control inside it must not,
+                            so they are siblings rather than nested — a select
+                            inside a button is invalid and swallows its own
+                            clicks. */}
+                        <button
+                          type="button"
+                          onClick={() => onSelectHole(selected ? null : hole.id)}
+                          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                        >
+                          <span className="w-5 shrink-0 font-mono text-2xs tabular-nums text-text-muted">
+                            {hole.number}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-xs text-text-primary">
+                            {holeName(hole)}
+                          </span>
+                          <span className="shrink-0 font-mono text-2xs tabular-nums text-text-secondary">
+                            {view?.measurement.effective == null
+                              ? '—'
+                              : formatDistance(view.measurement.effective, units)}
+                          </span>
+                        </button>
+                        <ParCell course={course} hole={hole} view={view} onOp={onOp} />
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </>
+          )}
+        </Tabs>
       </Panel>
 
       <FindingsList
