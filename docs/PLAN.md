@@ -519,14 +519,59 @@ and became a white glyph cased in white the moment everything went monochrome.
 Selecting a hole lit up its tee, its corridor and its number, and left the basket
 looking untouched.
 
-**The hole number sits 22 px off the point it labels.** Its home is the midpoint
-of the shot, which on a straight fairway is exactly where the midpoint handle
-appears when the hole is selected — so selecting a hole put a vertex handle dead
-centre over its own number.
-
 **And all of it switches off**, per hole and course-wide, lines and corridors
 separately, circles individually. Those switches are in the document rather than
 in the browser — see `docs/MODEL.md` for why.
+
+### A second pass, after actually looking at a drawn hole
+
+Every one of the above landed and was still wrong in some way once a real
+course sat on screen next to it.
+
+**The corridor's target end is rounded, not cut square, and has no stroke at
+all.** Its radius is the same half-width the taper already arrives at — 10 m by
+default — so the cap and Circle 1's own ring are the same curve, and the fill
+runs into the circle instead of stopping short of it with a visible seam. The
+stroke came off the whole corridor for the same reason: it is a drawing aid,
+not a boundary anyone drew, and a line around it claimed a precision the app
+does not have.
+
+**A tee pad is a solid fill and nothing else** — no coloured outline, full
+opacity whether selected or not. It is concrete, not an annotation, and
+looking like one drops the borrowed "translucent drawing aid" language the
+corridor and the circles still use on purpose.
+
+**The point marker for a tee is now a line, not a dot, and it is the pad's own
+front edge** — front-left corner to front-right, the tee line itself — rather
+than an arbitrary circle. It fades in below z18 as the pad itself stops being
+legible, and out above it, taking over the job the point used to do at z17–18.5.
+
+**The default fairway line is three equal segments, not one.** A single
+straight segment has exactly one vertex handle, sitting at the line's own
+midpoint — which is also where the hole's number sits, so the two competed for
+the same pixel and the handle usually lost, hidden under the label. Splitting
+the derived line into thirds gives every hole two solid handles a third of the
+way in from each end, nowhere near the label, so there is always an obvious
+point to grab. Bending the middle segment now produces five stored points
+rather than three — the two thirds-points plus the tee, the target and the
+one just inserted — which is a deliberate trade of a slightly busier stored
+line for a fairway that was never hard to grab in the first place.
+
+**Ctrl+drag no longer orbits one way from the top of the map and the other way
+from the bottom.** MapLibre's own drag-to-rotate computes bearing from the
+angle between the pointer and the map's centre once a drag starts far enough
+from it — a "turn a dial" gesture — and a horizontal-only pixel delta close to
+centre that still flips sign depending on which half of the screen the cursor
+is on. Both meant the same leftward drag could rotate opposite ways depending
+on where the course happened to sit on screen. `useOrbit` replaces it with
+bearing bound to horizontal pixel movement alone: left is always clockwise,
+regardless of where the drag starts.
+
+**Copy is American English.** `packages/design` and every comment in this repo
+have used British spelling throughout — that stays, it is house style for
+prose written by and for the people working on the code. What actually reaches
+a user's screen is a different contract, and the two strings that had drifted
+into it now read "color" rather than "colour".
 
 ### Deliberately not in this PR
 

@@ -178,6 +178,24 @@ describe('fairway corridors', () => {
     expect(corridor.selfIntersects).toBe(false);
   });
 
+  it('rounds the target end to its own half-width, bulging past the target', () => {
+    const target: Position = [AT[0], north(200)];
+    const line: Position[] = [AT, target];
+    const corridor = fairwayCorridor(line, { atStart: 2, atEnd: 10 })!;
+
+    // Every point added for the cap sits at exactly the target radius — half
+    // of atEnd — which is what makes it a semicircle rather than a guess at
+    // one.
+    const onCap = corridor.ring.filter((p) => Math.abs(apart(p, target) - 5) < 0.1);
+    expect(onCap.length).toBeGreaterThanOrEqual(30);
+
+    // And the cap's own forwardmost point sits 5 m past the target, due
+    // north here — the bulge passes through the target's forward direction
+    // rather than folding back into the corridor body.
+    const peak: Position = [AT[0], north(205)];
+    expect(corridor.ring.some((p) => apart(p, peak) < 0.05)).toBe(true);
+  });
+
   it('the target width is Circle 1 across, not a number of its own', () => {
     // Pins the link: if TARGET_CIRCLES ever changes, this says so out loud
     // rather than the corridor quietly becoming a different shape. A width, so
@@ -214,9 +232,12 @@ describe('fairway corridors', () => {
 
   it('reports a corridor that folds over itself', () => {
     // A turn far sharper than the corridor is wide: the inside edge crosses
-    // itself, and the polygon stops describing ground.
+    // itself, and the polygon stops describing ground. The hairpin's tip is
+    // also this line's last vertex, so the rounded target cap sits right on
+    // top of the fold — wide enough has to clear that too, which is why the
+    // threshold here is well above the width alone would suggest.
     const hairpin: Position[] = [AT, [AT[0], north(30)], [east(3), AT[1]]];
-    expect(fairwayCorridor(hairpin, { atStart: 40, atEnd: 40 })!.selfIntersects).toBe(true);
+    expect(fairwayCorridor(hairpin, { atStart: 100, atEnd: 100 })!.selfIntersects).toBe(true);
 
     // The same turn with a corridor narrow enough to get around it is fine.
     expect(fairwayCorridor(hairpin, { atStart: 2, atEnd: 2 })!.selfIntersects).toBe(false);

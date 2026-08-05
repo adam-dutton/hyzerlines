@@ -269,7 +269,10 @@ never makes it vanish when the picker moves.
 
 The area it covers is a variable-width buffer around the centreline, recomputed
 on every edit: half the width to either side of each vertex, mitred at the
-corners, cut square at both ends.
+corners, cut square at the tee end. The target end is rounded to its own
+half-width instead — 10 m by default, the same radius as Circle 1 — so the
+corridor's cap and the ring already drawn around the target are the same
+curve, and the fill runs into the circle instead of stopping short of it.
 
 The width **tapers by distance along the line** — not by vertex index, which
 would balloon a dogleg's corridor to full width inside the first short leg:

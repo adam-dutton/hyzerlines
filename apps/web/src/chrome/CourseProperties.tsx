@@ -94,7 +94,7 @@ export function CourseProperties({
         <p className="text-2xs leading-4 text-text-muted">
           {skill
             ? `Par bands and length ranges follow the PDGA tables for ${SKILL_LEVEL_INFO[skill].label} — ${SKILL_LEVEL_INFO[skill].ratingDescription} rated players.`
-            : 'Tees are set to more than one colour, so no PDGA level applies. Par is still read from each tee’s own colour.'}
+            : 'Tees are set to more than one color, so no PDGA level applies. Par is still read from each tee’s own color.'}
         </p>
         {!playable && (
           <p className="mt-1 text-2xs leading-4 text-status-warning">
@@ -171,7 +171,7 @@ export function CourseProperties({
             <p className="mt-1 text-2xs leading-4 text-text-muted">
               {acreage.density === null
                 ? 'Set the boundary’s foliage density to compare this against the PDGA acreage chart.'
-                : 'Tees are set to more than one colour, so no acreage guidance applies.'}
+                : 'Tees are set to more than one color, so no acreage guidance applies.'}
             </p>
           )}
         </div>

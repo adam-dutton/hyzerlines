@@ -19,6 +19,7 @@ interface MapHandle {
   getZoom: () => number;
   getCenter: () => { toArray: () => [number, number] };
   unproject: (point: [number, number]) => { lng: number; lat: number };
+  getBearing: () => number;
 }
 
 /**
@@ -47,7 +48,14 @@ const reset = (page: Page) =>
     (window as unknown as { hyzerlinesMap: MapHandle }).hyzerlinesMap.jumpTo({
       center: [-93.1, 44.9],
       zoom: 16,
+      bearing: 0,
+      pitch: 0,
     }),
+  );
+
+const bearing = (page: Page) =>
+  page.evaluate(() =>
+    (window as unknown as { hyzerlinesMap: MapHandle }).hyzerlinesMap.getBearing(),
   );
 
 test.describe('navigation tools', () => {
@@ -246,5 +254,44 @@ test.describe('navigation tools', () => {
 
     await expect(name).toHaveValue('Zilker');
     expect(await cursor(page)).toBe('default');
+  });
+
+  /*
+   * MapLibre's own drag-to-rotate is switched off — see useOrbit — because its
+   * default gesture computes bearing from the angle between the pointer and
+   * the map's centre, which flips a leftward drag into a rightward rotation
+   * depending on which half of the screen it starts in. This is the
+   * regression test for exactly that: the same leftward drag, once started
+   * near the top of the map and once near the bottom, has to turn the bearing
+   * the same way both times.
+   */
+  test('Ctrl+drag orbits, and left is always the same direction', async ({ page }) => {
+    await openEditor(page);
+    await reset(page);
+
+    const orbit = async (from: [number, number], dx: number) => {
+      await page.keyboard.down('Control');
+      await page.mouse.move(from[0], from[1]);
+      await page.mouse.down();
+      await page.mouse.move(from[0] + dx, from[1], { steps: 8 });
+      await page.mouse.up();
+      await page.keyboard.up('Control');
+    };
+
+    // A leftward drag starting above the map's centre.
+    await orbit([640, 150], -120);
+    const fromTop = await bearing(page);
+    expect(fromTop).not.toBe(0);
+
+    await reset(page);
+
+    // The identical drag, started below the map's centre.
+    await orbit([640, 550], -120);
+    const fromBottom = await bearing(page);
+
+    // Both turn the bearing the same way. MapLibre's own handler would have
+    // inverted the second one.
+    expect(Math.sign(fromBottom)).toBe(Math.sign(fromTop));
+    expect(fromBottom).toBeCloseTo(fromTop, 0);
   });
 });

@@ -134,30 +134,37 @@ const BOUNDARY_CASING_WIDTH: ExpressionSpecification = [
 const isBoundary: ExpressionSpecification = ['==', ['get', 'kind'], 'boundary'];
 
 /**
- * A point marker fades out once the shape it stands for is legible.
+ * The plain point marker is suppressed once a feature has a footprint.
  *
- * Only affects features that have a derived footprint — everything else stays
- * at full strength. The window is z17 to z18.5: a typical 2 m pad is about four
- * screen pixels across at 17 and twelve at 18.5, which is where it stops being
- * a smudge and starts being a rectangle you could point at.
+ * Permanently, not just once the pad is legible: `derived-front` — the front
+ * line of the pad itself — now owns the job of standing in for a footprint
+ * that is too small to see. A dot and a front line both fading in and out at
+ * once would be two markers answering the same question.
  */
 const POINT_OPACITY: ExpressionSpecification = [
-  /*
-   * The interpolate has to be outermost, and the per-feature test inside it.
-   *
-   * MapLibre only accepts `zoom` as the direct input to a top-level `step` or
-   * `interpolate`; wrapping it in a `case` fails validation and takes the whole
-   * layer down with it, which presents as points that simply never draw. So the
-   * fade runs for every point and the endpoint decides whether it goes anywhere:
-   * 1 → 0 for a feature with a pad, 1 → 1 for everything else.
-   */
+  'case',
+  ['coalesce', ['get', 'hasFootprint'], false],
+  0,
+  1,
+];
+
+/**
+ * The front line fades in as the pad it stands for fades out of legibility.
+ *
+ * The crossover is z18: below it the pad is a smudge and the line is what
+ * reads, above it the pad itself is big enough to see and the line steps
+ * aside. `zoom` has to be the direct input to a top-level `interpolate` —
+ * MapLibre rejects it wrapped in anything else, which fails the whole layer
+ * silently rather than just this expression.
+ */
+const FRONT_OPACITY: ExpressionSpecification = [
   'interpolate',
   ['linear'],
   ['zoom'],
   17,
   1,
-  18.5,
-  ['case', ['coalesce', ['get', 'hasFootprint'], false], 0, 1],
+  18,
+  0,
 ];
 
 /**
@@ -178,6 +185,7 @@ const POINT_OPACITY: ExpressionSpecification = [
 export function derivedLayers(): LayerSpecification[] {
   const isCorridor: ExpressionSpecification = ['==', ['get', 'derived'], 'corridor'];
   const isFootprint: ExpressionSpecification = ['==', ['get', 'derived'], 'footprint'];
+  const isFront: ExpressionSpecification = ['==', ['get', 'derived'], 'front'];
   const isCentreline: ExpressionSpecification = ['==', ['get', 'derived'], 'centreline'];
 
   return [
@@ -209,6 +217,15 @@ export function derivedLayers(): LayerSpecification[] {
         ],
       },
     },
+    /*
+     * No outline. A corridor is a drawing aid, not a boundary anyone has
+     * actually drawn, and a stroke around it read as a claim about where the
+     * fairway stops that the app has no business making. The fill alone says
+     * "the room this shot has" without pretending to a precision it doesn't
+     * have — and at the target end, where the corridor now rounds to the
+     * same radius as Circle 1, a stroke would have cut a visible seam across
+     * a ring the map is already drawing there.
+     */
     {
       id: 'derived-corridor',
       type: 'fill',
@@ -219,19 +236,6 @@ export function derivedLayers(): LayerSpecification[] {
         // Fainter than a drawn area of the same kind: it is the room the shot
         // has, not a thing in its own right.
         'fill-opacity': ['case', selected, 0.8, 0.5],
-      },
-    },
-    {
-      id: 'derived-corridor-outline',
-      type: 'line',
-      source: DERIVED_SOURCE,
-      filter: isCorridor,
-      layout: { 'line-join': 'round' },
-      paint: {
-        'line-color': selectableColor('stroke'),
-        'line-width': 1,
-        'line-opacity': 0.6,
-        'line-dasharray': [3, 2],
       },
     },
     /*
@@ -269,16 +273,48 @@ export function derivedLayers(): LayerSpecification[] {
         'line-dasharray': [...CENTRELINE_DASH],
       },
     },
+    /*
+     * The front line: what stands for a pad before it is big enough to see.
+     *
+     * A single stroke along the pad's own front edge — front-left corner to
+     * front-right, exactly the tee line [RULES] measures from — rather than a
+     * dot, so that even the substitute marker is a real measurement rather
+     * than an arbitrary circle. Solid, not dashed: like the pad itself, this
+     * is a physical edge, not a drawing aid.
+     */
     {
-      id: 'derived-footprint',
-      type: 'fill',
+      id: 'derived-front-casing',
+      type: 'line',
       source: DERIVED_SOURCE,
-      filter: isFootprint,
+      filter: isFront,
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: {
-        'fill-color': selectableColor('fill'),
-        'fill-opacity': ['case', selected, 0.95, 0.75],
+        'line-color': CASING_COLOR,
+        'line-width': CENTRELINE_CASING_WIDTH,
+        'line-opacity': FRONT_OPACITY,
       },
     },
+    {
+      id: 'derived-front',
+      type: 'line',
+      source: DERIVED_SOURCE,
+      filter: isFront,
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: {
+        'line-color': selectableColor('stroke'),
+        'line-width': CENTRELINE_WIDTH,
+        'line-opacity': FRONT_OPACITY,
+      },
+    },
+    /*
+     * A tee pad is solid ground, not an annotation, so it is drawn as one:
+     * an opaque fill and nothing else. No coloured outline — the fill's own
+     * edge already is the pad's edge — and the fill stays fully opaque
+     * whether or not it is selected, so selection reads entirely from its
+     * colour (white to accent) rather than from a stroke appearing on top of
+     * it. The casing stays: against sand or bleached grass a solid pad can
+     * still lose its edge without the dark ring underneath it.
+     */
     {
       id: 'derived-footprint-casing',
       type: 'line',
@@ -288,15 +324,11 @@ export function derivedLayers(): LayerSpecification[] {
       paint: { 'line-color': CASING_COLOR, 'line-width': ['case', selected, 5, 3.5] },
     },
     {
-      id: 'derived-footprint-outline',
-      type: 'line',
+      id: 'derived-footprint',
+      type: 'fill',
       source: DERIVED_SOURCE,
       filter: isFootprint,
-      layout: { 'line-join': 'round' },
-      paint: {
-        'line-color': selectableColor('stroke'),
-        'line-width': ['case', selected, 2.5, 1.5],
-      },
+      paint: { 'fill-color': selectableColor('fill'), 'fill-opacity': 1 },
     },
   ];
 }
@@ -473,20 +505,6 @@ export function featureLayers(): LayerSpecification[] {
 }
 
 /**
- * How far the hole number sits off the point it labels, in screen pixels.
- *
- * It has to sit off it at all because the label's home is the midpoint of the
- * shot, and on a straight fairway that is exactly where the midpoint handle
- * appears when the hole is selected — so selecting a hole put a vertex handle
- * dead centre over its own number. Everything else on that spot is small, so
- * clearing the handle's radius is enough.
- *
- * Screen pixels, not ground metres: the gap has to stay the same at every zoom
- * because the thing it is clearing is drawn in screen pixels too.
- */
-const LABEL_OFFSET_PX: [number, number] = [0, -22];
-
-/**
  * The hole's number, on the ground.
  *
  * A disc, not bare text: a number floating over satellite imagery is unreadable
@@ -510,7 +528,6 @@ export function holeLabelLayers(): LayerSpecification[] {
         'circle-radius': ['case', selected, 14, 12],
         'circle-stroke-color': featureColors.tee.stroke,
         'circle-stroke-width': ['case', selected, 2, 1],
-        'circle-translate': LABEL_OFFSET_PX,
       },
     },
     {
@@ -526,10 +543,7 @@ export function holeLabelLayers(): LayerSpecification[] {
         'text-allow-overlap': true,
         'text-ignore-placement': true,
       },
-      paint: {
-        'text-color': featureColors.tee.stroke,
-        'text-translate': LABEL_OFFSET_PX,
-      },
+      paint: { 'text-color': featureColors.tee.stroke },
     },
   ];
 }
@@ -576,9 +590,12 @@ export function vertexLayers(): LayerSpecification[] {
 /**
  * Layers that should respond to clicks, topmost first.
  *
- * `derived-footprint` is in here despite being derived geometry, because a tee
- * pad *is* its tee — it carries the tee's id and the point beneath it is not
- * drawn. It sits last so that anything standing on a pad still wins the click.
+ * `derived-footprint` and `derived-front` are in here despite being derived
+ * geometry, because a tee pad *is* its tee — they carry the tee's own id, and
+ * the point beneath both is not drawn. They sit last so that anything
+ * standing on a pad still wins the click. The two never overlap in visibility
+ * — `FRONT_OPACITY` and the footprint's own size cross over at the same
+ * zoom — so their order relative to each other does not matter.
  *
  * `derived-centreline` is not: a fairway with no stored feature has no id to
  * select, and clicking one should reach whatever is under it.
@@ -596,6 +613,7 @@ export const INTERACTIVE_LAYERS = [
    * feature id, so which one answers makes no difference to the caller.
    */
   'features-boundary-casing',
+  'derived-front',
   'derived-footprint',
 ] as const;
 

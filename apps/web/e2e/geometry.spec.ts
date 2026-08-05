@@ -114,11 +114,19 @@ async function shotMidpoint(page: Page): Promise<{ x: number; y: number }> {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
-/** Bend the hole's fairway, which is what turns it into a stored feature. */
+/*
+ * Bend the hole's fairway, which is what turns it into a stored feature.
+ *
+ * The default line is three equal segments, not one — see
+ * `defaultFairwayLine` in pairView.ts — so its own geometric midpoint is a
+ * midpoint HANDLE between the two interior thirds-points, not a straight
+ * tee-to-target line's only handle. Bending it inserts one point there,
+ * between those two: five points out, not three.
+ */
 async function bendFairway(page: Page): Promise<void> {
   const mid = await shotMidpoint(page);
   await dragHandle(page, mid, { x: mid.x - 140, y: mid.y + 110 });
-  await expect.poll(async () => (await storedFairway(page)).length).toBe(3);
+  await expect.poll(async () => (await storedFairway(page)).length).toBe(5);
 }
 
 /** Press and release at a point, without moving. */
@@ -210,15 +218,17 @@ test.describe('shaping a fairway', () => {
 
     await bendFairway(page);
 
-    // Grab the vertex where it now sits and move it somewhere else.
+    // Grab the vertex where it now sits and move it somewhere else. Index 2:
+    // 0 and 4 are the fixed tee and target, 1 and 3 the default thirds, 2 the
+    // point the bend just inserted between them.
     const bent = await storedFairway(page);
-    const corner = await project(page, bent[1]!);
+    const corner = await project(page, bent[2]!);
     await dragHandle(page, corner, { x: corner.x + 70, y: corner.y - 60 }, 'edit-vertex');
 
     const after = await course(page);
     expect(after.features.filter((f) => f.kind === 'fairway')).toHaveLength(1);
     expect(after.pairs).toHaveLength(1);
-    expect((await storedFairway(page))[1]).not.toEqual(bent[1]);
+    expect((await storedFairway(page))[2]).not.toEqual(bent[2]);
   });
 
   test('alt-clicking removes a vertex, and the ends cannot be removed at all', async ({
@@ -228,27 +238,31 @@ test.describe('shaping a fairway', () => {
     await setupHole(page);
     await bendFairway(page);
 
+    // Index 2 is the point the bend just inserted — see `bendFairway`.
     const bent = await storedFairway(page);
-    const corner = await project(page, bent[1]!);
+    const corner = await project(page, bent[2]!);
     await waitForHandle(page, corner.x, corner.y);
 
     await page.keyboard.down('Alt');
     await clickAt(page, corner.x, corner.y);
     await page.keyboard.up('Alt');
 
-    await expect.poll(async () => (await storedFairway(page)).length).toBe(2);
+    // Back to the four points the line started with — the tee, target and
+    // the two default thirds — minus the one just removed.
+    await expect.poll(async () => (await storedFairway(page)).length).toBe(4);
 
     /*
-     * The two that remain are the tee and the target, and they carry no handle
-     * at all — so there is nothing to Alt-click and no way to drop the line
-     * below the two points a line needs.
+     * The tee and the target carry no handle at all — so there is nothing to
+     * Alt-click and no way to drop the line below the two points it needs.
      *
      * That is not a guard bolted on afterwards: a fairway runs from its tee to
      * its target by definition, and a handle sitting on top of every tee and
-     * basket on the course swallowed the clicks meant for them.
+     * basket on the course swallowed the clicks meant for them. Checked
+     * against the tee and target themselves rather than every remaining
+     * stored point — the two default thirds points are ordinary, removable
+     * vertices, not fixed ends.
      */
-    const ends = await storedFairway(page);
-    for (const end of ends) {
+    for (const end of await shotEnds(page)) {
       const at = await project(page, end);
       expect(
         await page.evaluate(

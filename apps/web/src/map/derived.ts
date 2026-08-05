@@ -120,6 +120,21 @@ export function derivedGeometry(course: Course, choices?: FairwayChoices): Deriv
         coordinates: [[...footprint.ring, footprint.ring[0]!]],
       },
     });
+
+    /*
+     * The front line: what stands in for the pad before it is legible.
+     *
+     * The footprint ring's own first two corners are the front-left and
+     * front-right of the pad — the tee line itself — so this needs no
+     * geometry of its own. It carries the same id as the footprint, which is
+     * deliberate: they are two representations of one tee, cross-faded by
+     * zoom in `derivedLayers`, and selecting one has to select both.
+     */
+    features.push({
+      type: 'Feature',
+      properties: { id: feature.id, kind: feature.kind, derived: 'front' },
+      geometry: { type: 'LineString', coordinates: [footprint.ring[0]!, footprint.ring[1]!] },
+    });
   }
 
   /*

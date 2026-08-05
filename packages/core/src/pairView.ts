@@ -18,6 +18,9 @@ import { activeLayout, featureIndex, type Course } from './schema.js';
 import {
   defaultCorridorWidths,
   fairwayCorridor,
+  fromLocal,
+  planeAt,
+  toLocal,
   type Corridor,
   type CorridorWidths,
 } from './geometry.js';
@@ -261,6 +264,39 @@ export type FairwayChoices = ReadonlyMap<string, { teeId: string; targetId: stri
  * has actually shaped is drawn as well, so bending a line never makes it vanish
  * when the picker moves.
  */
+/**
+ * The default straight fairway line, tee to target — three equal segments
+ * rather than one.
+ *
+ * A single segment has exactly one vertex handle, sitting at its own
+ * midpoint — which is also where the hole's number sits, since
+ * `holeLabelPosition` places it at the midpoint of the shot. The handle and
+ * the label then compete for the same pixel, and the handle usually loses:
+ * it is the smaller of the two and ends up hidden underneath.
+ *
+ * Splitting the derived line into thirds gives every hole two solid, visible
+ * handles a third of the way in from each end — nowhere near the label — so
+ * there is always an obvious point to grab to start routing a fairway.
+ * Computed on the local tangent plane so the interior points are exactly
+ * collinear with the ends; interpolating lng/lat directly would leave them a
+ * hair off the straight line the corridor buffer is built from.
+ */
+const DEFAULT_FAIRWAY_SEGMENTS = 3;
+
+function defaultFairwayLine(tee: Position, target: Position): Position[] {
+  const plane = planeAt(tee);
+  const from = toLocal(plane, tee);
+  const to = toLocal(plane, target);
+  const line: Position[] = [];
+  for (let i = 0; i <= DEFAULT_FAIRWAY_SEGMENTS; i++) {
+    const t = i / DEFAULT_FAIRWAY_SEGMENTS;
+    line.push(
+      fromLocal(plane, [from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t]),
+    );
+  }
+  return line;
+}
+
 export function courseFairways(course: Course, choices?: FairwayChoices): HoleFairway[] {
   const featureById = featureIndex(course);
   const holeOfPair = new Map<string, string>();
@@ -287,7 +323,7 @@ export function courseFairways(course: Course, choices?: FairwayChoices): HoleFa
     const line =
       stored?.geometry.type === 'line'
         ? [...stored.geometry.coordinates]
-        : [anchorOf(tee), anchorOf(target)];
+        : defaultFairwayLine(anchorOf(tee), anchorOf(target));
 
     seen.add(key(teeId, targetId));
     fairways.push({
