@@ -23,7 +23,7 @@ declare global {
   interface Window {
     hyzerlinesMap?: MapLibreMap;
     hyzerlinesStore?: {
-      getSnapshot: () => { course: TestCourse };
+      getSnapshot: () => { course: TestCourse; dirty: boolean };
       dispatch: (op: unknown) => void;
     };
   }
@@ -165,4 +165,22 @@ export async function project(
     const point = window.hyzerlinesMap!.project(p);
     return { x: Math.round(point.x), y: Math.round(point.y) };
   }, position);
+}
+
+/**
+ * Wait until the autosave has actually landed.
+ *
+ * Replaces sleeping for longer than the debounce and hoping. The debounce is
+ * 800 ms, the sleeps were 1400, and on a loaded machine that margin is not
+ * enough — which showed up as a reload test failing for reasons unrelated to
+ * what it was checking.
+ *
+ * The store is the only witness: a successful save is deliberately silent in
+ * the interface, because a permanent "Saved" badge is a badge people stop
+ * reading. `dirty` going false is the write completing.
+ */
+export async function waitForSave(page: Page): Promise<void> {
+  await expect
+    .poll(() => page.evaluate(() => window.hyzerlinesStore?.getSnapshot().dirty !== false))
+    .toBe(false);
 }

@@ -133,7 +133,9 @@ skipping it.
 The pad extends _backwards_ from its point, because the point is the front centre:
 that is the tee line, and the tee line is where hole length is measured from.
 Anchoring at the middle of the pad instead would add half a pad length to every
-hole on the course, invisibly.
+hole on the course, invisibly. It faces down the fairway's first segment rather
+than at the pin — on a dogleg those differ, and players stand facing the gap they
+are throwing into.
 
 All of it is computed in metres on a local tangent plane rather than in degrees.
 Offsetting a line in degrees gives you a corridor 40% fatter north-to-south than
@@ -156,9 +158,14 @@ modifier to reach for. Wheel zoom anchors to the pointer, and opening a course
 frames what is drawn rather than restoring wherever you last stopped scrolling.
 
 Tool keys (`T` tee, `B` basket, `P` path, `O` out of bounds…) place features.
-Select a hole, a line or an area and it grows handles: drag one to move a vertex,
-click a hollow one between two vertices to insert, `Alt`-click to remove. Doing
-that to a hole's fairway is how a straight shot becomes a routed one.
+Anything drawn can be dragged to move it; dragging a tee or basket brings its
+fairway along. Select a hole, a line or an area and it grows handles: drag one to
+move a vertex, click a hollow one between two vertices to insert, `Alt`-click to
+remove. Doing that to a hole's fairway is how a straight shot becomes a routed
+one.
+
+Clicking anything belonging to a hole selects the **hole**; clicking again drills
+into the feature.
 
 ## Contributing
 

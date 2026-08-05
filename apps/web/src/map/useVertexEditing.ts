@@ -30,6 +30,16 @@ export interface EditableShape {
   type: 'line' | 'polygon';
   coordinates: readonly Position[];
   /**
+   * Whether the first and last vertices are owned by something else.
+   *
+   * True for a fairway: it runs from the tee to the target by definition, and
+   * those ends move when those features do. Giving them handles would put a
+   * grabbable dot exactly on top of every tee and basket on the course — which
+   * swallowed the clicks and drags meant for them, and offered to detach a
+   * fairway from the hole it belongs to.
+   */
+  fixedEnds?: boolean;
+  /**
    * Persist a new outline. May create the feature that holds it.
    *
    * `gesture` is stable for one continuous drag, so every write it makes lands
@@ -61,6 +71,8 @@ export function vertexHandles(shape: EditableShape | null): GeoJSON.FeatureColle
   const features: GeoJSON.Feature[] = [];
 
   coordinates.forEach((position, index) => {
+    // Ends are the tee and the target; drag those instead.
+    if (shape.fixedEnds && (index === 0 || index === coordinates.length - 1)) return;
     features.push({
       type: 'Feature',
       properties: { role: 'vertex', index },

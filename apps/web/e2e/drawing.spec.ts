@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-import { clickMap, openEditor, rail } from './fixtures';
+import { clickMap, openEditor, rail, waitForSave } from './fixtures';
 
 /**
  * Drawing, selection and the inspector, through the real UI.
@@ -98,7 +98,7 @@ test.describe('drawing', () => {
 
     // Redo, let it autosave, and confirm it comes back after a reload.
     await page.getByRole('button', { name: 'Redo' }).click();
-    await page.waitForTimeout(1400);
+    await waitForSave(page);
     await page.reload();
     await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
 

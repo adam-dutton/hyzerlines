@@ -5,6 +5,7 @@ export * from './measure.js';
 export * from './geometry.js';
 export * from './holes.js';
 export * from './membership.js';
+export * from './move.js';
 export * from './pairs.js';
 export * from './layouts.js';
 export * from './pairView.js';

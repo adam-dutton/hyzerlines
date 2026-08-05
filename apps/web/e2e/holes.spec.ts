@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-import { openEditor, place } from './fixtures';
+import { openEditor, place, waitForSave } from './fixtures';
 
 /**
  * Holes, par and design checks, through the real UI.
@@ -47,7 +47,7 @@ test.describe('holes', () => {
     await par.selectOption('5');
     await expect(par).toHaveValue('5');
 
-    await page.waitForTimeout(1400);
+    await waitForSave(page);
     await page.reload();
     await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
 
@@ -102,7 +102,7 @@ test.describe('holes', () => {
     await page.getByRole('button', { name: 'Add hole' }).click();
     await expect(page.getByText('Hole 1').first()).toBeVisible();
 
-    await page.waitForTimeout(1400);
+    await waitForSave(page);
     await page.reload();
     await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
 
@@ -134,7 +134,7 @@ test.describe('holes', () => {
     const asGold = await par.inputValue();
     expect(Number(asGold)).toBeLessThan(Number(asDefault));
 
-    await page.waitForTimeout(1400);
+    await waitForSave(page);
     await page.reload();
     await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
 
@@ -182,7 +182,7 @@ test.describe('holes', () => {
       zoom: window.hyzerlinesMap!.getZoom(),
     }));
 
-    await page.waitForTimeout(1400);
+    await waitForSave(page);
     await page.reload();
     await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
     await expect(page.getByText('Hole 1').first()).toBeVisible();

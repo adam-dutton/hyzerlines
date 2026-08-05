@@ -11,6 +11,7 @@ import {
   INTERACTIVE_LAYERS,
   derivedLayers,
   featureLayers,
+  holeLabelLayers,
   toGeoJSON,
   vertexLayers,
 } from './featureLayers';
@@ -22,7 +23,15 @@ const PREVIEW_SOURCE = 'drawing-preview';
 
 interface FeatureLayerProps {
   features: readonly Feature[];
-  selectedId: string | null;
+  /**
+   * Everything currently highlighted.
+   *
+   * A set rather than one id, because selecting a *hole* highlights the hole:
+   * its label, its tee, its target and its corridor all read as active
+   * together. One id would leave the designer to work out which shapes the
+   * selected hole was made of by clicking them.
+   */
+  selectedIds: readonly string[];
   onSelect: (id: string | null) => void;
   preview: GeoJSON.FeatureCollection;
   /** Tee pads, fairway corridors and centrelines, computed from the features. */
@@ -43,7 +52,7 @@ interface FeatureLayerProps {
  */
 export function FeatureLayer({
   features,
-  selectedId,
+  selectedIds,
   onSelect,
   preview,
   derived,
@@ -52,7 +61,7 @@ export function FeatureLayer({
 }: FeatureLayerProps) {
   const { map } = useMap();
   const readyRef = useRef(false);
-  const selectedRef = useRef<string | null>(null);
+  const selectedRef = useRef<readonly string[]>([]);
 
   // Install sources and layers. Re-runs after a basemap change, because
   // setStyle() discards everything not in the new style.
@@ -122,6 +131,11 @@ export function FeatureLayer({
           },
         });
       }
+      // Above the geometry they label, below the handles.
+      for (const layer of holeLabelLayers()) {
+        if (!map.getLayer(layer.id)) map.addLayer(layer);
+      }
+
       // Above everything: the smallest targets on screen must win hit-testing.
       for (const layer of vertexLayers()) {
         if (!map.getLayer(layer.id)) map.addLayer(layer);
@@ -203,16 +217,16 @@ export function FeatureLayer({
     const sources = [FEATURES_SOURCE, DERIVED_SOURCE];
 
     const apply = () => {
-      const previous = selectedRef.current;
+      const now = new Set(selectedIds);
       for (const source of sources) {
-        if (previous && previous !== selectedId) {
-          map.removeFeatureState({ source, id: previous }, 'selected');
+        for (const id of selectedRef.current) {
+          if (!now.has(id)) map.removeFeatureState({ source, id }, 'selected');
         }
-        if (selectedId) {
-          map.setFeatureState({ source, id: selectedId }, { selected: true });
+        for (const id of now) {
+          map.setFeatureState({ source, id }, { selected: true });
         }
       }
-      selectedRef.current = selectedId;
+      selectedRef.current = selectedIds;
     };
 
     apply();
@@ -224,7 +238,7 @@ export function FeatureLayer({
     return () => {
       map.off('sourcedata', onSourceData);
     };
-  }, [map, selectedId, features]);
+  }, [map, selectedIds, features]);
 
   // Click to select, click empty space to deselect.
   useEffect(() => {

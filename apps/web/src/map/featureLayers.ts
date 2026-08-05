@@ -22,7 +22,14 @@ export const FEATURES_SOURCE = 'course-features';
 export const DERIVED_SOURCE = 'derived-geometry';
 export const HANDLES_SOURCE = 'edit-handles';
 
-/** Build a MapLibre `match` expression over feature kinds from the tokens. */
+/**
+ * Build a MapLibre `match` expression over feature kinds from the tokens.
+ *
+ * Every kind currently resolves to the same white — see the note on `feature` in
+ * the design tokens. The expression is kept rather than collapsed to a constant
+ * because bringing hue back for some kinds is then a token change and nothing
+ * else, which is the whole point of generating map styling from the tokens.
+ */
 function colorByKind(role: 'stroke' | 'fill'): ExpressionSpecification {
   const cases = FEATURE_KINDS.flatMap((kind) => [
     kind,
@@ -41,20 +48,28 @@ const CASING = featureColors.tee.casing;
 
 const selected: ExpressionSpecification = ['boolean', ['feature-state', 'selected'], false];
 
+/** Kind colour normally, the selection colour when selected. */
+function selectableColor(role: 'stroke' | 'fill'): ExpressionSpecification {
+  return ['case', selected, featureColors.selected[role], colorByKind(role)];
+}
+
 /**
- * Selection swaps the casing from dark to white.
+ * Selection turns the casing into a coloured halo.
  *
  * Size alone is not enough to read as "selected" — a slightly larger dot next
  * to a slightly smaller one is a comparison, not a state, and it disappears
- * entirely when the feature is the only one of its kind on screen. Inverting
- * the casing turns the contrast floor into a halo, which is unmistakable
- * against both dark canopy and bright sand, and it does not touch hue — so a
- * selected OB boundary is still recognizably red.
+ * entirely when the feature is the only one of its kind on screen. Recolouring
+ * the contrast floor gives an unmistakable halo against both dark canopy and
+ * bright sand.
+ *
+ * It used to invert dark-to-white, which worked while features carried their
+ * own hues. Now that every feature *is* white, a white halo would be invisible
+ * against the thing it surrounds, so selection is the one place colour is spent.
  */
 const CASING_COLOR: ExpressionSpecification = [
   'case',
   selected,
-  featureColors.handle.stroke,
+  featureColors.selected.casing,
   CASING,
 ];
 
@@ -118,13 +133,41 @@ export function derivedLayers(): LayerSpecification[] {
   const isCentreline: ExpressionSpecification = ['==', ['get', 'derived'], 'centreline'];
 
   return [
+    /*
+     * Putting circles, at their real size on the ground.
+     *
+     * Outline only — three filled rings stacked around every basket would sit
+     * on the imagery a designer is reading the terrain from. Circle 1 is the one
+     * that is a rule, so it is drawn solid and the other two dashed: 20 m is a
+     * real figure the rules use for pace of play rather than a named circle, and
+     * the 3 m bullseye is league convention that appears in no PDGA document.
+     * See TARGET_CIRCLES.
+     */
+    {
+      id: 'derived-circle',
+      type: 'line',
+      source: DERIVED_SOURCE,
+      filter: ['==', ['get', 'derived'], 'circle'],
+      layout: { 'line-join': 'round' },
+      paint: {
+        'line-color': featureColors.target.stroke,
+        'line-width': ['case', ['==', ['get', 'circle'], 'c1'], 1.5, 1],
+        'line-opacity': ['case', ['==', ['get', 'authority'], 'rules'], 0.75, 0.45],
+        'line-dasharray': [
+          'case',
+          ['==', ['get', 'authority'], 'rules'],
+          ['literal', [1, 0]],
+          ['literal', [2, 2]],
+        ],
+      },
+    },
     {
       id: 'derived-corridor',
       type: 'fill',
       source: DERIVED_SOURCE,
       filter: isCorridor,
       paint: {
-        'fill-color': colorByKind('fill'),
+        'fill-color': selectableColor('fill'),
         // Fainter than a drawn area of the same kind: it is the room the shot
         // has, not a thing in its own right.
         'fill-opacity': ['case', selected, 0.8, 0.5],
@@ -137,7 +180,7 @@ export function derivedLayers(): LayerSpecification[] {
       filter: isCorridor,
       layout: { 'line-join': 'round' },
       paint: {
-        'line-color': colorByKind('stroke'),
+        'line-color': selectableColor('stroke'),
         'line-width': 1,
         'line-opacity': 0.6,
         'line-dasharray': [3, 2],
@@ -165,7 +208,7 @@ export function derivedLayers(): LayerSpecification[] {
       filter: isCentreline,
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: {
-        'line-color': colorByKind('stroke'),
+        'line-color': selectableColor('stroke'),
         'line-width': LINE_WIDTH,
         'line-dasharray': ['case', ['get', 'shaped'], ['literal', [1, 0]], ['literal', [3, 2]]],
       },
@@ -176,7 +219,7 @@ export function derivedLayers(): LayerSpecification[] {
       source: DERIVED_SOURCE,
       filter: isFootprint,
       paint: {
-        'fill-color': colorByKind('fill'),
+        'fill-color': selectableColor('fill'),
         'fill-opacity': ['case', selected, 0.95, 0.75],
       },
     },
@@ -195,7 +238,7 @@ export function derivedLayers(): LayerSpecification[] {
       filter: isFootprint,
       layout: { 'line-join': 'round' },
       paint: {
-        'line-color': colorByKind('stroke'),
+        'line-color': selectableColor('stroke'),
         'line-width': ['case', selected, 2.5, 1.5],
       },
     },
@@ -235,7 +278,7 @@ export function featureLayers(): LayerSpecification[] {
       source: FEATURES_SOURCE,
       filter: ['==', ['geometry-type'], 'Polygon'],
       paint: {
-        'fill-color': colorByKind('fill'),
+        'fill-color': selectableColor('fill'),
         'fill-opacity': ['case', selected, 0.9, 0.7],
       },
     },
@@ -253,7 +296,7 @@ export function featureLayers(): LayerSpecification[] {
       source: FEATURES_SOURCE,
       filter: ['==', ['geometry-type'], 'Polygon'],
       layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': colorByKind('stroke'), 'line-width': LINE_WIDTH },
+      paint: { 'line-color': selectableColor('stroke'), 'line-width': LINE_WIDTH },
     },
 
     /*
@@ -286,7 +329,7 @@ export function featureLayers(): LayerSpecification[] {
         ['!=', ['get', 'kind'], 'fairway'],
       ],
       layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': colorByKind('stroke'), 'line-width': LINE_WIDTH },
+      paint: { 'line-color': selectableColor('stroke'), 'line-width': LINE_WIDTH },
     },
 
     /*
@@ -311,7 +354,7 @@ export function featureLayers(): LayerSpecification[] {
       source: FEATURES_SOURCE,
       filter: ['all', ['==', ['geometry-type'], 'Point'], ['!=', ['get', 'kind'], 'target']],
       paint: {
-        'circle-color': colorByKind('stroke'),
+        'circle-color': selectableColor('stroke'),
         'circle-radius': POINT_RADIUS,
         'circle-opacity': POINT_OPACITY,
         // The casing, as a stroke rather than a second layer.
@@ -331,6 +374,50 @@ export function featureLayers(): LayerSpecification[] {
      */
     basketLayer('features-target', BASKET_ICON, ['case', selected, 0, 1]),
     basketLayer('features-target-selected', BASKET_ICON_SELECTED, ['case', selected, 1, 0]),
+  ];
+}
+
+/**
+ * The hole's number, on the ground.
+ *
+ * A disc, not bare text: a number floating over satellite imagery is unreadable
+ * over a good fraction of it, and a filled pill gives the digits a background to
+ * be legible against without a text halo doing the work of a shape.
+ *
+ * Installed above the features it labels and clickable — it is the most direct
+ * way to select a hole, and the only one that does not require already knowing
+ * which shapes belong to it.
+ */
+export function holeLabelLayers(): LayerSpecification[] {
+  const isLabel: ExpressionSpecification = ['==', ['get', 'derived'], 'holeLabel'];
+  return [
+    {
+      id: 'hole-label-disc',
+      type: 'circle',
+      source: DERIVED_SOURCE,
+      filter: isLabel,
+      paint: {
+        'circle-color': ['case', selected, featureColors.selected.casing, CASING],
+        'circle-radius': ['case', selected, 14, 12],
+        'circle-stroke-color': featureColors.tee.stroke,
+        'circle-stroke-width': ['case', selected, 2, 1],
+      },
+    },
+    {
+      id: 'hole-label',
+      type: 'symbol',
+      source: DERIVED_SOURCE,
+      filter: isLabel,
+      layout: {
+        'text-field': ['get', 'number'],
+        'text-size': 13,
+        // Never dropped for collision: a course where 7 and 8 sit close together
+        // is exactly when you need to tell them apart.
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+      },
+      paint: { 'text-color': featureColors.tee.stroke },
+    },
   ];
 }
 
@@ -384,6 +471,7 @@ export function vertexLayers(): LayerSpecification[] {
  * select, and clicking one should reach whatever is under it.
  */
 export const INTERACTIVE_LAYERS = [
+  'hole-label-disc',
   'features-target',
   'features-point',
   'features-line-stroke',

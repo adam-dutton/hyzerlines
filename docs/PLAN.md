@@ -372,6 +372,47 @@ rendered tile** and clips geometry at tile boundaries, so it can answer "did thi
 reach the map" but never "what does the document contain" — three browser tests
 were written against it and were wrong until they read the store instead.
 
+### Then a second review pass
+
+**Everything drawn can be dragged.** Moving a basket meant deleting it and
+placing another, which lost its name, its properties and its place in a hole.
+Points move directly, lines and areas translate, and moving a tee or target
+drags the end of its **stored** fairway along — a derived one needs no help
+because it is recomputed from both ends anyway.
+
+That surfaced a conflict worth recording. A fairway's first and last vertices
+sit exactly on the tee and the target, so their edit handles were sitting on top
+of every tee and basket on the course, swallowing the clicks and drags meant for
+those features. **The ends are not editable.** A fairway runs from its tee to its
+target by definition; only interior vertices get handles, and the ends move when
+the features that own them do.
+
+**Holes are clickable and numbered.** A number on a disc at the midpoint of the
+shot — the midpoint rather than the centroid of everything the hole owns, which
+drifts towards whichever end has more features and lands on top of the corridor
+it is labelling. Clicking any of a hole's features selects the **hole**, and
+clicking again drills into the feature: the grouping idiom every vector editor
+uses. Selecting a hole highlights all of it — label, tee, target, corridor — so a
+click tells you which land the hole occupies.
+
+**Putting circles.** All three, at their real size on the ground, with their
+provenance carried into the styling: Circle 1 is solid because it is a rule,
+Circle 2 and the bullseye are dashed because one is a figure the rules use for
+something else and the other is league convention. Outline only — three filled
+rings around every basket would bury the imagery.
+
+**Everything is white.** Fifteen saturated hues over tree canopy, sand, water and
+grass was a lot of noise for information that shape and position already carry.
+That cost the old selection treatment, which inverted the casing to white: a
+white halo around a white feature is invisible. Selection is now the one place
+colour is spent.
+
+**The tee pad locks to the fairway's first segment.** On a straight hole that is
+the same as facing the target; on a dogleg it is not, and a pad aimed at a pin
+the player cannot see from it is aimed at the wrong thing. An explicit `bearing`
+still wins — this is a default that tracks the design, not a rule that overrides
+the designer.
+
 ### Deliberately not in this PR
 
 **Per-vertex widths.** A fairway carries two widths, not one per point. The

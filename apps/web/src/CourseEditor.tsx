@@ -6,6 +6,8 @@ import {
   createHole,
   findPair,
   geometryMatchesKind,
+  holeOfFeature,
+  moveFeatureTo,
   representativePair,
   shapeFairway,
   type Feature,
@@ -13,6 +15,7 @@ import {
   type Finding,
   type Geometry,
   type Op,
+  type Position,
 } from '@hyzerlines/core';
 
 import { useMap } from './map/MapContext';
@@ -20,6 +23,7 @@ import { FeatureLayer } from './map/FeatureLayer';
 import { useDrawing, drawingPreview } from './map/useDrawing';
 import { derivedGeometry } from './map/derived';
 import { useVertexEditing, type EditableShape } from './map/useVertexEditing';
+import { useFeatureDragging } from './map/useFeatureDragging';
 import { useNavigation } from './map/useNavigation';
 import { frameFeatures } from './map/frame';
 import type { Tool } from './map/tools';
@@ -77,6 +81,28 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
   }, [course, selectedHole, pairChoice]);
 
   const findings = useMemo(() => checkCourse(course, course.dismissedRules), [course]);
+
+  /*
+   * What reads as active on the map.
+   *
+   * A selected feature is just itself. A selected *hole* is everything it is
+   * made of — label, tees, targets and the corridor between them — so that
+   * clicking a number tells you at a glance which land the hole occupies, which
+   * is most of the reason to make holes clickable at all.
+   */
+  const highlighted = useMemo<string[]>(() => {
+    if (selectedId) return [selectedId];
+    if (!selectedHole) return [];
+
+    const ids = [`hole ${selectedHole.id}`, ...selectedHole.teeIds, ...selectedHole.targetIds];
+    if (selectedPair) {
+      const pair = findPair(course.pairs, selectedPair.teeId, selectedPair.targetId);
+      // The corridor is keyed by its feature when shaped and by the pair when
+      // still derived — the same key `derivedGeometry` writes.
+      ids.push(pair?.fairwayId ?? `${selectedPair.teeId} ${selectedPair.targetId}`);
+    }
+    return ids;
+  }, [course.pairs, selectedId, selectedHole, selectedPair]);
 
   /*
    * Tee pads and fairway corridors, recomputed whenever the features change.
@@ -147,6 +173,39 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
     // the last hole's tee, which would almost never be one of its own.
     setPairChoice(null);
   }, []);
+
+  /**
+   * Clicking on the map: the hole first, the feature on the way in.
+   *
+   * A course is a sequence of holes, and a hole is what a designer is usually
+   * reasoning about — its length, its par, where it goes. So a click on anything
+   * belonging to a hole selects the hole, which is also what makes the hole's
+   * fairway grow handles and its number highlight.
+   *
+   * Clicking *again* on the same feature drills in to the feature itself, which
+   * is the grouping idiom every vector editor uses and needs no explaining. A
+   * feature belonging to no hole selects directly — there is no group to enter.
+   */
+  const selectAt = useCallback(
+    (id: string | null) => {
+      if (!id) {
+        setSelectedId(null);
+        setSelectedHoleId(null);
+        return;
+      }
+
+      // The hole label selects its hole and nothing else.
+      const labelled = id.startsWith('hole ') ? id.slice('hole '.length) : null;
+      if (labelled) return selectHole(labelled);
+
+      const hole = holeOfFeature(course, id);
+      if (!hole || hole.id === selectedHoleId || id === selectedId) {
+        return selectFeature(id);
+      }
+      selectHole(hole.id);
+    },
+    [course, selectedHoleId, selectedId, selectFeature, selectHole],
+  );
 
   /** Frame whatever a finding points at, so it can be seen rather than read. */
   const reveal = useCallback(
@@ -246,6 +305,9 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
       key: `${fairway.teeId} ${fairway.targetId}`,
       type: 'line',
       coordinates: fairway.line,
+      // The line starts at the tee and ends at the target, always. Those ends
+      // follow when those features are dragged — see `moveFeatureTo`.
+      fixedEnds: true,
       write: (next, gesture) =>
         dispatch(
           shapeFairway(course, fairway.teeId, fairway.targetId, next, selectedHole.id, gesture),
@@ -262,6 +324,25 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
     map,
     shape: editableShape,
     enabled: nav.effective === 'select' && !drawing.active,
+  });
+
+  /*
+   * Everything drawn can be picked up and moved.
+   *
+   * A course is adjusted far more often than it is drawn, and until now moving a
+   * basket five metres meant deleting it and placing another — which loses its
+   * name, its properties and its place in a hole.
+   */
+  useFeatureDragging({
+    map,
+    enabled: nav.effective === 'select' && !drawing.active,
+    onMove: useCallback(
+      (id: string, to: Position, gesture: string) => {
+        const op = moveFeatureTo(course, id, to, gesture);
+        if (op) dispatch(op);
+      },
+      [course, dispatch],
+    ),
   });
 
   const deleteSelected = useCallback(() => {
@@ -370,8 +451,8 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
     <>
       <FeatureLayer
         features={course.features}
-        selectedId={selectedId}
-        onSelect={selectFeature}
+        selectedIds={highlighted}
+        onSelect={selectAt}
         preview={drawingPreview(nav.effective, drawing.pending, drawing.cursor)}
         derived={derived}
         handles={editing.handles}

@@ -1,7 +1,7 @@
 import { createFeature, type Feature } from './features.js';
 import type { Position } from './geo.js';
 import type { Hole } from './holes.js';
-import { anchorOf } from './measure.js';
+import { anchorOf, distance, pathLength } from './measure.js';
 import type { Op } from './ops.js';
 import {
   createPair,
@@ -316,6 +316,70 @@ export function courseFairways(course: Course, choices?: FairwayChoices): HoleFa
   }
 
   return fairways;
+}
+
+/**
+ * Where a hole's number belongs on the map.
+ *
+ * The midpoint of the shot rather than the centroid of everything the hole owns.
+ * A centroid drifts towards whichever end has more features — three tees and one
+ * pin pulls it back onto the pad — and it lands on top of the corridor it is
+ * meant to label. The midpoint of the fairway sits in open ground, moves with
+ * the hole, and reads as belonging to the throw.
+ *
+ * Falls back to the centroid of whatever the hole does have when there is no
+ * shot yet, so a hole with only a tee is still findable.
+ */
+export function holeLabelPosition(
+  course: Course,
+  hole: Hole,
+  fairway?: HoleFairway,
+): Position | null {
+  const line = fairway?.line;
+  if (line && line.length >= 2) {
+    // Halfway along the ground, not halfway along the vertex list: a dogleg's
+    // middle vertex can sit near one end.
+    const total = pathLength(line);
+    let walked = 0;
+    for (let i = 1; i < line.length; i++) {
+      const step = distance(line[i - 1]!, line[i]!);
+      if (walked + step >= total / 2) {
+        const t = step === 0 ? 0 : (total / 2 - walked) / step;
+        return [
+          line[i - 1]![0] + (line[i]![0] - line[i - 1]![0]) * t,
+          line[i - 1]![1] + (line[i]![1] - line[i - 1]![1]) * t,
+        ];
+      }
+      walked += step;
+    }
+  }
+
+  const featureById = featureIndex(course);
+  const owned = [...hole.teeIds, ...hole.targetIds]
+    .map((id) => featureById.get(id))
+    .filter((f): f is Feature => f !== undefined);
+  if (owned.length === 0) return null;
+
+  const anchors = owned.map(anchorOf);
+  return [
+    anchors.reduce((sum, p) => sum + p[0], 0) / anchors.length,
+    anchors.reduce((sum, p) => sum + p[1], 0) / anchors.length,
+  ];
+}
+
+/** Which hole a feature belongs to, for click-to-select-the-hole on the map. */
+export function holeOfFeature(course: Course, featureId: string): Hole | undefined {
+  return course.holes.find(
+    (hole) =>
+      hole.teeIds.includes(featureId) ||
+      hole.targetIds.includes(featureId) ||
+      course.pairs.some(
+        (pair) =>
+          pair.fairwayId === featureId &&
+          hole.teeIds.includes(pair.teeId) &&
+          hole.targetIds.includes(pair.targetId),
+      ),
+  );
 }
 
 /**

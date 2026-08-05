@@ -157,7 +157,13 @@ test.describe('derived geometry', () => {
 
     await expect
       .poll(() => derivedOnMap(page))
-      .toEqual(['centreline:LineString', 'corridor:Polygon', 'footprint:Polygon']);
+      .toEqual(
+        expect.arrayContaining([
+          'centreline:LineString',
+          'corridor:Polygon',
+          'footprint:Polygon',
+        ]),
+      );
 
     // And the document is still carrying nothing for it.
     expect(await storedFairway(page)).toHaveLength(0);
@@ -215,10 +221,11 @@ test.describe('shaping a fairway', () => {
     expect((await storedFairway(page))[1]).not.toEqual(bent[1]);
   });
 
-  test('alt-clicking removes a vertex, but never the last two', async ({ page }) => {
+  test('alt-clicking removes a vertex, and the ends cannot be removed at all', async ({
+    page,
+  }) => {
     await openEditor(page, { zoom: 16 });
     await setupHole(page);
-
     await bendFairway(page);
 
     const bent = await storedFairway(page);
@@ -227,19 +234,32 @@ test.describe('shaping a fairway', () => {
 
     await page.keyboard.down('Alt');
     await clickAt(page, corner.x, corner.y);
+    await page.keyboard.up('Alt');
+
     await expect.poll(async () => (await storedFairway(page)).length).toBe(2);
 
     /*
-     * A line needs two points, so the next removal is refused rather than
-     * dropping the shape below what the schema accepts.
+     * The two that remain are the tee and the target, and they carry no handle
+     * at all — so there is nothing to Alt-click and no way to drop the line
+     * below the two points a line needs.
+     *
+     * That is not a guard bolted on afterwards: a fairway runs from its tee to
+     * its target by definition, and a handle sitting on top of every tee and
+     * basket on the course swallowed the clicks meant for them.
      */
     const ends = await storedFairway(page);
-    const end = await project(page, ends[0]!);
-    await waitForHandle(page, end.x, end.y);
-    await clickAt(page, end.x, end.y);
-    await page.keyboard.up('Alt');
-
-    expect(await storedFairway(page)).toHaveLength(2);
+    for (const end of ends) {
+      const at = await project(page, end);
+      expect(
+        await page.evaluate(
+          (p) =>
+            window.hyzerlinesMap?.queryRenderedFeatures(p as [number, number], {
+              layers: ['edit-vertex'],
+            }).length ?? 0,
+          [at.x, at.y],
+        ),
+      ).toBe(0);
+    }
   });
 
   test('clicking a handle never changes the selection', async ({ page }) => {

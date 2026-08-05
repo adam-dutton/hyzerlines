@@ -221,8 +221,14 @@ Its defaults come from two documents, for two different reasons:
 | `width`  | 2 m (6 ft) — [ELEMENTS] p2 | The rules never dimension a tee line's width, so the guideline's own "typical" is used. |
 
 `bearing` has no default at all. Without one the footprint is **withheld** and
-only the point renders — the app supplies the tee-to-target bearing where it has
-one, and a rectangle drawn at an invented angle would look deliberate.
+only the point renders — a rectangle at an invented angle would look deliberate.
+
+What the app supplies is **the bearing of the fairway's first segment**, not the
+bearing to the target. On a straight hole those are the same; on a dogleg they
+are not, and a pad aimed at a pin the player cannot see from it is aimed at the
+wrong thing. Players stand on the tee facing the gap they are throwing into. An
+explicit `bearing` on the feature still wins, so this is a default that tracks
+the design rather than a rule that overrides the designer.
 
 ### A fairway is not drawn — it is the line between the ends
 
@@ -237,6 +243,12 @@ have, a record appearing only once it carries something the geometry cannot work
 out on its own. Creating the feature and attaching it to its pair is **one batch
 op**, so a single undo takes back both rather than leaving a pair pointing at
 nothing.
+
+A fairway's first and last vertices are the tee and the target, and they are
+**not editable**. Only interior vertices get handles; the ends move when the
+features that own them do — see `moveFeatureTo`. Handles on the ends would sit
+exactly on top of every tee and basket on the course, swallowing the clicks and
+drags meant for those features and offering to detach a fairway from its hole.
 
 `courseFairways` draws **one shot per hole**, not one per pairing: a three-tee,
 three-pin hole contains nine shots and nine overlapping corridors down one
@@ -324,7 +336,8 @@ whoever the course was sent to.
 
 Played number · distance · effective length · par suggestion · course and layout
 totals · layout skill level · layout playability · tee and drop-zone footprints ·
-fairway corridor polygon · elevation
+tee bearing · fairway centreline and corridor polygon · putting circles · hole
+label position · elevation
 
 ## Not in the document at all
 
