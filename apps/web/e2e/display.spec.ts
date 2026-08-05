@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-import { openEditor, place, waitForSave } from './fixtures';
+import { openEditor, openSection, place, waitForSave } from './fixtures';
 
 /**
  * The switches that decide what the map draws.
@@ -38,8 +38,9 @@ async function courseWithAHole(page: Page): Promise<void> {
   await place(page, 'Tee pad', 420, 480);
   await place(page, 'Target', 820, 260);
   await page.getByRole('button', { name: 'Add hole' }).click();
-  // Back to the course panel, which is where the course-wide switches are.
+  // Back to the course panel, then into the section the switches fold into.
   await page.keyboard.press('Escape');
+  await openSection(page, 'Settings');
 }
 
 const check = (page: Page, name: string) => page.getByRole('checkbox', { name, exact: true });
@@ -119,6 +120,8 @@ test.describe('drawing aids', () => {
     await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
     await page.waitForTimeout(500);
 
+    // Read off the map, not off the panel: what survived a reload is the
+    // document's business, and the section it is set from starts closed again.
     await expectDrawn(page, 'derived-circle').toBe(0);
   });
 });

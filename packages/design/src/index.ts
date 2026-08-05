@@ -9,6 +9,7 @@ export * from './primitives/Menu.js';
 export * from './primitives/Tooltip.js';
 
 // Components.
+export * from './components/Accordion.js';
 export * from './components/Panel.js';
 export * from './components/IconButton.js';
 export * from './components/Segmented.js';

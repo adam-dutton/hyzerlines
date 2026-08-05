@@ -14,6 +14,8 @@ export interface TestCourse {
     id: string;
     kind: string;
     geometry: { type: string; coordinates: unknown };
+    /** Loosely typed here for the same reason it is in the document. */
+    props: Record<string, string | number | boolean | undefined>;
   }[];
   holes: { id: string; teeIds: string[]; targetIds: string[] }[];
   pairs: { teeId: string; targetId: string; fairwayId: string | null }[];
@@ -131,6 +133,23 @@ export async function openEditor(page: Page, options: OpenOptions = {}): Promise
     await page.evaluate((v) => window.hyzerlinesMap?.jumpTo(v), view);
   }
   await page.waitForTimeout(300);
+}
+
+/**
+ * Open one of the course panel's collapsible sections.
+ *
+ * The panel folds now, and its sections start closed — everything they hold is
+ * unmounted until opened, deliberately, so a folded checkbox is not still in
+ * the tab order. Tests that reach for those controls have to open the section
+ * the way a person would.
+ *
+ * Idempotent: calling it on an already-open section leaves it open, so a test
+ * does not have to track which of its own steps opened what.
+ */
+export async function openSection(page: Page, title: string): Promise<void> {
+  const header = page.getByRole('button', { name: title, exact: true });
+  if ((await header.getAttribute('aria-expanded')) !== 'true') await header.click();
+  await expect(header).toHaveAttribute('aria-expanded', 'true');
 }
 
 /**

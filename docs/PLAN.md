@@ -685,6 +685,122 @@ means the layouts PR does not also have to relitigate this panel's shape.
 
 ---
 
+## PR 8b — the insides of the panels
+
+The other half. PR 8a moved the panels; this rewrites what is in them.
+
+### Everything in the course panel folds
+
+The panel was a stack of six sections that only ever grew, and it had reached
+the point where it filled its column and squeezed the hole list out — which is
+why 8a had to cap it at a fraction of the column and let it scroll. That cap is
+gone. Sections fold now, and a folded section still says what it is holding:
+the acreage, the first line of the notes. **A collapsed section that says only
+its own name makes you open it to find out whether there is anything in there**,
+which is worse than leaving it open.
+
+Three sections became one. Skill level, site and features were three headings
+describing one thing — what the app has read off the drawing, none of it typed
+in — so they are **Analysis**. "Show on map" became **Settings**, because the
+drawing aids were the first thing to go in it and will not be the last, and a
+section named after its current contents has to be renamed when anything else
+arrives. **Totals is gone**: `9 · Par 28 · 2545 ft` is the course header's
+subheading now, beside the name it describes.
+
+**Notes is a textarea.** It is the one genuinely open-ended field in there and
+it had a one-line input.
+
+### Location and description
+
+Two new fields on the course, both additive with defaults, so no migration.
+
+`location` is **seeded once from the map and then left alone**. The document
+already knows exactly where the course is — `view.center` is two numbers good to
+a metre — but a name is the only form of "where" that is any use to a parks
+department or to yourself in six months. It fills in on the first drawn feature,
+via the same keyless Photon service the location search already uses, and never
+writes again: anything typed afterwards stands, including clearing it back to
+empty.
+
+`description` is capped at 280 characters and **truncates rather than refusing**.
+The op arrives a keystroke at a time; dropping the whole edit on the character
+that goes over reads as the field having died, and letting it through would
+produce a document the schema then refuses to parse back.
+
+### Units left the document's orbit
+
+They were in the course menu after 8a, which was a holding position. Feet or
+meters is a fact about the reader, not about the land — a US club and a European
+one should be able to open one file and each see it in what they think in — so
+the switch is in Settings next to the drawing aids, and stored per browser while
+the aids beside it are in the document.
+
+### The name is the heading, everywhere
+
+Every panel opened with a Name row underneath a title that was the same name
+read back: one value, twice, three pixels apart. The title is the input now, as
+the course panel's already was. An unnamed feature shows its kind as the
+placeholder — and then the subtitle underneath is suppressed, because it would
+be putting "Tee pad" above "Tee pad".
+
+**A selected feature says which hole it belongs to, and gets you back.**
+Selecting a tee inside a hole used to be a one-way door: the panel swapped and
+the hole vanished from the interface with nothing to click. There is a
+breadcrumb now.
+
+### The four inspectors, reordered
+
+One shape for all of them: **what it belongs to, what was measured, what was
+typed in, delete.** Belongs-to used to sit below whatever kind-specific fields
+happened to exist, so where it appeared depended on how many properties a tee
+had.
+
+- **Hole** — number, par and the measurements par came from, in one block with
+  no headings between them. That is the answer to "what is this hole"; the rest
+  of the panel is how it is assembled. "Shot" is now **Features**, which is what
+  it becomes when a hole can hold several tees and pins.
+- **Tee** — belongs-to, skill color, surface, status, then a **Layout** section:
+  width and length side by side under one heading because that is how a pad is
+  quoted, and facing under another because size and direction are different
+  questions.
+- **Target** and **fairway** — belongs-to first, measurements next, every select
+  the same width as every text field.
+
+**Every control in an inspector is one width.** The panels had grown a width per
+field, so a column of controls stepped in and out down its right-hand edge.
+
+**Units moved inside the fields.** A unit floating outside the box reads as a
+separate thing on the row, drifts out of alignment the moment two fields sit
+side by side, and leaves the field claiming to be a bare number. `12 ft` is one
+value. Degrees got the same treatment, and the generic number field learned
+about `unit: 'degrees'` — it had been quietly showing bearings with a metre
+suffix.
+
+### Two rearrangements that changed behaviour
+
+**"Not part of a hole" is now an option in the belongs-to picker**, not a
+checkbox beside it. `standalone` is still a real property — `rules.ts` reads it
+to stop reporting a practice basket as unassigned forever — but as a separate
+checkbox it could contradict the picker next to it. As the third option in that
+picker it cannot. "Not assigned" and "not part of a hole" sound alike and are
+different claims: one is waiting to be given to a hole, the other never will be.
+
+**"Align to fairway" is the absence of a stored bearing, not a flag.**
+`footprintOf` already prefers a stored `bearing` and falls back to the fairway's,
+so the behaviour existed — what was missing was any way to see or set it. A
+second boolean saying which mode you are in could disagree with the geometry;
+this cannot, because it is the geometry. Unticking writes the angle the pad was
+already facing, so the field opens on a real number: you are taking over a
+value, not inventing one.
+
+### Deliberately not in this PR
+
+**The Features section on a hole is still one shot.** A hole with three tees and
+three pins is nine shots and the panel still picks one to describe. Making that
+a real list is the multi-tee work, and it wants layouts first.
+
+---
+
 ## Licensing
 
 **AGPL-3.0-or-later.** The project is donation-funded and publicly hosted, and

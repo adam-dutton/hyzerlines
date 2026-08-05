@@ -126,7 +126,7 @@ test.describe('holes', () => {
 
     // Select the tee to reach its properties, then colour it Gold.
     await page.getByRole('button', { name: 'Select Tee pad' }).click();
-    const colour = page.getByRole('combobox', { name: 'Colour' });
+    const colour = page.getByRole('combobox', { name: 'Skill color' });
     await colour.selectOption('gold');
     await expect(colour).toHaveValue('gold');
 

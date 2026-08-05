@@ -24,6 +24,16 @@ export const sectionClass = 'border-b border-border-subtle px-3 py-2 last:border
  * real component when a select needs something native cannot do — icons in
  * options, or a search field — and not before.
  */
+/**
+ * One width for every control in an inspector.
+ *
+ * The panels had grown a width per field — `w-20` here, `w-36` there,
+ * `max-w-[8rem]` on a select — so a column of controls stepped in and out down
+ * the right-hand edge. One value means they line up, and it is the only thing
+ * that makes a stack of unrelated fields read as a single form.
+ */
+export const fieldWidth = 'w-36';
+
 export const selectClass = [
   'rounded-md border border-border-default bg-surface-inset px-2 py-1 text-xs text-text-primary',
   'focus:border-border-accent focus:outline-none focus:ring-2 focus:ring-focus-ring/40',

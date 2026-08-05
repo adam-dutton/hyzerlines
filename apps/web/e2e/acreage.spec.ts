@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-import { clickMap, course, dragCanvas, openEditor, place, rail } from './fixtures';
+import { clickMap, course, dragCanvas, openEditor, openSection, place, rail } from './fixtures';
 
 /**
  * Boundaries and acreage, through the real UI.
@@ -61,6 +61,7 @@ test.describe('acreage', () => {
      * quietly picking a column.
      */
     await page.keyboard.press('Escape');
+    await openSection(page, 'Analysis');
     await expect(page.getByText(/Set the boundary’s foliage density/)).toBeVisible();
     await expect(page.getByText(/The PDGA chart gives/)).toBeHidden();
 

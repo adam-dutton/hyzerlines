@@ -1,7 +1,7 @@
 import { createFeature, type Feature } from './features.js';
 import type { Position } from './geo.js';
 import type { Hole } from './holes.js';
-import { anchorOf, distance, pathLength } from './measure.js';
+import { anchorOf, bearing, distance, pathLength } from './measure.js';
 import type { Op } from './ops.js';
 import {
   createPair,
@@ -352,6 +352,28 @@ export function courseFairways(course: Course, choices?: FairwayChoices): HoleFa
   }
 
   return fairways;
+}
+
+/**
+ * Which way a tee faces by default: down the first leg of its fairway.
+ *
+ * The same figure the map derives when a tee carries no `bearing` of its own —
+ * see `fairwayBearings` in the web app's `derived.ts`. Exported because the
+ * inspector needs it for the opposite reason: to turn the default into a
+ * stored value the moment somebody unticks "align to fairway", so the field
+ * they are about to edit opens with the angle already on screen rather than
+ * blank.
+ *
+ * Null when the tee has no fairway to face down. There is nothing to fall back
+ * to, and a bearing of 0 would be a claim about north that nobody made.
+ */
+export function fairwayBearingFor(course: Course, teeId: string): number | null {
+  for (const fairway of courseFairways(course)) {
+    if (fairway.teeId !== teeId) continue;
+    const [from, to] = fairway.line;
+    if (from && to) return bearing(from, to);
+  }
+  return null;
 }
 
 /**

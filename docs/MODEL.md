@@ -45,6 +45,8 @@ interface Course {
   version: 2;
   id: string;
   name: string;
+  location: string; // seeded from the map, then whatever you type
+  description: string; // capped at DESCRIPTION_MAX
   notes: string;
   createdAt: string;
   updatedAt: string;
@@ -188,16 +190,17 @@ styles them differently so the claim is visible.
 
 ### Props by kind
 
-| Kind           | Props                                                                    |
-| -------------- | ------------------------------------------------------------------------ |
-| `tee`          | color (skill level), surface, width, length, bearing, status, standalone |
-| `target`       | pinId, type, model, color, status, standalone                            |
-| `dropzone`     | surface, width, length, bearing                                          |
-| `mando`        | side, type, height, bearing                                              |
-| `fairway`      | shape, widthStart, widthEnd                                              |
-| `boundary`     | foliage                                                                  |
-| `ob`, `hazard` | invert                                                                   |
-| `water`        | inPlay                                                                   |
+| Kind  | Props                                                                    |
+| ----- | ------------------------------------------------------------------------ |
+| `tee` | color (skill level), surface, width, length, bearing, status, standalone |
+
+| `target` | pinId, type, model, color, status, standalone |
+| `dropzone` | surface, width, length, bearing |
+| `mando` | side, type, height, bearing |
+| `fairway` | shape, widthStart, widthEnd |
+| `boundary` | foliage |
+| `ob`, `hazard` | invert |
+| `water` | inPlay |
 
 `boundary.foliage` is the one thing about a property the app cannot see, and the
 PDGA acreage chart is indexed by it. There is deliberately no default — the chart
@@ -388,15 +391,23 @@ label position · polygon area and course acreage · elevation
 
 ## Not in the document at all
 
-|                                                 | Where it lives                    |
-| ----------------------------------------------- | --------------------------------- |
-| "Save as default" — surface, colour, dimensions | localStorage, keyed by tee colour |
-| Par readout show/hide                           | View setting                      |
-| Which pair a hole panel is describing           | Editor state, per selection       |
+|                                                | Where it lives                   |
+| ---------------------------------------------- | -------------------------------- |
+| "Save as default" — surface, color, dimensions | localStorage, keyed by tee color |
+| Feet or meters                                 | localStorage — see below         |
+| Par readout show/hide                          | View setting                     |
+| Which pair a hole panel is describing          | Editor state, per selection      |
 
 Everything in the document is undoable, autosaved, and travels in the `.hyzer`
 file. A preference that rode along would mean different things to different
 people opening the same course.
+
+**Units are the clearest case.** Feet or meters is a fact about the reader, not
+about the land: a US club and a European one should be able to open one file and
+each see it in what they think in. So the switch sits with the display
+preferences in the Settings section and is stored per browser, while the drawing
+aids beside it are in the document — those are decisions about how this course
+is presented, and they should survive being sent to somebody.
 
 ---
 

@@ -199,11 +199,21 @@ placements, because building one is a single task with two clicks in it.
 ### Where things are
 
 The course sits top left — its name is the panel's heading, and everything else
-about it is underneath. Its holes are in the column below. Whatever you select
-opens top right. The tools are along the bottom, with undo and redo on the end of
-the rail, and the camera controls — imagery, north, zoom — stack in the bottom
-right corner. Everything floats: opening a panel never resizes the map, because
-a map that reflows loses your place.
+about it is underneath, in sections that fold. Its holes are in the column below.
+Whatever you select opens top right. The tools are along the bottom, with undo
+and redo on the end of the rail, and the camera controls — imagery, north, zoom —
+stack in the bottom right corner. Everything floats: opening a panel never
+resizes the map, because a map that reflows loses your place.
+
+Panel names are inputs. The course's name, a hole's, a feature's — each is the
+heading you read and the field you edit, rather than a title with a Name row
+three pixels under it saying the same thing. Select a feature inside a hole and
+a breadcrumb above its name takes you back to the hole.
+
+A course's location fills itself in the first time you draw something, from
+wherever the map is pointed, and is yours to change after that. The coordinates
+are already in the file; a name is the only form of "where" that is any use to a
+parks department.
 
 ## Contributing
 

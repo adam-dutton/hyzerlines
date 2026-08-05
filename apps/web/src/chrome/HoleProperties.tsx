@@ -14,7 +14,14 @@ import {
 } from '@hyzerlines/core';
 
 import { formatDistance, type UnitSystem } from '../units';
-import { Row, SectionTitle, ToggleRow, sectionClass, selectClass } from './propertyRow';
+import {
+  Row,
+  SectionTitle,
+  ToggleRow,
+  fieldWidth,
+  sectionClass,
+  selectClass,
+} from './propertyRow';
 
 /**
  * Properties of the selected hole.
@@ -112,7 +119,7 @@ function EndPicker({
           aria-label={`${label} for this hole`}
           value={value ?? ''}
           onChange={(e) => onChange(e.target.value)}
-          className={cn(selectClass, 'max-w-[8rem] truncate')}
+          className={cn(selectClass, fieldWidth, 'truncate')}
         >
           {features.map((feature) => (
             <option key={feature.id} value={feature.id}>
@@ -175,7 +182,7 @@ function Claim({
           const op = assignToHole(course, e.target.value, hole.id);
           if (op) onOp(op);
         }}
-        className={cn(selectClass, 'max-w-[8rem] truncate')}
+        className={cn(selectClass, fieldWidth, 'truncate')}
       >
         <option value="">Choose…</option>
         {free.map((feature) => (
@@ -244,6 +251,15 @@ export function HoleProperties({
 
   return (
     <>
+      {/*
+        Number, par and the measurements it produced, in that order and without
+        section headings between them. This is the answer to "what is this
+        hole" — everything else on the panel is about how it is put together —
+        and it used to be spread across three titled sections with the shot
+        picker in the middle of them.
+
+        The name row is gone: it is the panel's heading now.
+      */}
       <div className={sectionClass}>
         <Row label="Number">
           <TextField
@@ -259,23 +275,98 @@ export function HoleProperties({
               if (!Number.isInteger(parsed) || parsed < 1 || parsed > 99) return;
               update({ number: parsed });
             }}
-            className="w-20 text-right tabular-nums"
+            className={cn(fieldWidth, 'text-right tabular-nums')}
           />
         </Row>
-        <Row label="Name">
-          <TextField
-            label="Hole name"
-            size="sm"
-            value={hole.name}
-            placeholder={`Hole ${hole.number}`}
-            onChange={(e) => update({ name: e.target.value })}
-            className="w-36"
-          />
+
+        <Row label="Par">
+          <span className="flex items-center gap-1.5">
+            <select
+              /* Distinct from the scorecard's "Par for Hole 1": two comboboxes
+                 that set the same value need names a screen reader can tell
+                 apart, and so does a test. */
+              aria-label="Par for the selected hole"
+              value={par ?? ''}
+              disabled={par === null}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                setPar(value === suggestion?.par ? null : value);
+              }}
+              className={cn(
+                selectClass,
+                fieldWidth,
+                'font-mono tabular-nums',
+                overridden && 'text-text-accent',
+              )}
+            >
+              {par === null && <option value="">—</option>}
+              {[2, 3, 4, 5, 6].map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </span>
         </Row>
+
+        {suggestion ? (
+          <div className="mt-1 space-y-0.5">
+            {suggestion.factors.map((factor) => (
+              <p key={factor.label} className="text-2xs leading-4 text-text-muted">
+                {factor.label}
+              </p>
+            ))}
+            <p className="text-2xs leading-4 text-text-muted">
+              Effective length {formatDistance(suggestion.effectiveMeters, units)}
+            </p>
+            {suggestion.borderline && (
+              <p className="text-2xs leading-4 text-status-warning">
+                Close to a band boundary — could go either way.
+              </p>
+            )}
+            {overridden && (
+              <p className="text-2xs leading-4 text-text-accent">
+                You set this. Suggested par is {suggestion.par}.{' '}
+                <button
+                  type="button"
+                  onClick={() => setPar(null)}
+                  className="underline underline-offset-2 hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                >
+                  Reset
+                </button>
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="mt-1 text-2xs leading-4 text-text-muted">
+            Assign a tee and a basket to get a par.
+          </p>
+        )}
+
+        <Row label="Tee to basket">
+          <span className="font-mono text-xs tabular-nums text-text-primary">
+            {measurement?.straight == null ? '—' : formatDistance(measurement.straight, units)}
+          </span>
+        </Row>
+        {/* Only shown when a fairway exists: a routed length identical to the
+            straight one would imply a route that isn't there. */}
+        {measurement?.routed != null && (
+          <Row label="Along the fairway">
+            <span className="font-mono text-xs tabular-nums text-text-primary">
+              {formatDistance(measurement.routed, units)}
+            </span>
+          </Row>
+        )}
       </div>
 
+      {/*
+        "Features", not "Shot" — it is the list of things the hole is made of,
+        and it grows a real one when a hole can hold several tees, several pins
+        and a fairway per pairing. The single-shot picker below is what that
+        replaces.
+      */}
       <div className={sectionClass}>
-        <SectionTitle>Shot</SectionTitle>
+        <SectionTitle>Features</SectionTitle>
         <EndPicker
           label="Tee"
           ids={hole.teeIds}
@@ -337,92 +428,6 @@ export function HoleProperties({
               ? `Played as this shot in ${layoutName(layout)}.`
               : `${layoutName(layout)} plays a different tee or pin — this shot is not in the routing.`}
           </p>
-        )}
-      </div>
-
-      <div className={sectionClass}>
-        <SectionTitle>Par</SectionTitle>
-        <Row label="Par">
-          <span className="flex items-center gap-1.5">
-            <select
-              /* Distinct from the scorecard's "Par for Hole 1": two comboboxes
-                 that set the same value need names a screen reader can tell
-                 apart, and so does a test. */
-              aria-label="Par for the selected hole"
-              value={par ?? ''}
-              disabled={par === null}
-              onChange={(e) => {
-                const value = Number(e.target.value);
-                setPar(value === suggestion?.par ? null : value);
-              }}
-              className={cn(
-                selectClass,
-                'font-mono tabular-nums',
-                overridden && 'text-text-accent',
-              )}
-            >
-              {par === null && <option value="">—</option>}
-              {[2, 3, 4, 5, 6].map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-            {overridden && (
-              <button
-                type="button"
-                onClick={() => setPar(null)}
-                className="text-2xs text-text-muted underline-offset-2 hover:text-text-secondary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-              >
-                Reset
-              </button>
-            )}
-          </span>
-        </Row>
-
-        {suggestion ? (
-          <div className="mt-1 space-y-0.5">
-            {suggestion.factors.map((factor) => (
-              <p key={factor.label} className="text-2xs leading-4 text-text-muted">
-                {factor.label}
-              </p>
-            ))}
-            <p className="text-2xs leading-4 text-text-muted">
-              Effective length {formatDistance(suggestion.effectiveMeters, units)}
-            </p>
-            {suggestion.borderline && (
-              <p className="text-2xs leading-4 text-status-warning">
-                Close to a band boundary — could go either way.
-              </p>
-            )}
-            {overridden && (
-              <p className="text-2xs leading-4 text-text-accent">
-                You set this. Suggested par is {suggestion.par}.
-              </p>
-            )}
-          </div>
-        ) : (
-          <p className="mt-1 text-2xs leading-4 text-text-muted">
-            Assign a tee and a basket to get a par.
-          </p>
-        )}
-      </div>
-
-      <div className={sectionClass}>
-        <SectionTitle>Measurements</SectionTitle>
-        <Row label="Tee to basket">
-          <span className="font-mono text-xs tabular-nums text-text-primary">
-            {measurement?.straight == null ? '—' : formatDistance(measurement.straight, units)}
-          </span>
-        </Row>
-        {/* Only shown when a fairway exists: a routed length identical to the
-            straight one would imply a route that isn't there. */}
-        {measurement?.routed != null && (
-          <Row label="Along the fairway">
-            <span className="font-mono text-xs tabular-nums text-text-primary">
-              {formatDistance(measurement.routed, units)}
-            </span>
-          </Row>
         )}
       </div>
 

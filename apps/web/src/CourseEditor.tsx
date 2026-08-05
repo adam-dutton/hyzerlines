@@ -564,6 +564,7 @@ export function CourseEditor({
             onDeleteFeature={deleteSelected}
             onDeleteHole={deleteSelectedHole}
             onSelectFeature={selectFeature}
+            onSelectHole={selectHole}
             onSelectPair={setPairChoice}
             onClearSelection={() => {
               setSelectedId(null);

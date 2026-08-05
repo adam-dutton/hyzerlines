@@ -254,10 +254,21 @@ export function fieldsFor(kind: FeatureKind): readonly FieldDefinition[] {
   switch (kind) {
     case 'tee':
       return [
-        { key: 'color', label: 'Colour', type: 'select', options: TEE_COLORS },
+        /*
+         * "Skill color", not "Colour". It is not decoration: the color IS
+         * the skill level this tee was built for, and the label has to say
+         * so or it reads as a styling choice with no consequences.
+         *
+         * `standalone` is absent from this list on purpose. It is still a
+         * real property — rules.ts reads it to exempt a practice basket
+         * from the unassigned check — but it is the same question as "which
+         * hole does this belong to", and asking it twice, once as a picker
+         * and once as a checkbox that can contradict it, is how a document
+         * ends up in a state no interface admits to.
+         */
+        { key: 'color', label: 'Skill color', type: 'select', options: TEE_COLORS },
         ...placedRectangleFields,
         { key: 'status', label: 'Status', type: 'select', options: INSTALL_STATUS },
-        { key: 'standalone', label: 'Not part of a hole', type: 'boolean' },
       ];
     case 'dropzone':
       return placedRectangleFields;
@@ -266,11 +277,10 @@ export function fieldsFor(kind: FeatureKind): readonly FieldDefinition[] {
         { key: 'pinId', label: 'Pin', type: 'text', placeholder: 'A' },
         { key: 'type', label: 'Type', type: 'select', options: TARGET_TYPES },
         { key: 'model', label: 'Model', type: 'text', placeholder: 'e.g. Mach X5' },
-        { key: 'color', label: 'Colour', type: 'text', placeholder: 'e.g. white' },
+        { key: 'color', label: 'Color', type: 'text', placeholder: 'e.g. white' },
         { key: 'status', label: 'Status', type: 'select', options: INSTALL_STATUS },
-        // A practice basket belongs to the course, not to a hole, and should
-        // not be reported forever as something you forgot to assign.
-        { key: 'standalone', label: 'Not part of a hole', type: 'boolean' },
+        // `standalone` is set by the hole picker rather than by a checkbox
+        // of its own — see the note on the tee's fields above.
       ];
     case 'mando':
       return [

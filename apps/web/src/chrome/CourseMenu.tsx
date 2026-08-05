@@ -1,27 +1,19 @@
-import {
-  IconButton,
-  Menu,
-  MenuItem,
-  MenuLabel,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuSeparator,
-  type ThemeName,
-} from '@hyzerlines/design';
+import { IconButton, Menu, MenuItem, MenuSeparator, type ThemeName } from '@hyzerlines/design';
 
 import { SOURCE_URL } from './Attribution';
-import type { UnitSystem } from '../units';
 
 /**
  * Everything that used to be scattered across the top bar's three cards.
  *
- * The theme toggle, the shortcuts overlay, open and save, and the units
- * switch — four islands of chrome spanning the top of the screen, none of them
- * used more than a few times a session, all of them permanently on top of the
- * land. One button on the course panel's header holds the lot.
+ * The theme toggle, the shortcuts overlay, and open and save — islands of
+ * chrome spanning the top of the screen, none of them used more than a few
+ * times a session, all of them permanently on top of the land. One button on
+ * the course panel's header holds the lot.
  *
- * Undo and redo did not come here. They are used constantly and mid-gesture,
- * so they went the other way, into the tool rail.
+ * What is here is what has nowhere better to be. Undo and redo went into the
+ * tool rail, because they are used constantly and mid-gesture. Units went into
+ * the Settings section below, next to the other display preferences, because
+ * that is what they are.
  */
 
 function MenuIcon() {
@@ -133,16 +125,12 @@ export function CourseMenu({
   onShowShortcuts,
   onOpen,
   onSave,
-  units,
-  onUnitsChange,
 }: {
   theme: ThemeName;
   onToggleTheme: () => void;
   onShowShortcuts: () => void;
   onOpen: () => void;
   onSave: () => void;
-  units: UnitSystem;
-  onUnitsChange: (units: UnitSystem) => void;
 }) {
   return (
     <Menu
@@ -160,24 +148,6 @@ export function CourseMenu({
       <MenuItem onSelect={onSave} icon={<DownloadIcon />}>
         Save to a file
       </MenuItem>
-
-      <MenuSeparator />
-
-      {/*
-        Units are a display preference, and they get flipped often enough to
-        want a home rather than a settings page — US clubs quote feet and
-        everyone else quotes meters. Kept next to the theme for that reason:
-        both are about how the app presents, not about the course.
-      */}
-      <MenuLabel>Units</MenuLabel>
-      <MenuRadioGroup value={units} onValueChange={(v) => onUnitsChange(v as UnitSystem)}>
-        <MenuRadioItem value="imperial" hint="Feet and acres">
-          Imperial
-        </MenuRadioItem>
-        <MenuRadioItem value="metric" hint="Meters and hectares">
-          Metric
-        </MenuRadioItem>
-      </MenuRadioGroup>
 
       <MenuSeparator />
 

@@ -121,9 +121,6 @@ test.describe('chrome layout', () => {
     ]) {
       await expect(page.getByRole('menuitem', { name })).toBeVisible();
     }
-
-    // Units moved here from the status bar that no longer exists.
-    await expect(page.getByRole('menuitemradio', { name: /Imperial/ })).toBeChecked();
   });
 });
 

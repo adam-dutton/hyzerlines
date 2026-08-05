@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { activeLayout, createCourse, parseCourse, DOCUMENT_VERSION } from './schema.js';
+import {
+  activeLayout,
+  createCourse,
+  parseCourse,
+  DESCRIPTION_MAX,
+  DOCUMENT_VERSION,
+} from './schema.js';
 import { applyOp, canCoalesce, isUndoable, COALESCE_WINDOW_MS, type Op } from './ops.js';
 import { CourseStore } from './store.js';
 import { serializeCourse, deserializeCourse, suggestedFilename } from './file.js';
@@ -239,6 +245,48 @@ describe('CourseStore', () => {
     expect(s.canUndo).toBe(false);
     expect(s.canRedo).toBe(false);
     expect(s.dirty).toBe(false);
+  });
+
+  /*
+   * Both are additive with defaults, so a version 2 document written before
+   * they existed opens with them empty rather than failing to parse.
+   */
+  it('location and description are absent from older documents', () => {
+    const { location: _l, description: _d, ...older } = createCourse();
+
+    const parsed = parseCourse(older);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.course.location).toBe('');
+    expect(parsed.course.description).toBe('');
+  });
+
+  /*
+   * Truncated on write rather than refused. The op arrives a keystroke at a
+   * time, and dropping the whole edit on the character that goes over reads as
+   * the field having died — while letting it through would produce a document
+   * the schema then refuses to parse back.
+   */
+  it('caps the description rather than rejecting it', () => {
+    const course = createCourse();
+    const tooLong = 'x'.repeat(DESCRIPTION_MAX + 50);
+
+    const applied = applyOp(course, { type: 'setDescription', description: tooLong }).course;
+    expect(applied.description).toHaveLength(DESCRIPTION_MAX);
+    expect(parseCourse(applied).ok).toBe(true);
+  });
+
+  // A run of typing is one edit. Undo after naming a course should clear the
+  // name, not walk back a letter at a time.
+  it('coalesces a typing run in every free-text field on the course', () => {
+    for (const op of [
+      (v: string) => ({ type: 'setName' as const, name: v }),
+      (v: string) => ({ type: 'setNotes' as const, notes: v }),
+      (v: string) => ({ type: 'setLocation' as const, location: v }),
+      (v: string) => ({ type: 'setDescription' as const, description: v }),
+    ]) {
+      expect(canCoalesce(op('a'), op('ab'), 50)).toBe(true);
+    }
   });
 
   it('tracks dirty state across save', () => {
