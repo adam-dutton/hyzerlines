@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-import { waitForSave } from './fixtures';
+import { openEditor, place, waitForSave } from './fixtures';
 
 /**
  * Document persistence and history, exercised through the real UI.
@@ -108,12 +108,53 @@ test.describe('document', () => {
   test('the basemap choice is part of the document and survives a reload', async ({ page }) => {
     await openApp(page);
 
-    await page.getByRole('radio', { name: 'Street' }).click();
-    await expect(page.getByRole('radio', { name: 'Street' })).toBeChecked();
-    await waitForSave(page);
+    const chooseBasemap = async (name: string) => {
+      await page.getByRole('button', { name: 'Basemap' }).click();
+      await page.getByRole('menuitemradio', { name: new RegExp(name) }).click();
+    };
 
+    await chooseBasemap('Street');
+    await waitForSave(page);
     await page.reload();
-    await expect(page.getByRole('radio', { name: 'Street' })).toBeChecked();
+    await waitForHydration(page);
+
+    // Reopened to read it back: a menu only reports its state while open.
+    await page.getByRole('button', { name: 'Basemap' }).click();
+    await expect(page.getByRole('menuitemradio', { name: /Street/ })).toBeChecked();
+  });
+
+  /*
+   * Switching the basemap calls `setStyle`, which discards every source and
+   * layer the app added. Reinstalling them is not enough on its own — the
+   * install closure has to read *current* data, and for a long time it did
+   * not: it captured the empty document from first render, so a basemap
+   * switch emptied the map and only a reload brought the course back.
+   */
+  test('the course survives a basemap switch', async ({ page }) => {
+    // `openEditor` rather than `openApp`: this one needs a zoom where a hole is
+    // a hole rather than a continent, and tiles stubbed so the style swap is
+    // not also a network race.
+    await openEditor(page, { zoom: 16 });
+    await place(page, 'Tee pad', 480, 460);
+    await place(page, 'Target', 800, 260);
+    await page.getByRole('button', { name: 'Add hole' }).click();
+
+    const corridors = () =>
+      page.evaluate(
+        () =>
+          new Set(
+            window
+              .hyzerlinesMap!.queryRenderedFeatures({ layers: ['derived-corridor'] })
+              .map((f) => String(f.properties?.['id'])),
+          ).size,
+      );
+
+    await expect.poll(corridors).toBe(1);
+
+    await page.getByRole('button', { name: 'Basemap' }).click();
+    await page.getByRole('menuitemradio', { name: /Street/ }).click();
+
+    await expect.poll(corridors).toBe(1);
   });
 
   test('the first-run search does not reappear over restored work', async ({ page }) => {

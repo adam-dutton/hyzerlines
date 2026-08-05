@@ -10,22 +10,26 @@ import {
 } from '@hyzerlines/core';
 
 import type { UnitSystem } from '../units';
-import { CourseProperties } from './CourseProperties';
 import { FeatureProperties } from './FeatureProperties';
 import { HoleProperties, type SelectedPair } from './HoleProperties';
 
 /**
- * Properties, for whatever is in focus.
+ * Properties, for whatever is selected.
  *
- * One panel with three modes rather than three panels that appear and vanish.
- * A column that comes and goes is a column the eye has to re-find every time,
- * and it makes the map jump in peripheral vision even when nothing has moved.
- * Here the panel is always present and only its contents change, so the shape
- * of the workspace is constant.
+ * Two modes now, not three: a selected feature, else a selected hole. The
+ * course used to be the fallback here, which was always slightly wrong — the
+ * course is not something you select, it is the thing you are working on — and
+ * it now has its own panel in the opposite corner where its name already was.
+ *
+ * With that gone there is nothing to show when nothing is selected, so the
+ * panel goes away. It used to be argued that a column which comes and goes is
+ * one the eye has to re-find; that argument was about a workspace where this
+ * was the only inspector. The course column is now the constant, and an empty
+ * card in the other corner would be a permanent placeholder for nothing.
  *
  * The order of precedence is narrowest-first: a selected feature, else a
- * selected hole, else the course. That matches how selection actually
- * narrows — clicking a tee inside a hole means you want the tee.
+ * selected hole. That matches how selection actually narrows — clicking a tee
+ * inside a hole means you want the tee.
  */
 export function RightPanel({
   course,
@@ -53,17 +57,23 @@ export function RightPanel({
   onSelectPair: (pair: SelectedPair) => void;
   onClearSelection: () => void;
 }) {
-  const title = feature
-    ? featureName(feature)
-    : hole
-      ? holeName(hole)
-      : course.name.trim() || 'Untitled course';
+  if (!feature && !hole) return null;
 
-  const subtitle = feature ? KIND_DEFINITIONS[feature.kind].label : hole ? 'Hole' : 'Course';
+  const title = feature ? featureName(feature) : hole ? holeName(hole) : '';
+  const subtitle = feature ? KIND_DEFINITIONS[feature.kind].label : 'Hole';
 
   return (
     <div
-      className="pointer-events-none absolute bottom-20 right-4 top-20 flex w-64 flex-col"
+      /*
+       * Top right, mirroring the course column, and the same width as it. Both
+       * used to start below a top bar that no longer exists; the corner is the
+       * corner, and starting them level is what makes the two columns read as
+       * a frame around the map rather than as three unrelated cards.
+       */
+      // `bottom-48` clears the camera controls stacked in the same corner. The
+      // left column only needs `bottom-28` because the tool rail it clears is
+      // centred and much shorter.
+      className="pointer-events-none absolute bottom-48 right-4 top-4 flex w-72 flex-col"
       style={{ zIndex: 'var(--hz-z-chrome)' }}
     >
       <Panel
@@ -78,25 +88,21 @@ export function RightPanel({
             <p className="truncate text-sm font-medium text-text-primary">{title}</p>
             <p className="text-2xs text-text-muted">{subtitle}</p>
           </div>
-          {/* Only when there is a selection to clear. On the course view there
-              is nothing to close, and a permanently disabled X is noise. */}
-          {(feature || hole) && (
-            <IconButton
-              label="Clear selection"
-              size="sm"
-              tooltipSide="left"
-              onClick={onClearSelection}
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-                <path
-                  d="m2.5 2.5 7 7m0-7-7 7"
-                  stroke="currentColor"
-                  strokeWidth="1.4"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </IconButton>
-          )}
+          <IconButton
+            label="Clear selection"
+            size="sm"
+            tooltipSide="left"
+            onClick={onClearSelection}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+              <path
+                d="m2.5 2.5 7 7m0-7-7 7"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+              />
+            </svg>
+          </IconButton>
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -119,9 +125,7 @@ export function RightPanel({
               onDelete={onDeleteHole}
               onRevealFeature={onSelectFeature}
             />
-          ) : (
-            <CourseProperties course={course} units={units} onOp={onOp} />
-          )}
+          ) : null}
         </div>
       </Panel>
     </div>

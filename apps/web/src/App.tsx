@@ -9,10 +9,10 @@ import type { View } from '@hyzerlines/core';
 
 import { MapCanvas } from './map/MapCanvas';
 import { basemaps } from './map/basemaps';
-import { TopBar } from './chrome/TopBar';
-import { StatusBar } from './chrome/StatusBar';
+import { Attribution } from './chrome/Attribution';
 import { MapControls } from './chrome/MapControls';
 import { LocationSearch } from './chrome/LocationSearch';
+import { CoursePanel } from './chrome/CoursePanel';
 import { ShortcutsOverlay } from './chrome/ShortcutsOverlay';
 import { CourseEditor } from './CourseEditor';
 import { useShortcuts } from './keyboard/useShortcuts';
@@ -29,18 +29,9 @@ import { downloadCourse, openCourseFile } from './document/fileActions';
  * while measuring a fairway is the difference between a tool and a toy.
  */
 function Shell() {
-  const {
-    course,
-    dispatch,
-    undo,
-    redo,
-    canUndo,
-    canRedo,
-    load,
-    saveStatus,
-    hydrating,
-    restored,
-  } = useCourse();
+  // Undo and redo are still bound as shortcuts here, but their buttons now live
+  // in the tool rail, which reads `canUndo`/`canRedo` from the store directly.
+  const { course, dispatch, undo, redo, load, saveStatus, hydrating, restored } = useCourse();
 
   const [theme, setTheme] = useState<ThemeName>(resolveInitialTheme);
   const [units, setUnits] = useState<UnitSystem>(getStoredUnits);
@@ -130,28 +121,37 @@ function Shell() {
       <MapCanvas basemapId={course.basemapId} onViewChange={handleViewChange}>
         {!chromeHidden && (
           <>
-            <TopBar
-              courseName={course.name}
-              onCourseNameChange={(name) => dispatch({ type: 'setName', name })}
+            <Attribution basemapId={course.basemapId} />
+            <MapControls
               basemapId={course.basemapId}
               onBasemapChange={(basemapId) => dispatch({ type: 'setBasemap', basemapId })}
-              theme={theme}
-              onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              onShowShortcuts={() => setShowShortcuts(true)}
-              canUndo={canUndo}
-              canRedo={canRedo}
-              onUndo={undo}
-              onRedo={redo}
-              onSave={() => downloadCourse(course)}
-              onOpen={() => void openFile()}
-              saveStatus={saveStatus}
             />
-            <StatusBar basemapId={course.basemapId} units={units} onUnitsChange={changeUnits} />
-            <MapControls />
           </>
         )}
 
-        <CourseEditor units={units} hidden={chromeHidden} />
+        {/*
+          The course panel is built here and handed to the editor, because it
+          needs the shell's own state — theme, units, file actions, save
+          status — none of which the editor has any business knowing about.
+        */}
+        <CourseEditor
+          units={units}
+          hidden={chromeHidden}
+          coursePanel={
+            <CoursePanel
+              course={course}
+              units={units}
+              onOp={dispatch}
+              saveStatus={saveStatus}
+              theme={theme}
+              onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              onShowShortcuts={() => setShowShortcuts(true)}
+              onOpen={() => void openFile()}
+              onSave={() => downloadCourse(course)}
+              onUnitsChange={changeUnits}
+            />
+          }
+        />
 
         {showSearch && !chromeHidden && (
           <LocationSearch onDismiss={() => setDismissedSearch(true)} />

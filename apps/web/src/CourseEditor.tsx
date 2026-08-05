@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   anchorOf,
+  assignToHole,
   checkCourse,
   createFeature,
   createHole,
@@ -43,9 +44,18 @@ import { useCourse } from './document/CourseProvider';
  * instance into App means the shell stays a layout component and the editing
  * behaviour sits next to the thing it edits.
  */
-export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boolean }) {
+export function CourseEditor({
+  units,
+  hidden,
+  coursePanel,
+}: {
+  units: UnitSystem;
+  hidden: boolean;
+  /** Built by the shell — see the note where it is passed in. */
+  coursePanel: ReactNode;
+}) {
   const { map } = useMap();
-  const { course, dispatch, documentEpoch } = useCourse();
+  const { course, dispatch, documentEpoch, undo, redo, canUndo, canRedo } = useCourse();
 
   const [tool, setTool] = useState<Tool>('select');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -241,13 +251,55 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
       if (!geometryMatchesKind(kind, geometry)) return;
       const feature = createFeature(kind, geometry);
       dispatch({ type: 'addFeature', feature });
-      // Select what was just drawn, so the properties panel opens on it — the
-      // next thing you want is almost always to name it or set a property.
-      // Through selectFeature, not setSelectedId: drawing while a hole is
-      // selected must hand the panel over, or it keeps describing the hole.
+
+      /*
+       * A tee or basket drawn while a hole is selected joins that hole.
+       *
+       * Holes could only ever be built the other way round: draw both ends,
+       * then press Add hole and let it guess which loose pair you meant. That
+       * is backwards for the case where you already know what hole 4 is and
+       * are placing its pad — and it gave the empty hole you can now create
+       * no way to be filled except by drawing features somewhere else first
+       * and adopting them afterwards.
+       *
+       * Two ops rather than one batch: `addFeature` has already been
+       * dispatched and stands on its own, and `assignToHole` is itself a
+       * batch that keeps the hole's arrays and the feature's `holeId` in
+       * step. Undoing once takes back the assignment and leaves the feature,
+       * which is the right granularity — the placement was deliberate even
+       * when the hole was not.
+       */
+      const joinsHole =
+        selectedHoleId !== null && (kind === 'tee' || kind === 'target')
+          ? assignToHole(
+              { ...course, features: [...course.features, feature] },
+              feature.id,
+              selectedHoleId,
+            )
+          : null;
+
+      if (joinsHole) {
+        dispatch(joinsHole);
+        /*
+         * The hole keeps the selection, and that is the whole point.
+         *
+         * Selecting the tee that was just placed would deselect the hole, so
+         * the basket placed next would land loose — you would get one end of
+         * hole 4 and then silently start a different job. Building a hole is
+         * one task with two placements in it, and the hole is the context
+         * that task happens in.
+         */
+        return;
+      }
+
+      // Otherwise, select what was just drawn, so the properties panel opens
+      // on it — the next thing you want is almost always to name it or set a
+      // property. Through selectFeature, not setSelectedId: drawing while a
+      // hole is selected must hand the panel over, or it keeps describing the
+      // hole.
       selectFeature(feature.id);
     },
-    [dispatch, selectFeature],
+    [course, dispatch, selectFeature, selectedHoleId],
   );
 
   const backToSelect = useCallback(() => setTool('select'), []);
@@ -479,7 +531,15 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
 
       {!hidden && (
         <>
-          <ToolRail tool={nav.effective} invertZoom={nav.invertZoom} onToolChange={setTool} />
+          <ToolRail
+            tool={nav.effective}
+            invertZoom={nav.invertZoom}
+            onToolChange={setTool}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={undo}
+            onRedo={redo}
+          />
 
           <LeftPanel
             course={course}
@@ -491,6 +551,7 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
             onAddHole={addHole}
             onRevealFinding={reveal}
             onDismissRule={dismissRule}
+            header={coursePanel}
           />
 
           <RightPanel

@@ -191,6 +191,20 @@ becomes a routed one.
 Clicking anything belonging to a hole selects the **hole**; clicking again drills
 into the feature.
 
+A hole can be built from either end. Draw a tee and a basket and press **Add
+hole** and it claims the pair — or add the hole first, and anything you draw
+while it is selected joins it. The hole keeps the selection through both
+placements, because building one is a single task with two clicks in it.
+
+### Where things are
+
+The course sits top left — its name is the panel's heading, and everything else
+about it is underneath. Its holes are in the column below. Whatever you select
+opens top right. The tools are along the bottom, with undo and redo on the end of
+the rail, and the camera controls — imagery, north, zoom — stack in the bottom
+right corner. Everything floats: opening a panel never resizes the map, because
+a map that reflows loses your place.
+
 ## Contributing
 
 Issues and pull requests are welcome. CI runs format, lint, typecheck and build

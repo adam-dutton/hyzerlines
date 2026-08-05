@@ -63,12 +63,28 @@ export function FeatureLayer({
   const readyRef = useRef(false);
   const selectedRef = useRef<readonly string[]>([]);
 
+  /*
+   * The live data, for the reinstall that follows a basemap change.
+   *
+   * `install` is bound once, for the lifetime of the map, and runs again on
+   * every `styledata` — so without these it would close over whatever the
+   * props were on the very first render, which is an empty document. That is
+   * not theoretical: `setStyle` discards every source, install re-added them
+   * with the mount-time data, and the `setData` effects below never fired
+   * because `features` had not changed. Switching the basemap emptied the map
+   * and only a reload brought the course back.
+   */
+  const dataRef = useRef({ features, derived, preview, handles });
+  dataRef.current = { features, derived, preview, handles };
+
   // Install sources and layers. Re-runs after a basemap change, because
   // setStyle() discards everything not in the new style.
   useEffect(() => {
     if (!map) return;
 
     const install = () => {
+      const { features, derived, preview, handles } = dataRef.current;
+
       /*
        * Derived geometry goes in first, because MapLibre draws in insertion
        * order and a tee pad must sit under the tee point it was computed from.
@@ -164,9 +180,9 @@ export function FeatureLayer({
     return () => {
       map.off('styledata', install);
     };
-    // `features` and `preview` are intentionally omitted: this installs the
-    // scene once. Data updates are handled by the effects below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Data props are deliberately not deps: this installs the scene once and
+    // reinstalls it after a style swap, reading current data from `dataRef`.
+    // Ordinary updates go through the `setData` effects below.
   }, [map]);
 
   // Push document features to the map.

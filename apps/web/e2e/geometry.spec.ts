@@ -313,6 +313,16 @@ test.describe('assigning features to holes', () => {
   test('a hole can claim a loose basket, and give it back', async ({ page }) => {
     await openEditor(page, { zoom: 16 });
     await setupHole(page);
+
+    /*
+     * Deselected first, so the basket lands loose.
+     *
+     * `setupHole` leaves its hole selected, and anything drawn while a hole is
+     * selected now joins it — which is the point of that behaviour and exactly
+     * what this test needs to opt out of. There has to be an unassigned basket
+     * for a hole to claim one.
+     */
+    await page.keyboard.press('Escape');
     await place(page, 'Target', 950, 500);
 
     // The loose basket shows up as a finding, and as something to claim.
@@ -352,6 +362,8 @@ test.describe('assigning features to holes', () => {
   test('one move is one undo step, not two half-moves', async ({ page }) => {
     await openEditor(page, { zoom: 16 });
     await setupHole(page);
+    // Loose, so the hole has something to claim — see the test above.
+    await page.keyboard.press('Escape');
     await place(page, 'Target', 950, 500);
 
     await page.getByRole('button', { name: 'Hole 1' }).first().click();
@@ -370,6 +382,8 @@ test.describe('the pair picker', () => {
   }) => {
     await openEditor(page, { zoom: 16 });
     await setupHole(page);
+    // Loose, so the hole has something to claim — see the test above.
+    await page.keyboard.press('Escape');
     await place(page, 'Target', 950, 500);
 
     await page.getByRole('button', { name: 'Hole 1' }).first().click();
