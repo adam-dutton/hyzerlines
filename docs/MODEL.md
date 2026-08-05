@@ -100,6 +100,29 @@ interface Play {
 }
 ```
 
+### One action, one undo step
+
+`{ type: 'batch', ops: [...] }` applies several ops as one, with the inverse
+being the inverses in reverse. Moving a tee between holes is two `updateHole`s;
+bending a fairway for the first time is an `addFeature` plus a `setPair`. Landing
+those on the undo stack separately would let one ⌘Z leave the document in a state
+nobody asked for — a tee in neither hole, or a pair referencing a feature that no
+longer exists.
+
+Undo coalescing crosses that boundary too. A drag that starts by creating a
+fairway continues as plain geometry edits, and `canCoalesce` folds the later ones
+into the batch that created it, so the whole gesture is one entry. The redo op
+stays a batch rather than being replaced by the newest edit — replaying only the
+last geometry change would target a feature that undo had just removed, and the
+bend would silently disappear.
+
+The ops a drag emits carry a **`gesture`** id, and one gesture is one undo entry
+however long it took. Coalescing is otherwise a 700 ms window, which is a
+heuristic for "these edits felt like one action" — fine for a run of keystrokes,
+wrong for a drag, which has a definite start and end that the editor already
+knows. A single long frame was enough to split a bend from the fairway it
+created.
+
 ### Pairs are sparse
 
 A pair only gets a record once it carries something the geometry cannot derive:
@@ -120,6 +143,28 @@ level and one on a single hole are the same thing seen at different ranges;
 modelling them as separate arrays would give every rule, renderer and exporter
 two code paths that drift, and re-scoping later would mean moving between
 collections rather than editing a field.
+
+### Membership: two fields, one fact
+
+A hole lists its `teeIds` and `targetIds`; a feature carries a `holeId`. For tees
+and targets those say the same thing, and **the hole's arrays are
+authoritative** — pairs, layouts, par and every design check read them. `holeId`
+exists so that scoped queries work the same way for a tee as for an OB line.
+
+Two fields that can disagree is normally a bug waiting to happen. What makes it
+safe is that nothing writes one without the other: every move goes through
+`assignToHole`, which emits a single batch that removes from the old hole, adds
+to the new one, and sets `holeId` to match. Order matters too — removal before
+addition, so a feature dragged back where it started is not listed twice.
+
+Assignment deliberately does **not** touch pairs. A par override on a tee that
+moved to another hole is still that shot's par, and the structural checks will
+say if the result stops making sense. Quietly deleting a number the designer set
+is the worse failure.
+
+The **first** tee and **first** target are the hole's representative pair until a
+layout routes it, so their order is meaningful rather than cosmetic. That is what
+`moveToFront` is for, and why the feature panel offers it as an explicit action.
 
 ---
 
@@ -147,7 +192,7 @@ styles them differently so the claim is visible.
 | `target`       | pinId, type, model, color, status, standalone                            |
 | `dropzone`     | surface, width, length, bearing                                          |
 | `mando`        | side, type, height, bearing                                              |
-| `fairway`      | shape                                                                    |
+| `fairway`      | shape, widthStart, widthEnd                                              |
 | `ob`, `hazard` | invert                                                                   |
 | `water`        | inPlay                                                                   |
 
@@ -166,8 +211,73 @@ _backwards_ along the reverse of `bearing`.
 
 The stored point is therefore also the measuring point:
 [ELEMENTS] p2 measures hole length "from front of the tee". The footprint
-polygon is derived, never stored, and falls back to 3 m deep when no pad
-dimensions are set.
+polygon is derived, never stored.
+
+Its defaults come from two documents, for two different reasons:
+
+| Missing  | Falls back to              | Why that figure                                                                         |
+| -------- | -------------------------- | --------------------------------------------------------------------------------------- |
+| `length` | 3 m — [RULES] 802.04.A     | With no pad, that _is_ the teeing area. Not a typical value, the legal extent.          |
+| `width`  | 2 m (6 ft) — [ELEMENTS] p2 | The rules never dimension a tee line's width, so the guideline's own "typical" is used. |
+
+`bearing` has no default at all. Without one the footprint is **withheld** and
+only the point renders — a rectangle at an invented angle would look deliberate.
+
+What the app supplies is **the bearing of the fairway's first segment**, not the
+bearing to the target. On a straight hole those are the same; on a dogleg they
+are not, and a pad aimed at a pin the player cannot see from it is aimed at the
+wrong thing. Players stand on the tee facing the gap they are throwing into. An
+explicit `bearing` on the feature still wins, so this is a default that tracks
+the design rather than a rule that overrides the designer.
+
+### A fairway is not drawn — it is the line between the ends
+
+**Every measurable pair has a fairway from the moment both ends exist.** A tee
+and a target already imply the line between them, so there is no fairway tool:
+tracing by hand something the document already knows was busywork, with a blank
+map as the reward for skipping it.
+
+The line is derived and straight until the designer bends it. Dragging a point on
+it is what materialises `fairway` feature — the same sparseness pairs already
+have, a record appearing only once it carries something the geometry cannot work
+out on its own. Creating the feature and attaching it to its pair is **one batch
+op**, so a single undo takes back both rather than leaving a pair pointing at
+nothing.
+
+A fairway's first and last vertices are the tee and the target, and they are
+**not editable**. Only interior vertices get handles; the ends move when the
+features that own them do — see `moveFeatureTo`. Handles on the ends would sit
+exactly on top of every tee and basket on the course, swallowing the clicks and
+drags meant for those features and offering to detach a fairway from its hole.
+
+`courseFairways` draws **one shot per hole**, not one per pairing: a three-tee,
+three-pin hole contains nine shots and nine overlapping corridors down one
+corridor of land is unreadable. The shot drawn is the one the panels are
+measuring — the active layout's play, or the designer's pick in the hole panel.
+Any pair whose line has actually been shaped is drawn as well, so bending one
+never makes it vanish when the picker moves.
+
+### A fairway's corridor is derived from its line
+
+The area it covers is a variable-width buffer around the centreline, recomputed
+on every edit: half the width to either side of each vertex, mitred at the
+corners, cut square at both ends.
+
+The width **tapers by distance along the line** — not by vertex index, which
+would balloon a dogleg's corridor to full width inside the first short leg:
+
+| Width         | Comes from                                                               |
+| ------------- | ------------------------------------------------------------------------ |
+| At the tee    | The tee pad's own width. Falls back to the typical pad width, floor 1 m. |
+| At the target | 10 m — Circle 1's radius, [RULES] 806.01.A.                              |
+
+**The taper is ours, not the PDGA's.** The PDGA publishes no fairway width. What
+this does is draw a straight line between two figures that _are_ published, and
+say so; `widthStart` and `widthEnd` override both ends per fairway.
+
+A turn sharper than the corridor is wide makes the inside edge fold through
+itself. That is reported as a structural finding rather than silently drawn — a
+folded polygon has stopped describing ground.
 
 ### Status is hardware, not design
 
@@ -200,11 +310,34 @@ The course does **not** carry one. A tee's colour _is_ its level:
 
 ---
 
+---
+
+## Which shot a hole is shown as
+
+A hole with two tees and two pins is four throws. A panel describing "this hole"
+has to pick one, and `representativePair` is the single place that choice is made:
+
+1. **The active layout's play for that hole**, when it has one. That is the shot
+   a card would print and a player would throw.
+2. Otherwise the hole's **first tee and first target** — the best guess available
+   for a corridor nobody has routed yet.
+
+A hole played twice in one layout resolves to its first play; the scorecard lists
+both, because it is a list of plays rather than a list of holes.
+
+The designer can override the choice in the hole panel. That selection is
+**interface state, not document state** — like which layer is selected in an
+editor. Storing it would autosave it, land it on the undo stack, and travel to
+whoever the course was sent to.
+
+---
+
 ## Derived, never stored
 
 Played number · distance · effective length · par suggestion · course and layout
 totals · layout skill level · layout playability · tee and drop-zone footprints ·
-fairway area polygon · elevation
+tee bearing · fairway centreline and corridor polygon · putting circles · hole
+label position · elevation
 
 ## Not in the document at all
 
@@ -213,6 +346,7 @@ fairway area polygon · elevation
 | "Save as default" — surface, colour, dimensions | localStorage, keyed by tee colour |
 | Target circle overlays                          | View setting                      |
 | Par readout show/hide                           | View setting                      |
+| Which pair a hole panel is describing           | Editor state, per selection       |
 
 Everything in the document is undoable, autosaved, and travels in the `.hyzer`
 file. A preference that rode along would mean different things to different

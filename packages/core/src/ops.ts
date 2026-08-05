@@ -23,7 +23,15 @@ export type Op =
   | { type: 'setNotes'; notes: string }
   | { type: 'addFeature'; feature: Feature }
   | { type: 'removeFeature'; id: string }
-  | { type: 'setGeometry'; id: string; geometry: Geometry }
+  /**
+   * `gesture` ties a continuous pointer drag together.
+   *
+   * Without it, coalescing is purely time-based, so a drag that stalls for more
+   * than `COALESCE_WINDOW_MS` — a slow frame, a loaded machine — splits into two
+   * undo entries mid-gesture. A drag has a definite start and end and the editor
+   * knows both, so it says so rather than leaving undo to infer it from timing.
+   */
+  | { type: 'setGeometry'; id: string; geometry: Geometry; gesture?: string }
   | { type: 'setLabel'; id: string; label: string }
   | { type: 'setProp'; id: string; key: string; value: string | number | boolean | undefined }
   | { type: 'setTags'; id: string; tags: string[] }
@@ -44,7 +52,19 @@ export type Op =
   | { type: 'removeLayout'; id: string }
   | { type: 'updateLayout'; id: string; changes: Partial<Omit<Layout, 'id'>> }
   | { type: 'setActiveLayout'; id: string | null }
-  | { type: 'setDismissed'; ruleIds: string[] };
+  | { type: 'setDismissed'; ruleIds: string[] }
+  /**
+   * Several edits that are one action.
+   *
+   * Moving a tee from hole 3 to hole 4 is two `updateHole`s, and bending a
+   * fairway for the first time is an `addFeature` plus a `setPair`. Dispatching
+   * those separately would put each half on the undo stack alone, so one ⌘Z
+   * would leave the document in a state the designer never asked for — a tee in
+   * neither hole, or a pair pointing at a feature that no longer exists.
+   *
+   * Applied in order; the inverse is the inverses in reverse.
+   */
+  | { type: 'batch'; ops: Op[]; gesture?: string };
 
 export interface ApplyResult {
   course: Course;
@@ -63,6 +83,9 @@ export interface ApplyResult {
  * designer reaches for undo and is most alarmed to have it do the wrong thing.
  */
 export function isUndoable(op: Op): boolean {
+  // A batch is undoable if any part of it is — a batch that also moved the
+  // camera should still be reversible for the edit it carried.
+  if (op.type === 'batch') return op.ops.some(isUndoable);
   return op.type !== 'setView' && op.type !== 'setActiveLayout';
 }
 
@@ -80,6 +103,24 @@ export function applyOp(course: Course, op: Op): ApplyResult {
   const undoable = isUndoable(op);
 
   switch (op.type) {
+    /*
+     * Each step is applied to the result of the last, so a batch can build on
+     * itself — add a feature, then reference it.
+     *
+     * `touch` is left to the individual ops rather than applied again here;
+     * running it twice would be harmless but the batch is not itself an edit.
+     */
+    case 'batch': {
+      let next = course;
+      const inverses: Op[] = [];
+      for (const step of op.ops) {
+        const applied = applyOp(next, step);
+        next = applied.course;
+        inverses.push(applied.inverse);
+      }
+      return { course: next, inverse: { type: 'batch', ops: inverses.reverse() }, undoable };
+    }
+
     case 'setName':
       return result(
         { ...course, name: op.name },
@@ -139,6 +180,8 @@ export function applyOp(course: Course, op: Op): ApplyResult {
       if (!existing) return noop(course, op);
       return result(
         mapFeature(course, op.id, (f) => ({ ...f, geometry: op.geometry })),
+        // The inverse carries no gesture: undoing is not part of the drag, and
+        // a stamped inverse would coalesce into whatever gesture came next.
         { type: 'setGeometry', id: op.id, geometry: existing.geometry },
         undoable,
       );
@@ -364,7 +407,31 @@ function touch(course: Course, undoable: boolean): Course {
 export const COALESCE_WINDOW_MS = 700;
 
 export function canCoalesce(previous: Op, next: Op, msSincePrevious: number): boolean {
+  /*
+   * One gesture is one entry, however long it took.
+   *
+   * Checked before the time window, which is the whole point: the window is a
+   * heuristic for "these edits felt like one action", and a drag does not need
+   * to be guessed at.
+   */
+  const gesture = gestureOf(next);
+  if (gesture !== undefined && gestureOf(previous) === gesture) return true;
+
   if (msSincePrevious > COALESCE_WINDOW_MS) return false;
+
+  /*
+   * An edit to a feature the previous op just created is part of that op.
+   *
+   * Bending a fairway for the first time is one gesture that produces two
+   * different ops: a batch that materialises the feature and attaches it to its
+   * pair, then a run of geometry updates as the pointer moves. Without this they
+   * land as two undo entries, and one ⌘Z takes back the bend while leaving
+   * behind a fairway the designer never asked to create.
+   */
+  if (next.type === 'setGeometry' && previous.type === 'batch') {
+    return previous.ops.some((op) => op.type === 'addFeature' && op.feature.id === next.id);
+  }
+
   if (previous.type !== next.type) return false;
 
   switch (next.type) {
@@ -384,4 +451,49 @@ export function canCoalesce(previous: Op, next: Op, msSincePrevious: number): bo
       // Structural changes never merge — undo must step over each one.
       return false;
   }
+}
+
+const gestureOf = (op: Op): string | undefined =>
+  op.type === 'setGeometry' || op.type === 'batch' ? op.gesture : undefined;
+
+/**
+ * The op that redoes a coalesced run.
+ *
+ * For a run of same-type edits the latest one says everything: redoing a name
+ * you typed means applying the final name. A batch is different — it created
+ * something the later ops depend on, so replaying only the latest would apply a
+ * geometry change to a feature that redo has not brought back yet, and the whole
+ * edit would silently vanish.
+ *
+ * So a batch keeps its steps and absorbs the new op, replacing the tail when the
+ * tail already targets the same thing. That last part is what keeps a
+ * three-second drag from accumulating one op per frame.
+ */
+export function mergeRedo(previous: Op, next: Op): Op {
+  if (previous.type !== 'batch') return next;
+
+  const ops = [...previous.ops];
+  const last = ops[ops.length - 1];
+  const sameTarget =
+    last !== undefined &&
+    last.type === next.type &&
+    'id' in last &&
+    'id' in next &&
+    last.id === next.id;
+
+  if (sameTarget) ops[ops.length - 1] = next;
+  else ops.push(next);
+
+  /*
+   * The gesture stamp is carried over.
+   *
+   * Dropping it would end the gesture at the first merge: the next op would find
+   * an unstamped previous entry, fall back to the time window, and split the
+   * drag in two the moment a frame ran long.
+   */
+  return {
+    type: 'batch',
+    ops,
+    ...(previous.gesture === undefined ? {} : { gesture: previous.gesture }),
+  };
 }

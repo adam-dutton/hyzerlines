@@ -134,7 +134,15 @@ export interface KindDefinition {
 export const KIND_DEFINITIONS: Record<FeatureKind, KindDefinition> = {
   tee: { label: 'Tee pad', geometry: 'point', command: 'tool.tee', placedRectangle: true },
   target: { label: 'Target', geometry: 'point', command: 'tool.basket' },
-  fairway: { label: 'Fairway', geometry: 'line', command: 'tool.fairway' },
+  /*
+   * No `command`, and deliberately so: a fairway is not drawn.
+   *
+   * A tee and a target already imply the line between them, so every measurable
+   * pair has a fairway from the moment both ends exist — see `courseFairways`.
+   * The feature is stored only once the designer bends that line, which is why
+   * the kind still exists while the tool does not.
+   */
+  fairway: { label: 'Fairway', geometry: 'line' },
   mando: { label: 'Mandatory', geometry: 'point', command: 'tool.mando' },
   dropzone: { label: 'Drop zone', geometry: 'point', placedRectangle: true },
 
@@ -146,7 +154,7 @@ export const KIND_DEFINITIONS: Record<FeatureKind, KindDefinition> = {
   boundary: { label: 'Property boundary', geometry: 'polygon' },
   notedArea: { label: 'Noted area', geometry: 'polygon' },
   notedPoint: { label: 'Noted point', geometry: 'point' },
-  path: { label: 'Path', geometry: 'line' },
+  path: { label: 'Path', geometry: 'line', command: 'tool.path' },
   water: { label: 'Water', geometry: 'polygon' },
   terrain: { label: 'Terrain feature', geometry: 'polygon' },
 };
@@ -271,6 +279,14 @@ export function fieldsFor(kind: FeatureKind): readonly FieldDefinition[] {
         { key: 'height', label: 'Height', type: 'number', unit: 'meters', min: 0, max: 60 },
         { key: 'bearing', label: 'Facing', type: 'number', unit: 'degrees', min: 0, max: 360 },
       ];
+    /*
+     * The two widths describe the CORRIDOR, not the line.
+     *
+     * Left empty, they are derived — the tee pad's width at the tee, tapering
+     * to Circle 1's radius at the target (see FAIRWAY_CORRIDOR in geometry.ts).
+     * They exist because that taper is ours rather than the PDGA's, and a
+     * default nobody can argue with is a default nobody should be stuck with.
+     */
     case 'fairway':
       return [
         {
@@ -282,6 +298,22 @@ export function fieldsFor(kind: FeatureKind): readonly FieldDefinition[] {
             { value: 'hyzer', label: 'Hyzer' },
             { value: 'anhyzer', label: 'Anhyzer' },
           ],
+        },
+        {
+          key: 'widthStart',
+          label: 'Width at tee',
+          type: 'number',
+          unit: 'meters',
+          min: 0,
+          max: 200,
+        },
+        {
+          key: 'widthEnd',
+          label: 'Width at target',
+          type: 'number',
+          unit: 'meters',
+          min: 0,
+          max: 200,
         },
       ];
     /*

@@ -1,15 +1,19 @@
 import { useMemo } from 'react';
 import { IconButton, Panel, cn } from '@hyzerlines/design';
-import { holeName, type Course, type Finding, type Hole, type Op } from '@hyzerlines/core';
-
-import { formatDistance, type UnitSystem } from '../units';
 import {
-  setHolePar,
+  holeName,
+  setPairPar,
   totalLength,
   totalPar,
   viewHoles,
-  type HoleView,
-} from '../document/holeView';
+  type Course,
+  type Finding,
+  type Hole,
+  type Op,
+  type PairView,
+} from '@hyzerlines/core';
+
+import { formatDistance, type UnitSystem } from '../units';
 import { FindingsList } from './FindingsList';
 
 /**
@@ -34,12 +38,12 @@ function ParCell({
 }: {
   course: Course;
   hole: Hole;
-  view: HoleView;
+  view: PairView | null;
   onOp: (op: Op) => void;
 }) {
-  const { suggestion, par, overridden } = view;
+  const { suggestion = null, par = null, overridden = false } = view ?? {};
 
-  if (par === null) {
+  if (view === null || par === null) {
     return <span className="w-10 text-right text-2xs text-text-disabled">—</span>;
   }
 
@@ -75,8 +79,14 @@ function ParCell({
           // Choosing the suggested value clears the override rather than
           // pinning it, so the pair keeps tracking the model unless the
           // designer actually disagrees with it.
-          const op = setHolePar(course, hole, value === suggestion?.par ? null : value);
-          if (op) onOp(op);
+          onOp(
+            setPairPar(
+              course,
+              view.teeId,
+              view.targetId,
+              value === suggestion?.par ? null : value,
+            ),
+          );
         }}
         className={cn(
           'rounded bg-transparent px-1 py-0.5 font-mono text-xs tabular-nums',
@@ -170,7 +180,7 @@ export function LeftPanel({
         ) : (
           <ul className="min-h-0 flex-1 overflow-y-auto">
             {holes.map((hole) => {
-              const view = views.get(hole.id)!;
+              const view = views.get(hole.id) ?? null;
               const selected = hole.id === selectedHoleId;
               return (
                 <li
@@ -196,7 +206,7 @@ export function LeftPanel({
                       {holeName(hole)}
                     </span>
                     <span className="shrink-0 font-mono text-2xs tabular-nums text-text-secondary">
-                      {view.measurement.effective === null
+                      {view?.measurement.effective == null
                         ? '—'
                         : formatDistance(view.measurement.effective, units)}
                     </span>

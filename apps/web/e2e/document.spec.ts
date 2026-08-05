@@ -1,5 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
+import { waitForSave } from './fixtures';
+
 /**
  * Document persistence and history, exercised through the real UI.
  *
@@ -48,7 +50,7 @@ test.describe('document', () => {
     await nameField(page).fill('Kaposia Park');
     // Longer than the 800ms autosave debounce, so the write has landed.
     await expect(page).toHaveTitle(/Kaposia Park/);
-    await page.waitForTimeout(1400);
+    await waitForSave(page);
 
     await page.reload();
     await expect(nameField(page)).toHaveValue('Kaposia Park');
@@ -108,7 +110,7 @@ test.describe('document', () => {
 
     await page.getByRole('radio', { name: 'Street' }).click();
     await expect(page.getByRole('radio', { name: 'Street' })).toBeChecked();
-    await page.waitForTimeout(1400);
+    await waitForSave(page);
 
     await page.reload();
     await expect(page.getByRole('radio', { name: 'Street' })).toBeChecked();
@@ -124,7 +126,7 @@ test.describe('document', () => {
     await skipSearch(page);
 
     await nameField(page).fill('In progress');
-    await page.waitForTimeout(1400);
+    await waitForSave(page);
     await page.reload();
 
     // Restoring work and then asking "find your land" would be nonsense.

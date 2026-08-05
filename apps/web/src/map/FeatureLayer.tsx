@@ -4,15 +4,40 @@ import { feature as featureColors } from '@hyzerlines/design';
 import type { Feature } from '@hyzerlines/core';
 
 import { useMap } from './MapContext';
-import { FEATURES_SOURCE, INTERACTIVE_LAYERS, featureLayers, toGeoJSON } from './featureLayers';
+import {
+  DERIVED_SOURCE,
+  FEATURES_SOURCE,
+  HANDLES_SOURCE,
+  INTERACTIVE_LAYERS,
+  derivedLayers,
+  featureLayers,
+  holeLabelLayers,
+  toGeoJSON,
+  vertexLayers,
+} from './featureLayers';
+import { VERTEX_LAYERS } from './useVertexEditing';
+import { addBasketIcons } from './icons';
+import type { DerivedGeometry } from './derived';
 
 const PREVIEW_SOURCE = 'drawing-preview';
 
 interface FeatureLayerProps {
   features: readonly Feature[];
-  selectedId: string | null;
+  /**
+   * Everything currently highlighted.
+   *
+   * A set rather than one id, because selecting a *hole* highlights the hole:
+   * its label, its tee, its target and its corridor all read as active
+   * together. One id would leave the designer to work out which shapes the
+   * selected hole was made of by clicking them.
+   */
+  selectedIds: readonly string[];
   onSelect: (id: string | null) => void;
   preview: GeoJSON.FeatureCollection;
+  /** Tee pads, fairway corridors and centrelines, computed from the features. */
+  derived: DerivedGeometry;
+  /** Vertex and midpoint handles for the shape being reshaped. */
+  handles: GeoJSON.FeatureCollection;
   /** Clicks select only when the select tool is active. */
   selectable: boolean;
 }
@@ -27,14 +52,16 @@ interface FeatureLayerProps {
  */
 export function FeatureLayer({
   features,
-  selectedId,
+  selectedIds,
   onSelect,
   preview,
+  derived,
+  handles,
   selectable,
 }: FeatureLayerProps) {
   const { map } = useMap();
   const readyRef = useRef(false);
-  const selectedRef = useRef<string | null>(null);
+  const selectedRef = useRef<readonly string[]>([]);
 
   // Install sources and layers. Re-runs after a basemap change, because
   // setStyle() discards everything not in the new style.
@@ -42,10 +69,30 @@ export function FeatureLayer({
     if (!map) return;
 
     const install = () => {
+      /*
+       * Derived geometry goes in first, because MapLibre draws in insertion
+       * order and a tee pad must sit under the tee point it was computed from.
+       * Installing it after would bury the thing you actually click.
+       */
+      addBasketIcons(map);
+
+      if (!map.getSource(DERIVED_SOURCE)) {
+        // promoteId for the same reason the feature source needs it: a tee pad
+        // carries its tee's id and has to take selection state.
+        map.addSource(DERIVED_SOURCE, {
+          type: 'geojson',
+          data: derived.collection,
+          promoteId: 'id',
+        });
+      }
+      for (const layer of derivedLayers()) {
+        if (!map.getLayer(layer.id)) map.addLayer(layer);
+      }
+
       if (!map.getSource(FEATURES_SOURCE)) {
         map.addSource(FEATURES_SOURCE, {
           type: 'geojson',
-          data: toGeoJSON(features),
+          data: toGeoJSON(features, derived.withFootprint),
           /*
            * Required for selection to work at all.
            *
@@ -60,6 +107,9 @@ export function FeatureLayer({
       }
       if (!map.getSource(PREVIEW_SOURCE)) {
         map.addSource(PREVIEW_SOURCE, { type: 'geojson', data: preview });
+      }
+      if (!map.getSource(HANDLES_SOURCE)) {
+        map.addSource(HANDLES_SOURCE, { type: 'geojson', data: handles });
       }
 
       for (const layer of featureLayers()) {
@@ -81,6 +131,16 @@ export function FeatureLayer({
           },
         });
       }
+      // Above the geometry they label, below the handles.
+      for (const layer of holeLabelLayers()) {
+        if (!map.getLayer(layer.id)) map.addLayer(layer);
+      }
+
+      // Above everything: the smallest targets on screen must win hit-testing.
+      for (const layer of vertexLayers()) {
+        if (!map.getLayer(layer.id)) map.addLayer(layer);
+      }
+
       if (!map.getLayer('preview-vertex')) {
         map.addLayer({
           id: 'preview-vertex',
@@ -113,14 +173,26 @@ export function FeatureLayer({
   useEffect(() => {
     if (!map) return;
     const source = map.getSource<GeoJSONSource>(FEATURES_SOURCE);
-    source?.setData(toGeoJSON(features));
-  }, [map, features]);
+    source?.setData(toGeoJSON(features, derived.withFootprint));
+  }, [map, features, derived.withFootprint]);
 
   useEffect(() => {
     if (!map) return;
     const source = map.getSource<GeoJSONSource>(PREVIEW_SOURCE);
     source?.setData(preview);
   }, [map, preview]);
+
+  useEffect(() => {
+    if (!map) return;
+    const source = map.getSource<GeoJSONSource>(DERIVED_SOURCE);
+    source?.setData(derived.collection);
+  }, [map, derived]);
+
+  useEffect(() => {
+    if (!map) return;
+    const source = map.getSource<GeoJSONSource>(HANDLES_SOURCE);
+    source?.setData(handles);
+  }, [map, handles]);
 
   /*
    * Selection is a feature-state flag rather than a property, so selecting
@@ -134,44 +206,67 @@ export function FeatureLayer({
    *
    * So the state is applied now *and* re-applied whenever the source reports
    * itself loaded.
+   *
+   * Both sources get it. A selected tee's highlight lives on its pad, which is
+   * in the derived source; a selected fairway's lives on its corridor, which is
+   * there too. Setting state for an id a source has never heard of is a no-op,
+   * so this needs no per-kind branching.
    */
   useEffect(() => {
     if (!map) return;
+    const sources = [FEATURES_SOURCE, DERIVED_SOURCE];
 
     const apply = () => {
-      const previous = selectedRef.current;
-      if (previous && previous !== selectedId) {
-        map.removeFeatureState({ source: FEATURES_SOURCE, id: previous }, 'selected');
+      const now = new Set(selectedIds);
+      for (const source of sources) {
+        for (const id of selectedRef.current) {
+          if (!now.has(id)) map.removeFeatureState({ source, id }, 'selected');
+        }
+        for (const id of now) {
+          map.setFeatureState({ source, id }, { selected: true });
+        }
       }
-      if (selectedId) {
-        map.setFeatureState({ source: FEATURES_SOURCE, id: selectedId }, { selected: true });
-      }
-      selectedRef.current = selectedId;
+      selectedRef.current = selectedIds;
     };
 
     apply();
 
     const onSourceData = (e: MapSourceDataEvent) => {
-      if (e.sourceId === FEATURES_SOURCE && e.isSourceLoaded) apply();
+      if (e.sourceId && sources.includes(e.sourceId) && e.isSourceLoaded) apply();
     };
     map.on('sourcedata', onSourceData);
     return () => {
       map.off('sourcedata', onSourceData);
     };
-  }, [map, selectedId, features]);
+  }, [map, selectedIds, features]);
 
   // Click to select, click empty space to deselect.
   useEffect(() => {
     if (!map || !selectable) return;
 
+    /*
+     * A handle is never a selection target.
+     *
+     * Vertex handles sit directly on top of the shape they belong to, so a
+     * click that lands on one would otherwise fall through and re-select — or,
+     * after Alt-clicking a vertex away, land on empty ground and deselect the
+     * feature you were still editing, taking every remaining handle with it.
+     */
+    const overHandle = (e: MapMouseEvent): boolean =>
+      map.getLayer('edit-vertex') !== undefined &&
+      map.queryRenderedFeatures(e.point, { layers: [...VERTEX_LAYERS] }).length > 0;
+
     const handleClick = (e: MapMouseEvent) => {
+      if (overHandle(e)) return;
       const hits = map.queryRenderedFeatures(e.point, { layers: [...INTERACTIVE_LAYERS] });
       const id = hits[0]?.properties?.['id'];
       onSelect(typeof id === 'string' ? id : null);
     };
 
-    // Pointer feedback on hover, so features read as clickable.
+    // Pointer feedback on hover, so features read as clickable. Handles own
+    // their own cursor, set by useVertexEditing.
     const handleMove = (e: MapMouseEvent) => {
+      if (overHandle(e)) return;
       const hits = map.queryRenderedFeatures(e.point, { layers: [...INTERACTIVE_LAYERS] });
       map.getCanvas().style.cursor = hits.length > 0 ? 'pointer' : '';
     };

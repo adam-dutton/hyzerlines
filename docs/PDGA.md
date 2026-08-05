@@ -380,7 +380,11 @@ model has no field for one.
 > the woods, partially through woods and mostly in the open. Fairways in the woods
 > typically range from 15 ft wide pinch points up to 40 feet wide.
 
-Typical practice, not a requirement, so no rule is built on it.
+Typical practice, not a requirement, so no rule is built on it — and, importantly,
+**this is not the source for the corridor the app draws.** A range from 15 to 40
+feet describes what wooded fairways happen to measure; it says nothing about how
+wide a given fairway should be at a given point, which is what a drawn corridor
+has to claim. See "The fairway corridor" below for what is actually used.
 
 > A full length Championship course can require several acres per hole depending on
 > foliage density (more trees, less acreage required). However, a small
@@ -412,9 +416,11 @@ rather than an error.
 > over the treetops to shorten the dogleg or throw straight completely over the
 > water.
 
-This is the citation for `measureHole` preferring the routed length along a drawn
-fairway over the tee-to-basket chord, and falling back to the chord only when no
-route has been drawn.
+This is the citation for `measurePair` preferring the routed length along the
+fairway over the tee-to-target chord, and falling back to the chord only when the
+fairway is still the straight line it starts as. The two agree exactly until the
+designer bends it — which is the point at which they have stated an intended
+route, and this passage says that is what to measure.
 
 ---
 
@@ -482,7 +488,9 @@ knows how a basket is mounted, and nothing ever will from satellite imagery.
 > non-players could be walking on a well-defined park pathway.
 
 **Only "fairways should not cross one another" is checked** (`pdga.fairways-cross`).
-Crossing is a geometric fact about two drawn lines. "Far enough apart" and "too
+Crossing is a geometric fact about two lines, and since every hole now has a
+fairway the moment it has a tee and a target, the check works from the first hole
+rather than waiting for anyone to draw a route. "Far enough apart" and "too
 close to" are separation distances the document declines to put a number on, and
 this project does not supply numbers the PDGA has not published — least of all a
 safety one. Dispersion-based separation is PR 7's problem, and it will be built on
@@ -674,17 +682,71 @@ merely being near one.
 
 ---
 
+## Derived geometry — what is sourced and what is ours
+
+The app draws two shapes the document does not contain: the rectangle a tee pad
+occupies, and the corridor a fairway covers. Both are computed in
+`packages/core/src/geometry.ts`. Because both put a dimension on screen that a
+designer could measure off and quote, this records exactly where every number in
+them comes from.
+
+### The tee pad rectangle
+
+| Input     | Value                   | Authority                                                                                 |
+| --------- | ----------------------- | ----------------------------------------------------------------------------------------- |
+| Anchor    | Front centre of the pad | `[RULES]` 802.04.A and `[ELEMENTS]` p2 — the tee line, and where length is measured from. |
+| `length`  | 3 m when unset          | `[RULES]` 802.04.A. With no pad the teeing area **is** three metres behind the tee line.  |
+| `width`   | 6 ft (2 m) when unset   | `[ELEMENTS]` p2, "typical size". The rules do not dimension a tee line's width.           |
+| `bearing` | **No default**          | Nothing publishes one. Without a bearing the rectangle is not drawn at all.               |
+
+Choosing the _rules_ figure for depth and the _guideline_ figure for width is
+deliberate. 802.04.A defines a padless teeing area exactly — three metres, no
+hedging — so it is not a typical value but the legal extent. It says nothing
+about width, because a tee line is bounded by markers rather than by a dimension,
+which leaves the design guideline's own word for a default as the only sourced
+option.
+
+### The fairway corridor
+
+**The taper is ours. The PDGA publishes no fairway width.**
+
+What the code does is join two published figures with a straight line and label
+the join as an app convention:
+
+| End           | Width                   | Authority                                               |
+| ------------- | ----------------------- | ------------------------------------------------------- |
+| At the tee    | The tee pad's own width | The designer's measurement, when they have entered one. |
+| — unset       | 6 ft (2 m)              | `[ELEMENTS]` p2 typical pad width, as above.            |
+| — floor       | 1 m                     | **Ours.** Below this a corridor stops being drawable.   |
+| At the target | 10 m                    | `[RULES]` 806.01.A — Circle 1's radius.                 |
+
+The interpolation between them, the mitre limit of 2 at doglegs, and the square
+end caps are all app conventions with no PDGA basis, and none of them is
+presented as a standard anywhere in the interface. Every width is overridable per
+fairway (`widthStart`, `widthEnd`).
+
+The honest framing: the corridor exists so a drawn line reads as ground rather
+than as a hairline. It is a drawing aid whose defaults happen to be anchored to
+real figures — not a claim about how wide a fairway ought to be. `[ELEMENTS]` p1's
+15–40 ft range is the closest the documents come to that claim, and it is a
+description of typical wooded fairways rather than a rule, so it is recorded above
+and built on by nothing.
+
+---
+
 ## What is transcribed but not yet used
 
 Recorded in `pdga.ts` so the figure is available and audited, with nothing built
 on it yet:
 
-- **Approach length ranges** — needs per-throw modelling (PR 6).
+- **Approach length ranges** — needs per-throw modelling.
 - **Maximum dogleg lengths** — needs a dogleg corner in the document model.
 - **Maximum water carries** — needs a carry to be identifiable from geometry.
 - **Basket rim height** — not derivable from imagery, and probably never will be.
 - **Acreage chart** — needs a course boundary polygon to compare against.
-- **Fairway corridor widths** — descriptive of typical practice, not a threshold.
+- **Fairway corridor widths** (`[ELEMENTS]` p1) — descriptive of typical
+  practice, not a threshold. Explicitly **not** the source for the corridor the
+  app draws; see "Derived geometry" above.
 - **Close Range Par and Par by Difficulty** — alternative par methods from `[PAR]`.
 - **Basket rim height** and the **18" water depth** best practice — recorded,
   not checkable from imagery.

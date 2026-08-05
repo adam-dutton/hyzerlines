@@ -73,6 +73,23 @@ export function CourseProvider({ children }: { children: ReactNode }) {
   const store = useMemo(() => new CourseStore(createCourse()), []);
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
 
+  /*
+   * A handle on the document, alongside `hyzerlinesMap`.
+   *
+   * Same reasoning: genuinely useful from the console when something in the
+   * document looks wrong, and useful to anyone self-hosting an AGPL app they
+   * are allowed to modify. The end-to-end tests use it to set up states the
+   * interface cannot reach yet — assigning a second pin to a hole has no
+   * control until layouts land — so those tests can exercise the thing they
+   * are actually about instead of waiting on unrelated work.
+   *
+   * It grants nothing a user could not already do through the UI, and every
+   * write still goes through `dispatch`, so undo and autosave see it.
+   */
+  useEffect(() => {
+    (window as unknown as { hyzerlinesStore?: CourseStore }).hyzerlinesStore = store;
+  }, [store]);
+
   const [hydrating, setHydrating] = useState(true);
   const [restored, setRestored] = useState(false);
   const [documentEpoch, setDocumentEpoch] = useState(0);

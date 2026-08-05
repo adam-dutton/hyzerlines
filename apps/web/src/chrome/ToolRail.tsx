@@ -97,15 +97,16 @@ function MandoIcon() {
   );
 }
 
-function FairwayIcon() {
+function PathIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
       <path
         d="M2.5 12c2.5-1 4-7.5 10-9.4"
         fill="none"
-        stroke="var(--hz-feature-fairway-stroke)"
+        stroke="var(--hz-feature-path-stroke)"
         strokeWidth="1.6"
         strokeLinecap="round"
+        strokeDasharray="2.6 1.8"
       />
     </svg>
   );
@@ -129,11 +130,21 @@ function ObIcon() {
   );
 }
 
-/** Tools that get a rail slot, in the order they are used designing a hole. */
+/**
+ * Tools that get a rail slot, in the order they are used designing a hole.
+ *
+ * **No fairway tool.** A fairway is the line between a tee and a target, so it
+ * exists the moment both do — drawing one by hand would be tracing something
+ * the app already knows. Bending it is vertex editing on the line that is
+ * already there, not a separate mode to enter.
+ *
+ * `path` takes the slot. It is the other line a course has — the walk from one
+ * green to the next tee — and unlike a fairway it genuinely has to be drawn.
+ */
 const TOOLS: { kind: FeatureKind; icon: () => React.ReactElement }[] = [
   { kind: 'tee', icon: TeeIcon },
   { kind: 'target', icon: BasketIcon },
-  { kind: 'fairway', icon: FairwayIcon },
+  { kind: 'path', icon: PathIcon },
   { kind: 'mando', icon: MandoIcon },
   { kind: 'ob', icon: ObIcon },
 ];

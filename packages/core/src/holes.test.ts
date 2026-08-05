@@ -8,6 +8,7 @@ import { bearing, boundsOf, distance, pathLength, pathsCross } from './measure.j
 import type { Position } from './geo.js';
 import { createHole, holeName, pairingsOf } from './holes.js';
 import { checkCourse, PDGA_RULES } from './rules.js';
+import { shapeFairway } from './pairView.js';
 import { serializeCourse, deserializeCourse } from './file.js';
 
 const pt = (lng: number, lat: number): Geometry => ({ type: 'point', coordinates: [lng, lat] });
@@ -272,6 +273,57 @@ describe('design checks', () => {
       feature: createFeature('target', pt(-93.1, 44.9)),
     }).course;
     expect(checkCourse(course).map((f) => f.ruleId)).toContain('structural.unassigned-feature');
+  });
+
+  it('reports a fairway that turns tighter than its corridor is wide', () => {
+    const tee = createFeature('tee', pt(-93.1, 44.9));
+    const target = createFeature('target', pt(-93.09996, 44.9));
+    const hole = createHole(1, { teeIds: [tee.id], targetIds: [target.id] });
+    let course = createCourse({ features: [tee, target], holes: [hole] });
+
+    // Nothing to report out of the box: the hole's fairway is a straight line,
+    // and a straight line cannot fold however wide its corridor is.
+    expect(checkCourse(course).map((f) => f.ruleId)).not.toContain(
+      'structural.corridor-self-intersects',
+    );
+
+    /*
+     * Bend it into a hairpin and widen the corridor past what the turn can
+     * accommodate. The inside edge crosses itself and the polygon stops
+     * describing ground.
+     */
+    course = applyOp(
+      course,
+      shapeFairway(
+        course,
+        tee.id,
+        target.id,
+        [
+          [-93.1, 44.9],
+          [-93.1, 44.9004],
+          [-93.09996, 44.9],
+        ],
+        hole.id,
+      ),
+    ).course;
+
+    const fairwayId = course.pairs[0]!.fairwayId!;
+    const widen = (value: number) => {
+      for (const key of ['widthStart', 'widthEnd']) {
+        course = applyOp(course, { type: 'setProp', id: fairwayId, key, value }).course;
+      }
+    };
+
+    widen(60);
+    expect(checkCourse(course).map((f) => f.ruleId)).toContain(
+      'structural.corridor-self-intersects',
+    );
+
+    // The same turn with a corridor narrow enough to get around it is fine.
+    widen(2);
+    expect(checkCourse(course).map((f) => f.ruleId)).not.toContain(
+      'structural.corridor-self-intersects',
+    );
   });
 
   it('honours dismissals', () => {

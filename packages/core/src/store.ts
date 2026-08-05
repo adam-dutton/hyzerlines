@@ -1,4 +1,4 @@
-import { applyOp, canCoalesce, type Op } from './ops.js';
+import { applyOp, canCoalesce, mergeRedo, type Op } from './ops.js';
 import type { Course } from './schema.js';
 
 /**
@@ -70,7 +70,7 @@ export class CourseStore {
         // edits started, which is what undo should restore. Only the redo op
         // and timestamp advance. Overwriting the inverse here would make undo
         // step back a single keystroke instead of the whole edit.
-        previous.redo = op;
+        previous.redo = mergeRedo(previous.redo, op);
         previous.at = now;
       } else {
         this.#undo.push({ inverse, redo: op, at: now });

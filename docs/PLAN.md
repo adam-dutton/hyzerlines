@@ -42,8 +42,8 @@ current as PRs land.
 | **4**   | Hole workflow, distances, PDGA par and advisory checks                             | ✅ done |
 | **4.5** | UI/UX: navigation, docked panels, layout, camera framing                           | ✅ done |
 | **5**   | Document model v2: pairs, layouts, migration                                       | ✅ done |
-| **6**   | Derived geometry: tee footprints, pair picker, fairway lines and areas             | next    |
-| **7**   | Boundaries and acreage                                                             |         |
+| **6**   | Derived geometry: tee footprints, pair picker, fairway corridors, vertex editing   | ✅ done |
+| **7**   | Boundaries and acreage                                                             | next    |
 | **8**   | Layouts and routing: named layouts, skip, repeat, reorder                          |         |
 | **9**   | Expanded palette: relief areas, noted areas, drop zones, invert, circles           |         |
 | **10**  | Terrain: DEM sampling, elevation profiles, hillshade                               |         |
@@ -265,6 +265,167 @@ no target is dropped** — that combination was unmeasurable in v1 too, so no
 number a designer could ever see is lost. And **dangling references are kept**,
 so the structural check can still report them rather than the migration quietly
 tidying away evidence of a problem.
+
+---
+
+## PR 6 — what landed
+
+Geometry the document does not store. A tee is a point but a tee is a pad; a
+fairway is a line but a fairway is ground you can land on. Both second shapes are
+now computed on every render in `packages/core/src/geometry.ts` and never written
+back — a cached polygon is a polygon that is wrong for exactly as long as it takes
+someone to notice.
+
+**Everything works in metres.** The module builds a local east/north tangent plane
+and does its offsets there. Buffering a polyline in degrees would make a corridor
+40% fatter north-to-south than east-to-west at this latitude — the same
+1/cos(latitude) error `measure.ts` already refuses for distance, except this one
+would be visible and still look plausible.
+
+**The tee pad extends backwards from the point.** The stored coordinate is the
+front centre, because that is the tee line and the tee line is what hole length is
+measured from. Anchoring at the pad's centre instead would silently add half a pad
+length to every hole on the course, which is exactly the kind of error this project
+exists to not make. With no bearing from the feature or the caller the rectangle is
+withheld rather than drawn facing north.
+
+**The fairway corridor tapers from the tee pad's width to Circle 1's 10 m**,
+interpolated by distance along the line rather than by vertex index — index would
+balloon a dogleg to full width inside its first short leg. The two endpoints are
+published figures; **the taper between them is ours**, and both docs say so.
+Sharp doglegs get a mitre limit, and a corridor that folds through itself is
+reported as a finding rather than quietly drawn, because a folded polygon has
+stopped describing ground.
+
+**The pair picker replaced a lie.** Since PR 5 the panels had been answering every
+question with the hole's first tee and first pin — correct for one of a two-pin
+hole's four throws and silently wrong for the rest. `representativePair` now takes
+the active layout's play when there is one, the hole panel lets the designer pick
+another, and the panel says out loud when the shot on screen is not the one the
+routing plays. `apps/web/src/document/holeView.ts`, the shim that held this
+together, is deleted.
+
+**Lines and areas can be reshaped.** Drag a vertex, click a midpoint to insert
+one, Alt-click to remove — refused below two points for a line and three for an
+area. Edits go straight into the document, one op per pointer move, so the length
+in the panel and the corridor under the cursor track the vertex live.
+
+A drag is one undo entry, and that turned out to need saying explicitly rather
+than being inferred. Coalescing was a 700 ms window; a browser test running under
+load exceeded it mid-drag and split a bend in two, so one ⌘Z took back the shape
+and left behind the fairway that same gesture had created. Ops emitted by a drag
+now carry a `gesture` id, and one gesture is one entry however long it took. The
+redo op stays a batch rather than being replaced by the newest edit — replaying
+only the last geometry change would target a feature undo had just removed, and
+the bend would silently vanish.
+
+The browser tests grew a `geometry.spec.ts` for the parts only a browser can
+answer, and the five near-identical PNG encoders across the e2e files collapsed
+into one `fixtures.ts`. Two of the new tests were confirmed by reverting the fix
+they guard and watching them fail: without `preventDefault` on a handle's
+mousedown MapLibre pans the ground instead of moving the vertex, and without the
+handle guard a click five pixels off a line's centre deselects the feature you are
+editing and takes every handle with it.
+
+### Then the fairway tool went away
+
+Reviewing the above on the preview turned up four things, and the second is a
+model change rather than a fix.
+
+**Tees and baskets can be assigned to holes.** There was no control for it at
+all: `addHole` guessed once at the nearest unassigned pair and nothing could
+change its mind, so a second pin was stranded outside every hole, reported
+forever as unassigned. Now the feature panel has a hole picker and the hole panel
+can claim a loose one — both directions, because naming a basket you just placed
+is feature-first and filling out hole 5 is hole-first. `assignToHole` emits one
+batch, so a move between holes is one undo step rather than two half-moves.
+
+**Fairways are not drawn any more.** A tee and a target imply the line between
+them, so every measurable pair has a fairway the moment both ends exist. The tool
+is gone; the feature is materialised only when somebody bends the line, which is
+the same sparseness pairs already had. One shot is drawn per hole — the one the
+panels are measuring — because nine overlapping corridors on a three-tee,
+three-pin hole is unreadable.
+
+`path` took the rail slot. It is the other line a course has and, unlike a
+fairway, genuinely has to be drawn; without it there would be no line tool at all
+and the drawing engine's line branch would be unreachable code.
+
+**The tee pad is the tee.** The point marker is suppressed where the pad stands
+for it — but by fading between z17 and z18.5 rather than disappearing outright,
+because a two-metre pad is a fraction of a pixel at the zoom you use to look at a
+whole course, and a tee that vanishes exactly when you step back is worse than a
+redundant dot.
+
+**Baskets are drawn as baskets.** A ring, chains and a band, in a glyph generated
+from the design tokens at load rather than shipped as a PNG. Two images, not one
+recoloured: MapLibre can only tint an SDF, and an SDF cannot carry both the
+casing and the stroke.
+
+Three MapLibre constraints cost real time and are worth recording. `feature-state`
+is rejected in **layout** properties, so selection cannot switch `icon-image` —
+hence two symbol layers cross-faded by `icon-opacity`, which is paint. `zoom` is
+only allowed as the direct input to a **top-level** `step` or `interpolate`, so
+the per-feature test has to live in the interpolate's output stops rather than
+wrapping it. And `querySourceFeatures` returns one copy of a feature **per
+rendered tile** and clips geometry at tile boundaries, so it can answer "did this
+reach the map" but never "what does the document contain" — three browser tests
+were written against it and were wrong until they read the store instead.
+
+### Then a second review pass
+
+**Everything drawn can be dragged.** Moving a basket meant deleting it and
+placing another, which lost its name, its properties and its place in a hole.
+Points move directly, lines and areas translate, and moving a tee or target
+drags the end of its **stored** fairway along — a derived one needs no help
+because it is recomputed from both ends anyway.
+
+That surfaced a conflict worth recording. A fairway's first and last vertices
+sit exactly on the tee and the target, so their edit handles were sitting on top
+of every tee and basket on the course, swallowing the clicks and drags meant for
+those features. **The ends are not editable.** A fairway runs from its tee to its
+target by definition; only interior vertices get handles, and the ends move when
+the features that own them do.
+
+**Holes are clickable and numbered.** A number on a disc at the midpoint of the
+shot — the midpoint rather than the centroid of everything the hole owns, which
+drifts towards whichever end has more features and lands on top of the corridor
+it is labelling. Clicking any of a hole's features selects the **hole**, and
+clicking again drills into the feature: the grouping idiom every vector editor
+uses. Selecting a hole highlights all of it — label, tee, target, corridor — so a
+click tells you which land the hole occupies.
+
+**Putting circles.** All three, at their real size on the ground, with their
+provenance carried into the styling: Circle 1 is solid because it is a rule,
+Circle 2 and the bullseye are dashed because one is a figure the rules use for
+something else and the other is league convention. Outline only — three filled
+rings around every basket would bury the imagery.
+
+**Everything is white.** Fifteen saturated hues over tree canopy, sand, water and
+grass was a lot of noise for information that shape and position already carry.
+That cost the old selection treatment, which inverted the casing to white: a
+white halo around a white feature is invisible. Selection is now the one place
+colour is spent.
+
+**The tee pad locks to the fairway's first segment.** On a straight hole that is
+the same as facing the target; on a dogleg it is not, and a pad aimed at a pin
+the player cannot see from it is aimed at the wrong thing. An explicit `bearing`
+still wins — this is a default that tracks the design, not a rule that overrides
+the designer.
+
+### Deliberately not in this PR
+
+**Per-vertex widths.** A fairway carries two widths, not one per point. The
+document's `props` map holds scalars, so an array would need a schema change and a
+migration — and the shape people actually want, a corridor that opens up from tee
+to green, is already what the taper does. Worth revisiting when someone hits the
+case it does not cover.
+
+**Re-scoping an OB line to a hole.** The hole picker is for tees and targets
+only. Other kinds carry a `holeId` too, but for them it is scope rather than
+membership — an OB line belonging to hole 4 is a different claim from a tee being
+one of hole 4's tees — and overloading one control with both meanings would make
+neither clear. PR 7 gives scope its own.
 
 ---
 

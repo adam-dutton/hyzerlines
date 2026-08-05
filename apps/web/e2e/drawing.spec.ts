@@ -1,6 +1,6 @@
-import { test, expect, type Page } from '@playwright/test';
-import type { Map as MapLibreMap } from 'maplibre-gl';
-import { deflateSync } from 'node:zlib';
+import { test, expect } from '@playwright/test';
+
+import { clickMap, openEditor, rail, waitForSave } from './fixtures';
 
 /**
  * Drawing, selection and the inspector, through the real UI.
@@ -10,63 +10,6 @@ import { deflateSync } from 'node:zlib';
  * whether those features are actually rendered, and whether selection reaches
  * the inspector — all wiring, and wiring only fails here.
  */
-
-function fakeTile(): Buffer {
-  const W = 256;
-  const H = 256;
-  const raw = Buffer.alloc((W * 3 + 1) * H);
-  let o = 0;
-  for (let y = 0; y < H; y++) {
-    raw[o++] = 0;
-    for (let x = 0; x < W; x++) {
-      const on = ((x >> 5) + (y >> 5)) % 2 === 0;
-      raw[o++] = on ? 0x2f : 0x25;
-      raw[o++] = on ? 0x5a : 0x46;
-      raw[o++] = on ? 0x33 : 0x2a;
-    }
-  }
-  const table = [...Array<number>(256)].map((_, n) => {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    return c >>> 0;
-  });
-  const crc = (buf: Buffer): number => {
-    let c = 0xffffffff;
-    for (const b of buf) c = table[(c ^ b) & 0xff]! ^ (c >>> 8);
-    return (c ^ 0xffffffff) >>> 0;
-  };
-  const chunk = (type: string, data: Buffer): Buffer => {
-    const len = Buffer.alloc(4);
-    len.writeUInt32BE(data.length);
-    const td = Buffer.concat([Buffer.from(type, 'ascii'), data]);
-    const c = Buffer.alloc(4);
-    c.writeUInt32BE(crc(td));
-    return Buffer.concat([len, td, c]);
-  };
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(W, 0);
-  ihdr.writeUInt32BE(H, 4);
-  ihdr[8] = 8;
-  ihdr[9] = 2;
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk('IHDR', ihdr),
-    chunk('IDAT', deflateSync(raw)),
-    chunk('IEND', Buffer.alloc(0)),
-  ]);
-}
-
-async function openEditor(page: Page): Promise<void> {
-  const tile = fakeTile();
-  await page.route('**://server.arcgisonline.com/**', (route) =>
-    route.fulfill({ status: 200, contentType: 'image/png', body: tile }),
-  );
-  await page.goto('/');
-  await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
-  const skip = page.getByRole('button', { name: /Skip/ });
-  if (await skip.isVisible().catch(() => false)) await skip.click();
-  await expect(skip).toBeHidden();
-}
 
 /**
  * The tool rail, as a scope.
@@ -78,13 +21,6 @@ async function openEditor(page: Page): Promise<void> {
  * two elements the moment a hole is selected. Scoping to the toolbar means
  * these tests fail for real reasons rather than for naming collisions.
  */
-const rail = (page: Page) => page.getByRole('toolbar', { name: 'Tools' });
-
-/** Click a point on the map canvas, in canvas-relative pixels. */
-async function clickMap(page: Page, x: number, y: number): Promise<void> {
-  await page.locator('canvas.maplibregl-canvas').click({ position: { x, y } });
-}
-
 test.describe('drawing', () => {
   test('places a point feature and opens the inspector on it', async ({ page }) => {
     await openEditor(page);
@@ -114,7 +50,10 @@ test.describe('drawing', () => {
   test('draws a multi-point line and finishes on Enter', async ({ page }) => {
     await openEditor(page);
 
-    await rail(page).getByRole('button', { name: 'Fairway' }).click();
+    // Path, not Fairway: a fairway is derived from its tee and target and has
+    // no tool any more. A path is the other line a course has, and it is the
+    // one that still has to be drawn by hand.
+    await rail(page).getByRole('button', { name: 'Path' }).click();
     await clickMap(page, 400, 300);
     await clickMap(page, 500, 350);
     await clickMap(page, 600, 320);
@@ -125,7 +64,7 @@ test.describe('drawing', () => {
     await page.keyboard.press('Enter');
     await expect(page.getByText(/points ·/)).toBeHidden();
 
-    // A fairway's length is the number a designer actually wants.
+    // Its length is the number a designer actually wants.
     await expect(page.getByText('Length')).toBeVisible();
   });
 
@@ -159,7 +98,7 @@ test.describe('drawing', () => {
 
     // Redo, let it autosave, and confirm it comes back after a reload.
     await page.getByRole('button', { name: 'Redo' }).click();
-    await page.waitForTimeout(1400);
+    await waitForSave(page);
     await page.reload();
     await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
 
@@ -174,7 +113,7 @@ test.describe('drawing', () => {
     const point = await expect
       .poll(() =>
         page.evaluate(() => {
-          const map = (window as unknown as { hyzerlinesMap?: MapLibreMap }).hyzerlinesMap;
+          const map = window.hyzerlinesMap;
           const feature = map?.querySourceFeatures('course-features')[0];
           if (!map || !feature || feature.geometry.type !== 'Point') return null;
           const p = map.project(feature.geometry.coordinates as [number, number]);
@@ -184,7 +123,7 @@ test.describe('drawing', () => {
       .not.toBeNull()
       .then(() =>
         page.evaluate(() => {
-          const map = (window as unknown as { hyzerlinesMap: MapLibreMap }).hyzerlinesMap;
+          const map = window.hyzerlinesMap!;
           const feature = map.querySourceFeatures('course-features')[0]!;
           const p = map.project(
             (feature.geometry as GeoJSON.Point).coordinates as [number, number],
@@ -247,7 +186,7 @@ test.describe('drawing', () => {
     await expect
       .poll(() =>
         page.evaluate(() => {
-          const map = (window as unknown as { hyzerlinesMap?: MapLibreMap }).hyzerlinesMap;
+          const map = window.hyzerlinesMap;
           if (!map) return 'no map';
           const states = map.querySourceFeatures('course-features');
           return states.some(

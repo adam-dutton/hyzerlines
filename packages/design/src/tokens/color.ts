@@ -159,42 +159,60 @@ export interface FeatureColor {
 
 const CASING = 'rgb(8 9 11 / 0.85)';
 
+/**
+ * Every feature is white, for now.
+ *
+ * A deliberate monochrome pass. The palette below had a hue per kind, which
+ * reads well on a legend and badly on satellite imagery: fifteen saturated
+ * colours over tree canopy, sand, water and grass is a lot of noise for
+ * information that is mostly carried by shape and position anyway. White with a
+ * dark casing has the highest contrast available over every basemap, and it
+ * forces the drawing itself to do the work of telling a tee from a basket.
+ *
+ * Hue comes back when there is something worth spending it on — a routed layout,
+ * a safety envelope, a skill level. Keeping the per-kind entries rather than
+ * collapsing them to one means that is a values change here and nothing else.
+ */
+const WHITE = '#ffffff';
+const WHITE_FILL = 'rgb(255 255 255 / 0.18)';
+const mono = { stroke: WHITE, fill: WHITE_FILL, casing: CASING };
+
 export const feature = {
-  tee: { stroke: primitive.amber[400], fill: 'rgb(255 192 70 / 0.28)', casing: CASING },
-  target: { stroke: '#ff5470', fill: 'rgb(255 84 112 / 0.28)', casing: CASING },
-  fairway: { stroke: '#22d3ee', fill: 'rgb(34 211 238 / 0.14)', casing: CASING },
-  green: { stroke: primitive.green[400], fill: 'rgb(67 214 127 / 0.20)', casing: CASING },
-  mando: { stroke: '#ff8c1a', fill: 'rgb(255 140 26 / 0.24)', casing: CASING },
-  /** Where you throw from after a penalty. Reads as a tee, because it is one. */
-  dropzone: { stroke: '#f0a3ff', fill: 'rgb(240 163 255 / 0.24)', casing: CASING },
+  tee: mono,
+  target: mono,
+  fairway: mono,
+  green: mono,
+  mando: mono,
+  dropzone: mono,
 
-  /*
-   * Regulated areas, ordered by what they cost you.
+  ob: mono,
+  hazard: mono,
+  casualArea: mono,
+  requiredRelief: mono,
+
+  water: mono,
+  path: mono,
+  boundary: mono,
+  notedArea: mono,
+  notedPoint: mono,
+  terrain: mono,
+  flight: mono,
+  safety: mono,
+
+  /**
+   * Editing affordances stay coloured, and have to.
    *
-   * Red is out-of-bounds and yellow is a hazard — both carry a penalty throw.
-   * Relief areas carry none, so they sit in cool colours that read as
-   * information rather than danger. Required relief is stronger than casual
-   * because one is compulsory and the other is a choice; a designer glancing at
-   * the map should be able to tell them apart without reading a legend.
+   * Handles, snap indicators and the selection halo are the interface talking
+   * about the drawing rather than part of it. If they were white too there
+   * would be no way to tell a selected feature from an unselected one, or a
+   * vertex you can grab from the line it sits on.
    */
-  ob: { stroke: '#ff3b30', fill: 'rgb(255 59 48 / 0.18)', casing: CASING },
-  hazard: { stroke: '#ffd60a', fill: 'rgb(255 214 10 / 0.20)', casing: CASING },
-  casualArea: { stroke: '#7dd3fc', fill: 'rgb(125 211 252 / 0.16)', casing: CASING },
-  requiredRelief: { stroke: '#38bdf8', fill: 'rgb(56 189 248 / 0.26)', casing: CASING },
-
-  water: { stroke: '#3b82f6', fill: 'rgb(59 130 246 / 0.30)', casing: CASING },
-  path: { stroke: '#d6cfc4', fill: 'rgb(214 207 196 / 0.22)', casing: CASING },
-  /** The property line. Neutral and quiet — it is a fact, not a rule of play. */
-  boundary: { stroke: '#a8a29e', fill: 'rgb(168 162 158 / 0.08)', casing: CASING },
-  notedArea: { stroke: '#c4b5fd', fill: 'rgb(196 181 253 / 0.16)', casing: CASING },
-  notedPoint: { stroke: '#c4b5fd', fill: 'rgb(196 181 253 / 0.28)', casing: CASING },
-  terrain: { stroke: '#a3a380', fill: 'rgb(163 163 128 / 0.18)', casing: CASING },
-  /** Shot trajectories. Violet reads as "synthetic" — never mistaken for terrain. */
-  flight: { stroke: primitive.violet[400], fill: 'rgb(167 139 250 / 0.20)', casing: CASING },
-  /** Dispersion / safety envelopes. Deliberately alarming. */
-  safety: { stroke: '#ff3b30', fill: 'rgb(255 59 48 / 0.22)', casing: CASING },
-  /** Editing affordances: vertex handles, snap indicators, measure lines. */
   handle: { stroke: primitive.neutral[0], fill: primitive.accent[500], casing: CASING },
+  selected: {
+    stroke: primitive.accent[400],
+    fill: 'rgb(56 189 248 / 0.28)',
+    casing: primitive.accent[500],
+  },
   snap: { stroke: '#22d3ee', fill: 'rgb(34 211 238 / 0.40)', casing: CASING },
 } as const satisfies Record<string, FeatureColor>;
 
