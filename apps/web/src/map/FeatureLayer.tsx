@@ -15,6 +15,8 @@ import {
   vertexLayers,
 } from './featureLayers';
 import { VERTEX_LAYERS } from './useVertexEditing';
+import { addBasketIcons } from './icons';
+import type { DerivedGeometry } from './derived';
 
 const PREVIEW_SOURCE = 'drawing-preview';
 
@@ -23,8 +25,8 @@ interface FeatureLayerProps {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   preview: GeoJSON.FeatureCollection;
-  /** Tee pads and fairway corridors, computed from the features above. */
-  derived: GeoJSON.FeatureCollection;
+  /** Tee pads, fairway corridors and centrelines, computed from the features. */
+  derived: DerivedGeometry;
   /** Vertex and midpoint handles for the shape being reshaped. */
   handles: GeoJSON.FeatureCollection;
   /** Clicks select only when the select tool is active. */
@@ -63,8 +65,16 @@ export function FeatureLayer({
        * order and a tee pad must sit under the tee point it was computed from.
        * Installing it after would bury the thing you actually click.
        */
+      addBasketIcons(map);
+
       if (!map.getSource(DERIVED_SOURCE)) {
-        map.addSource(DERIVED_SOURCE, { type: 'geojson', data: derived });
+        // promoteId for the same reason the feature source needs it: a tee pad
+        // carries its tee's id and has to take selection state.
+        map.addSource(DERIVED_SOURCE, {
+          type: 'geojson',
+          data: derived.collection,
+          promoteId: 'id',
+        });
       }
       for (const layer of derivedLayers()) {
         if (!map.getLayer(layer.id)) map.addLayer(layer);
@@ -73,7 +83,7 @@ export function FeatureLayer({
       if (!map.getSource(FEATURES_SOURCE)) {
         map.addSource(FEATURES_SOURCE, {
           type: 'geojson',
-          data: toGeoJSON(features),
+          data: toGeoJSON(features, derived.withFootprint),
           /*
            * Required for selection to work at all.
            *
@@ -149,8 +159,8 @@ export function FeatureLayer({
   useEffect(() => {
     if (!map) return;
     const source = map.getSource<GeoJSONSource>(FEATURES_SOURCE);
-    source?.setData(toGeoJSON(features));
-  }, [map, features]);
+    source?.setData(toGeoJSON(features, derived.withFootprint));
+  }, [map, features, derived.withFootprint]);
 
   useEffect(() => {
     if (!map) return;
@@ -161,7 +171,7 @@ export function FeatureLayer({
   useEffect(() => {
     if (!map) return;
     const source = map.getSource<GeoJSONSource>(DERIVED_SOURCE);
-    source?.setData(derived);
+    source?.setData(derived.collection);
   }, [map, derived]);
 
   useEffect(() => {
@@ -182,17 +192,25 @@ export function FeatureLayer({
    *
    * So the state is applied now *and* re-applied whenever the source reports
    * itself loaded.
+   *
+   * Both sources get it. A selected tee's highlight lives on its pad, which is
+   * in the derived source; a selected fairway's lives on its corridor, which is
+   * there too. Setting state for an id a source has never heard of is a no-op,
+   * so this needs no per-kind branching.
    */
   useEffect(() => {
     if (!map) return;
+    const sources = [FEATURES_SOURCE, DERIVED_SOURCE];
 
     const apply = () => {
       const previous = selectedRef.current;
-      if (previous && previous !== selectedId) {
-        map.removeFeatureState({ source: FEATURES_SOURCE, id: previous }, 'selected');
-      }
-      if (selectedId) {
-        map.setFeatureState({ source: FEATURES_SOURCE, id: selectedId }, { selected: true });
+      for (const source of sources) {
+        if (previous && previous !== selectedId) {
+          map.removeFeatureState({ source, id: previous }, 'selected');
+        }
+        if (selectedId) {
+          map.setFeatureState({ source, id: selectedId }, { selected: true });
+        }
       }
       selectedRef.current = selectedId;
     };
@@ -200,7 +218,7 @@ export function FeatureLayer({
     apply();
 
     const onSourceData = (e: MapSourceDataEvent) => {
-      if (e.sourceId === FEATURES_SOURCE && e.isSourceLoaded) apply();
+      if (e.sourceId && sources.includes(e.sourceId) && e.isSourceLoaded) apply();
     };
     map.on('sourcedata', onSourceData);
     return () => {

@@ -11,7 +11,7 @@ import {
   type Layout,
 } from './layouts.js';
 import { activeLayout, featureIndex } from './schema.js';
-import { courseCorridors } from './pairView.js';
+import { courseFairways } from './pairView.js';
 import {
   courseLengthMeters,
   metersToFeet,
@@ -323,20 +323,23 @@ const corridorFoldsOver: Rule = {
   title: 'Fairway corridor folds over itself',
   severity: 'warning',
   authority: 'structural',
-  run: ({ course }) =>
-    [...courseCorridors(course).values()]
-      .filter((corridor) => corridor.selfIntersects)
-      .map((corridor) => {
-        const fairway = course.features.find((f) => f.id === corridor.fairwayId);
-        const name = fairway
-          ? fairway.label.trim() || KIND_DEFINITIONS.fairway.label
-          : KIND_DEFINITIONS.fairway.label;
+  /*
+   * Reads `courseFairways` with no choices, so the check never depends on which
+   * shot a panel happens to be showing. A straight line cannot fold, so in
+   * practice this only ever fires on a line somebody has bent.
+   */
+  run: ({ course, holes }) =>
+    courseFairways(course)
+      .filter((fairway) => fairway.corridor?.selfIntersects)
+      .map((fairway) => {
+        const hole = holes.find((h) => h.id === fairway.holeId);
+        const name = hole ? holeName(hole) : KIND_DEFINITIONS.fairway.label;
         return finding(
           corridorFoldsOver,
-          `${name} turns more sharply than it is wide, so its corridor overlaps itself.`,
+          `${name}'s fairway turns more sharply than it is wide, so its corridor overlaps itself.`,
           {
-            featureId: corridor.fairwayId,
-            ...(fairway?.holeId ? { holeId: fairway.holeId } : {}),
+            ...(fairway.fairwayId ? { featureId: fairway.fairwayId } : {}),
+            ...(fairway.holeId ? { holeId: fairway.holeId } : {}),
           },
         );
       }),
@@ -508,56 +511,23 @@ const fairwaysCross: Rule = {
   source: SOURCES.elements.title,
   revision: SOURCES.elements.revision,
   docUrl: SOURCES.elements.url,
-  run: ({ course, holes, featureById, layout }) => {
+  run: ({ course, holes }) => {
     /*
      * The lines actually played, not every line that exists.
      *
      * A hole with three tees and three pins has nine routes, and comparing all
      * of them against all of another hole's would report a course as a mess of
-     * crossings no player would ever make. The layout says which route is real;
-     * without one, the first tee to the first target stands in.
-     */
-    const routed =
-      layout?.plays.map((play) => ({
-        holeId: play.holeId,
-        teeId: play.teeId,
-        targetId: play.targetId,
-      })) ?? [];
-
-    /*
-     * An empty layout is not the same as no layout.
+     * crossings no player would ever make. `courseFairways` already answers
+     * "which shot is this hole" — the layout's play when it has one, the first
+     * tee and pin while the course is still being drawn — so this reads that
+     * rather than deciding it a second time and risking a different answer.
      *
-     * A course being drawn has holes long before it has a routing — that is the
-     * normal order of work — so falling through to the holes themselves is what
-     * keeps this check useful during design rather than only after it.
+     * A shaped line is the route; a straight one is just as real a crossing,
+     * drawn with fewer clicks.
      */
-    const played =
-      routed.length > 0
-        ? routed
-        : holes.flatMap((hole) => {
-            const teeId = hole.teeIds[0];
-            const targetId = hole.targetIds[0];
-            return teeId && targetId ? [{ holeId: hole.id, teeId, targetId }] : [];
-          });
-
-    const routes = played.flatMap((entry) => {
-      const hole = holes.find((h) => h.id === entry.holeId);
-      const tee = featureById.get(entry.teeId);
-      const target = featureById.get(entry.targetId);
-      if (!hole || !tee || !target) return [];
-
-      const pair = findPair(course.pairs, entry.teeId, entry.targetId);
-      const fairway = pair?.fairwayId ? featureById.get(pair.fairwayId) : undefined;
-
-      // A drawn fairway is the route; otherwise the played line is tee to
-      // target, and two of those crossing is the same problem drawn with
-      // fewer clicks.
-      const line =
-        fairway?.geometry.type === 'line'
-          ? fairway.geometry.coordinates
-          : [anchorOf(tee), anchorOf(target)];
-
-      return [{ hole, line }];
+    const routes = courseFairways(course).flatMap((fairway) => {
+      const hole = holes.find((h) => h.id === fairway.holeId);
+      return hole ? [{ hole, line: fairway.line }] : [];
     });
 
     const found: Finding[] = [];

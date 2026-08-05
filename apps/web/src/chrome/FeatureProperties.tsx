@@ -1,15 +1,20 @@
 import { TextField, shortcutFor } from '@hyzerlines/design';
 import {
   KIND_DEFINITIONS,
+  assignToHole,
+  holeName,
+  holeOf,
+  moveToFront,
   pathLength,
   fieldsFor,
+  type Course,
   type Feature,
   type FieldDefinition,
   type Op,
 } from '@hyzerlines/core';
 
 import { formatDistance, toFeet, toMeters, type UnitSystem } from '../units';
-import { Row, rowLabelClass, sectionClass } from './propertyRow';
+import { Row, rowLabelClass, sectionClass, selectClass } from './propertyRow';
 
 /**
  * Properties of the selected feature.
@@ -162,12 +167,97 @@ function Field({
   );
 }
 
+/**
+ * Which hole this tee or target belongs to.
+ *
+ * The one thing the interface could not do until now: `addHole` guessed at the
+ * nearest unassigned pair when a hole was created, and after that nothing could
+ * change its mind. Placing a second pin meant a target stranded outside every
+ * hole, reported forever as unassigned, with no control anywhere to fix it.
+ *
+ * Only for tees and targets. Other kinds carry a `holeId` too, but for them it
+ * is scope rather than membership — an OB line belonging to hole 4 is a
+ * different claim from a tee being one of hole 4's tees, and PR 7 gives it its
+ * own control rather than overloading this one.
+ */
+function HoleAssignment({
+  course,
+  feature,
+  onOp,
+}: {
+  course: Course;
+  feature: Feature;
+  onOp: (op: Op) => void;
+}) {
+  if (feature.kind !== 'tee' && feature.kind !== 'target') return null;
+
+  const list = feature.kind === 'tee' ? 'teeIds' : 'targetIds';
+  const hole = holeOf(course, feature.id);
+  const isFirst = hole?.[list][0] === feature.id;
+
+  const holes = [...course.holes].sort((a, b) => a.number - b.number);
+
+  return (
+    <div className={sectionClass}>
+      <Row label="Hole">
+        <select
+          aria-label="Hole this belongs to"
+          value={hole?.id ?? ''}
+          onChange={(e) => {
+            const op = assignToHole(course, feature.id, e.target.value || null);
+            if (op) onOp(op);
+          }}
+          className={selectClass}
+        >
+          <option value="">Not assigned</option>
+          {holes.map((h) => (
+            <option key={h.id} value={h.id}>
+              {holeName(h)}
+            </option>
+          ))}
+        </select>
+      </Row>
+
+      {/*
+        The first tee and first pin are the hole's representative pair until a
+        layout routes it — they decide what the scorecard prints and what the
+        fairway is drawn between. So promoting one is a real edit, not a
+        cosmetic reorder, and it needs to be reachable.
+      */}
+      {hole && !isFirst && (
+        <button
+          type="button"
+          onClick={() => {
+            const op = moveToFront(course, feature.id, list);
+            if (op) onOp(op);
+          }}
+          className="mt-0.5 text-2xs text-text-muted underline-offset-2 hover:text-text-secondary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+        >
+          Make this the hole&rsquo;s main {feature.kind === 'tee' ? 'tee' : 'pin'}
+        </button>
+      )}
+      {hole && isFirst && (
+        <p className="mt-0.5 text-2xs leading-4 text-text-muted">
+          {holeName(hole)} is measured from here.
+        </p>
+      )}
+      {!hole && course.holes.length === 0 && (
+        <p className="mt-0.5 text-2xs leading-4 text-text-muted">
+          No holes yet — add one and it will claim a tee and a basket.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function FeatureProperties({
+  course,
   feature,
   units,
   onOp,
   onDelete,
 }: {
+  course: Course;
   feature: Feature;
   units: UnitSystem;
   onOp: (op: Op) => void;
@@ -194,6 +284,8 @@ export function FeatureProperties({
           <Field key={field.key} field={field} feature={feature} units={units} onOp={onOp} />
         ))}
       </div>
+
+      <HoleAssignment course={course} feature={feature} onOp={onOp} />
 
       {/* Measured, not entered. Shown for lines because a fairway's length is
           the number a designer is actually reaching for. */}

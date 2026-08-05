@@ -50,7 +50,10 @@ test.describe('drawing', () => {
   test('draws a multi-point line and finishes on Enter', async ({ page }) => {
     await openEditor(page);
 
-    await rail(page).getByRole('button', { name: 'Fairway' }).click();
+    // Path, not Fairway: a fairway is derived from its tee and target and has
+    // no tool any more. A path is the other line a course has, and it is the
+    // one that still has to be drawn by hand.
+    await rail(page).getByRole('button', { name: 'Path' }).click();
     await clickMap(page, 400, 300);
     await clickMap(page, 500, 350);
     await clickMap(page, 600, 320);
@@ -61,7 +64,7 @@ test.describe('drawing', () => {
     await page.keyboard.press('Enter');
     await expect(page.getByText(/points ·/)).toBeHidden();
 
-    // A fairway's length is the number a designer actually wants.
+    // Its length is the number a designer actually wants.
     await expect(page.getByText('Length')).toBeVisible();
   });
 

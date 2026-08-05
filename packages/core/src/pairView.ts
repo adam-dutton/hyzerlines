@@ -1,5 +1,7 @@
-import type { Feature } from './features.js';
+import { createFeature, type Feature } from './features.js';
+import type { Position } from './geo.js';
 import type { Hole } from './holes.js';
+import { anchorOf } from './measure.js';
 import type { Op } from './ops.js';
 import {
   createPair,
@@ -217,33 +219,143 @@ export function corridorWidthsFor(
   };
 }
 
-export interface FairwayCorridor extends Corridor {
-  fairwayId: string;
+/**
+ * A fairway, drawn or not.
+ *
+ * **Every measurable pair has one.** A fairway is not something a designer draws
+ * from scratch — a tee and a target already imply the line between them, and
+ * making someone trace it by hand to see their own hole was busywork with a
+ * blank map as the reward for skipping it.
+ *
+ * So the line is derived, straight, from the moment both ends exist. It becomes
+ * a stored feature only when the designer bends it, which is the same sparseness
+ * pairs already have: a record appears when it carries something the geometry
+ * cannot work out on its own.
+ */
+export interface HoleFairway {
+  holeId: string | null;
+  teeId: string;
+  targetId: string;
+  /** The stored feature, once the line has been shaped. Null while straight. */
+  fairwayId: string | null;
+  /** The centreline in use: the stored line, or tee to target. */
+  line: Position[];
+  corridor: Corridor | null;
 }
 
 /**
- * Every fairway's corridor, keyed by the fairway's own id.
+ * Which shot each hole's fairway is drawn for.
  *
- * Walks pairs rather than features so each corridor is built against the tee it
- * actually belongs to. A fairway attached to no pair still gets a corridor — the
- * designer drew a line and deserves to see how wide it reads — using the
- * fallback width, which is what `corridorWidthsFor` returns for a missing tee.
+ * Keyed by hole id, so the editor can say "the panel is showing pin B on hole 4"
+ * and have the map agree. Anything absent falls back to `representativePair`.
  */
-export function courseCorridors(course: Course): Map<string, FairwayCorridor> {
+export type FairwayChoices = ReadonlyMap<string, { teeId: string; targetId: string }>;
+
+/**
+ * Every fairway the course should show.
+ *
+ * **One per hole, not one per pairing.** A three-tee, three-pin hole contains
+ * nine shots, and drawing nine overlapping corridors down one corridor of land
+ * would be unreadable — so each hole draws the shot it is currently being
+ * presented as, which is the same one the panels measure. Any pair the designer
+ * has actually shaped is drawn as well, so bending a line never makes it vanish
+ * when the picker moves.
+ */
+export function courseFairways(course: Course, choices?: FairwayChoices): HoleFairway[] {
   const featureById = featureIndex(course);
-  const teeOfFairway = new Map<string, string>();
+  const holeOfPair = new Map<string, string>();
+  const fairways: HoleFairway[] = [];
+  const seen = new Set<string>();
+
+  const key = (teeId: string, targetId: string) => `${teeId} ${targetId}`;
+
+  const add = (holeId: string | null, teeId: string, targetId: string) => {
+    if (seen.has(key(teeId, targetId))) return;
+
+    const tee = featureById.get(teeId);
+    const target = featureById.get(targetId);
+    if (!tee || !target) return;
+
+    const pair = findPair(course.pairs, teeId, targetId);
+    const stored = pair?.fairwayId ? featureById.get(pair.fairwayId) : undefined;
+
+    /*
+     * anchorOf a tee is its stored point, which is the front centre of the pad —
+     * the same point hole length is measured from. The straight line therefore
+     * starts exactly where the measurement does.
+     */
+    const line =
+      stored?.geometry.type === 'line'
+        ? [...stored.geometry.coordinates]
+        : [anchorOf(tee), anchorOf(target)];
+
+    seen.add(key(teeId, targetId));
+    fairways.push({
+      holeId,
+      teeId,
+      targetId,
+      fairwayId: stored?.id ?? null,
+      line,
+      corridor: fairwayCorridor(line, corridorWidthsFor(stored, tee)),
+    });
+  };
+
+  for (const hole of course.holes) {
+    for (const pairing of holePairings(hole)) {
+      holeOfPair.set(key(pairing.teeId, pairing.targetId), hole.id);
+    }
+    const chosen = choices?.get(hole.id) ?? representativePair(course, hole);
+    if (chosen) add(hole.id, chosen.teeId, chosen.targetId);
+  }
+
+  // Shaped lines the picker is not currently pointing at. The designer put work
+  // into these; they do not disappear because the panel moved to another pin.
   for (const pair of course.pairs) {
-    if (pair.fairwayId) teeOfFairway.set(pair.fairwayId, pair.teeId);
+    if (!pair.fairwayId) continue;
+    add(holeOfPair.get(key(pair.teeId, pair.targetId)) ?? null, pair.teeId, pair.targetId);
   }
 
-  const corridors = new Map<string, FairwayCorridor>();
-  for (const feature of course.features) {
-    if (feature.kind !== 'fairway' || feature.geometry.type !== 'line') continue;
+  return fairways;
+}
 
-    const teeId = teeOfFairway.get(feature.id);
-    const widths = corridorWidthsFor(feature, teeId ? featureById.get(teeId) : undefined);
-    const corridor = fairwayCorridor(feature.geometry.coordinates, widths);
-    if (corridor) corridors.set(feature.id, { ...corridor, fairwayId: feature.id });
+/**
+ * Turn a derived fairway into a stored one, at the moment it is first shaped.
+ *
+ * One batch, because it is one action: the feature and the pair record that
+ * points at it have to arrive together or undo would leave a pair referencing
+ * nothing.
+ *
+ * `gesture` ties the whole drag — this batch and every geometry edit after it —
+ * into a single undo entry, so a slow frame mid-drag cannot split the bend from
+ * the fairway it created.
+ */
+export function shapeFairway(
+  course: Course,
+  teeId: string,
+  targetId: string,
+  line: Position[],
+  holeId: string | null = null,
+  gesture?: string,
+): Op {
+  const stamp = gesture === undefined ? {} : { gesture };
+  const existing = findPair(course.pairs, teeId, targetId)?.fairwayId;
+
+  if (existing) {
+    return {
+      type: 'setGeometry',
+      id: existing,
+      geometry: { type: 'line', coordinates: line },
+      ...stamp,
+    };
   }
-  return corridors;
+
+  const fairway = createFeature('fairway', { type: 'line', coordinates: line }, { holeId });
+  return {
+    type: 'batch',
+    ops: [
+      { type: 'addFeature', feature: fairway },
+      setPairFairway(course, teeId, targetId, fairway.id),
+    ],
+    ...stamp,
+  };
 }

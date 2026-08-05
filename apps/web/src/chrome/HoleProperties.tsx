@@ -1,7 +1,9 @@
 import { TextField, cn } from '@hyzerlines/design';
 import {
   activeLayout,
+  assignToHole,
   featureName,
+  holeOf,
   layoutName,
   pairView,
   setPairPar,
@@ -133,6 +135,59 @@ function EndPicker({
   );
 }
 
+/**
+ * Claim a tee or basket that belongs to no hole.
+ *
+ * The same edit as the picker in the feature panel, reached from the other
+ * direction. Both directions are worth having: naming a tee you have just
+ * placed is a feature-first action, and filling out hole 5 is a hole-first one,
+ * and forcing either through the other is the kind of friction that makes
+ * people stop assigning features at all.
+ *
+ * Only unassigned features are offered. Stealing a tee from another hole is
+ * possible, but it is a rarer and more destructive thing to do, so it lives in
+ * the feature panel where the hole you are taking it from is on screen.
+ */
+function Claim({
+  course,
+  hole,
+  kind,
+  onOp,
+}: {
+  course: Course;
+  hole: Hole;
+  kind: 'tee' | 'target';
+  onOp: (op: Op) => void;
+}) {
+  const free = course.features.filter(
+    (f) => f.kind === kind && holeOf(course, f.id) === undefined,
+  );
+  if (free.length === 0) return null;
+
+  const label = kind === 'tee' ? 'Add a tee' : 'Add a basket';
+
+  return (
+    <Row label={label}>
+      <select
+        aria-label={label}
+        value=""
+        onChange={(e) => {
+          const op = assignToHole(course, e.target.value, hole.id);
+          if (op) onOp(op);
+        }}
+        className={cn(selectClass, 'max-w-[8rem] truncate')}
+      >
+        <option value="">Choose…</option>
+        {free.map((feature) => (
+          <option key={feature.id} value={feature.id}>
+            {featureName(feature)}
+          </option>
+        ))}
+      </select>
+    </Row>
+  );
+}
+
 export function HoleProperties({
   course,
   hole,
@@ -237,13 +292,28 @@ export function HoleProperties({
           onChange={(targetId) => pair && onSelectPair({ ...pair, targetId })}
           onReveal={onRevealFeature}
         />
+        {/*
+          The fairway is no longer something you find or draw — it is the line
+          between the two ends above, from the moment both exist. What is worth
+          saying is whether the designer has shaped it, because a straight line
+          and a routed one mean different things to every measurement below.
+        */}
         <Row label="Fairway">
           {fairway ? (
             <RevealButton feature={fairway} onReveal={() => onRevealFeature(fairway.id)} />
           ) : (
-            <span className="text-xs text-text-disabled">None</span>
+            <span className="text-xs text-text-secondary">
+              {pair ? 'Straight' : <span className="text-text-disabled">—</span>}
+            </span>
           )}
         </Row>
+        {pair && !fairway && (
+          <p className="mt-1 text-2xs leading-4 text-text-muted">
+            Drag a point on the line to route it around something.
+          </p>
+        )}
+        <Claim course={course} hole={hole} kind="tee" onOp={onOp} />
+        <Claim course={course} hole={hole} kind="target" onOp={onOp} />
         {routed && layout && (
           <p className="mt-1 text-2xs leading-4 text-text-muted">
             {showingRouted

@@ -120,10 +120,15 @@ documents migrate.
 
 ### Shapes the file does not contain
 
-A tee is stored as a point, but a tee is a pad. A fairway is stored as a line,
-but a fairway is ground you can land on. Both second shapes are computed from the
-first on every render and never written back — a stored polygon stays correct
-until somebody drags the point it came from.
+A tee is stored as a point, but a tee is a pad. A tee and a target imply the
+fairway between them, but nothing stores it. All of that is computed on every
+render and never written back — a stored polygon stays correct until somebody
+drags the point it came from.
+
+**There is no fairway tool.** Every hole has one the moment it has both ends, and
+dragging a point on it is what turns it into something the file carries. Tracing
+a line the app already knows was busywork with a blank map as the reward for
+skipping it.
 
 The pad extends _backwards_ from its point, because the point is the front centre:
 that is the tee line, and the tee line is where hole length is measured from.
@@ -150,9 +155,10 @@ A plain drag pans, from every tool except Zoom — there is no pan tool and no
 modifier to reach for. Wheel zoom anchors to the pointer, and opening a course
 frames what is drawn rather than restoring wherever you last stopped scrolling.
 
-Tool keys (`T` tee, `B` basket, `O` out of bounds…) place features. Select a line
-or an area and it grows handles: drag one to move a vertex, click a hollow one
-between two vertices to insert, `Alt`-click to remove.
+Tool keys (`T` tee, `B` basket, `P` path, `O` out of bounds…) place features.
+Select a hole, a line or an area and it grows handles: drag one to move a vertex,
+click a hollow one between two vertices to insert, `Alt`-click to remove. Doing
+that to a hole's fairway is how a straight shot becomes a routed one.
 
 ## Contributing
 

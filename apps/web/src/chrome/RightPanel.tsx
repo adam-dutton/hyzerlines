@@ -102,6 +102,7 @@ export function RightPanel({
         <div className="min-h-0 flex-1 overflow-y-auto">
           {feature ? (
             <FeatureProperties
+              course={course}
               feature={feature}
               units={units}
               onOp={onOp}

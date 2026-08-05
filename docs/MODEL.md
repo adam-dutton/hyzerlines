@@ -100,6 +100,29 @@ interface Play {
 }
 ```
 
+### One action, one undo step
+
+`{ type: 'batch', ops: [...] }` applies several ops as one, with the inverse
+being the inverses in reverse. Moving a tee between holes is two `updateHole`s;
+bending a fairway for the first time is an `addFeature` plus a `setPair`. Landing
+those on the undo stack separately would let one ⌘Z leave the document in a state
+nobody asked for — a tee in neither hole, or a pair referencing a feature that no
+longer exists.
+
+Undo coalescing crosses that boundary too. A drag that starts by creating a
+fairway continues as plain geometry edits, and `canCoalesce` folds the later ones
+into the batch that created it, so the whole gesture is one entry. The redo op
+stays a batch rather than being replaced by the newest edit — replaying only the
+last geometry change would target a feature that undo had just removed, and the
+bend would silently disappear.
+
+The ops a drag emits carry a **`gesture`** id, and one gesture is one undo entry
+however long it took. Coalescing is otherwise a 700 ms window, which is a
+heuristic for "these edits felt like one action" — fine for a run of keystrokes,
+wrong for a drag, which has a definite start and end that the editor already
+knows. A single long frame was enough to split a bend from the fairway it
+created.
+
 ### Pairs are sparse
 
 A pair only gets a record once it carries something the geometry cannot derive:
@@ -120,6 +143,28 @@ level and one on a single hole are the same thing seen at different ranges;
 modelling them as separate arrays would give every rule, renderer and exporter
 two code paths that drift, and re-scoping later would mean moving between
 collections rather than editing a field.
+
+### Membership: two fields, one fact
+
+A hole lists its `teeIds` and `targetIds`; a feature carries a `holeId`. For tees
+and targets those say the same thing, and **the hole's arrays are
+authoritative** — pairs, layouts, par and every design check read them. `holeId`
+exists so that scoped queries work the same way for a tee as for an OB line.
+
+Two fields that can disagree is normally a bug waiting to happen. What makes it
+safe is that nothing writes one without the other: every move goes through
+`assignToHole`, which emits a single batch that removes from the old hole, adds
+to the new one, and sets `holeId` to match. Order matters too — removal before
+addition, so a feature dragged back where it started is not listed twice.
+
+Assignment deliberately does **not** touch pairs. A par override on a tee that
+moved to another hole is still that shot's par, and the structural checks will
+say if the result stops making sense. Quietly deleting a number the designer set
+is the worse failure.
+
+The **first** tee and **first** target are the hole's representative pair until a
+layout routes it, so their order is meaningful rather than cosmetic. That is what
+`moveToFront` is for, and why the feature panel offers it as an explicit action.
 
 ---
 
@@ -179,11 +224,32 @@ Its defaults come from two documents, for two different reasons:
 only the point renders — the app supplies the tee-to-target bearing where it has
 one, and a rectangle drawn at an invented angle would look deliberate.
 
+### A fairway is not drawn — it is the line between the ends
+
+**Every measurable pair has a fairway from the moment both ends exist.** A tee
+and a target already imply the line between them, so there is no fairway tool:
+tracing by hand something the document already knows was busywork, with a blank
+map as the reward for skipping it.
+
+The line is derived and straight until the designer bends it. Dragging a point on
+it is what materialises `fairway` feature — the same sparseness pairs already
+have, a record appearing only once it carries something the geometry cannot work
+out on its own. Creating the feature and attaching it to its pair is **one batch
+op**, so a single undo takes back both rather than leaving a pair pointing at
+nothing.
+
+`courseFairways` draws **one shot per hole**, not one per pairing: a three-tee,
+three-pin hole contains nine shots and nine overlapping corridors down one
+corridor of land is unreadable. The shot drawn is the one the panels are
+measuring — the active layout's play, or the designer's pick in the hole panel.
+Any pair whose line has actually been shaped is drawn as well, so bending one
+never makes it vanish when the picker moves.
+
 ### A fairway's corridor is derived from its line
 
-The stored geometry is the centreline. The area it covers is a variable-width
-buffer around it, recomputed on every edit: half the width to either side of each
-vertex, mitred at the corners, cut square at both ends.
+The area it covers is a variable-width buffer around the centreline, recomputed
+on every edit: half the width to either side of each vertex, mitred at the
+corners, cut square at both ends.
 
 The width **tapers by distance along the line** — not by vertex index, which
 would balloon a dogleg's corridor to full width inside the first short leg:

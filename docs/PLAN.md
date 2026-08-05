@@ -308,8 +308,16 @@ together, is deleted.
 **Lines and areas can be reshaped.** Drag a vertex, click a midpoint to insert
 one, Alt-click to remove — refused below two points for a line and three for an
 area. Edits go straight into the document, one op per pointer move, so the length
-in the panel and the corridor under the cursor track the vertex live; `canCoalesce`
-folds the run into a single undo entry.
+in the panel and the corridor under the cursor track the vertex live.
+
+A drag is one undo entry, and that turned out to need saying explicitly rather
+than being inferred. Coalescing was a 700 ms window; a browser test running under
+load exceeded it mid-drag and split a bend in two, so one ⌘Z took back the shape
+and left behind the fairway that same gesture had created. Ops emitted by a drag
+now carry a `gesture` id, and one gesture is one entry however long it took. The
+redo op stays a batch rather than being replaced by the newest edit — replaying
+only the last geometry change would target a feature undo had just removed, and
+the bend would silently vanish.
 
 The browser tests grew a `geometry.spec.ts` for the parts only a browser can
 answer, and the five near-identical PNG encoders across the e2e files collapsed
@@ -319,6 +327,51 @@ mousedown MapLibre pans the ground instead of moving the vertex, and without the
 handle guard a click five pixels off a line's centre deselects the feature you are
 editing and takes every handle with it.
 
+### Then the fairway tool went away
+
+Reviewing the above on the preview turned up four things, and the second is a
+model change rather than a fix.
+
+**Tees and baskets can be assigned to holes.** There was no control for it at
+all: `addHole` guessed once at the nearest unassigned pair and nothing could
+change its mind, so a second pin was stranded outside every hole, reported
+forever as unassigned. Now the feature panel has a hole picker and the hole panel
+can claim a loose one — both directions, because naming a basket you just placed
+is feature-first and filling out hole 5 is hole-first. `assignToHole` emits one
+batch, so a move between holes is one undo step rather than two half-moves.
+
+**Fairways are not drawn any more.** A tee and a target imply the line between
+them, so every measurable pair has a fairway the moment both ends exist. The tool
+is gone; the feature is materialised only when somebody bends the line, which is
+the same sparseness pairs already had. One shot is drawn per hole — the one the
+panels are measuring — because nine overlapping corridors on a three-tee,
+three-pin hole is unreadable.
+
+`path` took the rail slot. It is the other line a course has and, unlike a
+fairway, genuinely has to be drawn; without it there would be no line tool at all
+and the drawing engine's line branch would be unreachable code.
+
+**The tee pad is the tee.** The point marker is suppressed where the pad stands
+for it — but by fading between z17 and z18.5 rather than disappearing outright,
+because a two-metre pad is a fraction of a pixel at the zoom you use to look at a
+whole course, and a tee that vanishes exactly when you step back is worse than a
+redundant dot.
+
+**Baskets are drawn as baskets.** A ring, chains and a band, in a glyph generated
+from the design tokens at load rather than shipped as a PNG. Two images, not one
+recoloured: MapLibre can only tint an SDF, and an SDF cannot carry both the
+casing and the stroke.
+
+Three MapLibre constraints cost real time and are worth recording. `feature-state`
+is rejected in **layout** properties, so selection cannot switch `icon-image` —
+hence two symbol layers cross-faded by `icon-opacity`, which is paint. `zoom` is
+only allowed as the direct input to a **top-level** `step` or `interpolate`, so
+the per-feature test has to live in the interpolate's output stops rather than
+wrapping it. And `querySourceFeatures` returns one copy of a feature **per
+rendered tile** and clips geometry at tile boundaries, so it can answer "did this
+reach the map" but never "what does the document contain" — three browser tests
+were written against it and were wrong until they read the store instead.
+
 ### Deliberately not in this PR
 
 **Per-vertex widths.** A fairway carries two widths, not one per point. The
@@ -327,9 +380,11 @@ migration — and the shape people actually want, a corridor that opens up from 
 to green, is already what the taper does. Worth revisiting when someone hits the
 case it does not cover.
 
-**A gesture id on ops.** Undo coalescing is time-based, so a drag paused for more
-than 700 ms mid-gesture splits into two entries. Rare enough not to justify
-threading a gesture through the op model yet.
+**Re-scoping an OB line to a hole.** The hole picker is for tees and targets
+only. Other kinds carry a `holeId` too, but for them it is scope rather than
+membership — an OB line belonging to hole 4 is a different claim from a tee being
+one of hole 4's tees — and overloading one control with both meanings would make
+neither clear. PR 7 gives scope its own.
 
 ---
 

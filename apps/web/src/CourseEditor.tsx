@@ -4,23 +4,22 @@ import {
   checkCourse,
   createFeature,
   createHole,
-  createPair,
   findPair,
   geometryMatchesKind,
   representativePair,
+  shapeFairway,
   type Feature,
   type FeatureKind,
   type Finding,
   type Geometry,
   type Op,
-  distance,
 } from '@hyzerlines/core';
 
 import { useMap } from './map/MapContext';
 import { FeatureLayer } from './map/FeatureLayer';
 import { useDrawing, drawingPreview } from './map/useDrawing';
 import { derivedGeometry } from './map/derived';
-import { useVertexEditing } from './map/useVertexEditing';
+import { useVertexEditing, type EditableShape } from './map/useVertexEditing';
 import { useNavigation } from './map/useNavigation';
 import { frameFeatures } from './map/frame';
 import type { Tool } from './map/tools';
@@ -87,39 +86,37 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
    * whole approach exists to avoid. A cached pad is a pad that is wrong for
    * exactly as long as it takes someone to notice.
    */
-  const derived = useMemo(() => derivedGeometry(course), [course]);
+  const derived = useMemo(
+    () =>
+      derivedGeometry(
+        course,
+        // So the map shows the shot the panel is showing. Without this, picking
+        // pin B would re-measure the hole while the fairway stayed on pin A.
+        selectedHole && selectedPair ? new Map([[selectedHole.id, selectedPair]]) : undefined,
+      ),
+    [course, selectedHole, selectedPair],
+  );
 
   /**
    * Create a hole from what is already drawn.
    *
    * Adding an empty hole and then hunting for its tee is busywork; the common
    * case is that you have just drawn a tee and a basket. So the nearest
-   * unassigned pair is claimed automatically, and the fairway too if one
-   * plausibly connects them. Everything it guesses is visible and editable —
-   * and anything it gets wrong shows up as a structural finding rather than
-   * silently sitting there.
+   * unassigned pair is claimed automatically. Everything it guesses is visible
+   * and editable in the hole panel, and anything it gets wrong shows up as a
+   * structural finding rather than silently sitting there.
+   *
+   * It no longer looks for a fairway to claim. There is nothing to claim: a
+   * fairway is the line between the tee and the target, so the hole has one the
+   * moment it has both ends.
    */
   const addHole = useCallback(() => {
     const assigned = new Set(course.holes.flatMap((h) => [...h.teeIds, ...h.targetIds]));
-    const free = (kind: FeatureKind): Feature[] =>
-      course.features.filter((f) => f.kind === kind && !assigned.has(f.id));
+    const free = (kind: FeatureKind): Feature | undefined =>
+      course.features.find((f) => f.kind === kind && !assigned.has(f.id));
 
-    const tee = free('tee')[0];
-    const target = free('target')[0];
-
-    const claimedFairways = new Set(
-      course.pairs.map((p) => p.fairwayId).filter((id): id is string => id !== null),
-    );
-    const fairway =
-      tee &&
-      course.features.find(
-        (f) =>
-          f.kind === 'fairway' &&
-          !claimedFairways.has(f.id) &&
-          f.geometry.type === 'line' &&
-          // Same threshold the fairway-detached check uses, so the two agree.
-          distance(f.geometry.coordinates[0]!, anchorOf(tee)) <= 30,
-      );
+    const tee = free('tee');
+    const target = free('target');
 
     const number = course.holes.reduce((max, h) => Math.max(max, h.number), 0) + 1;
     const hole = createHole(number, {
@@ -128,19 +125,6 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
     });
 
     dispatch({ type: 'addHole', hole });
-
-    /*
-     * A fairway now belongs to the tee-and-target pair, not the hole, so
-     * claiming one means writing a pair record. Nothing else about the pair is
-     * worth storing — the par is derived until the designer disagrees with it.
-     */
-    if (tee && target && fairway) {
-      dispatch({
-        type: 'setPair',
-        pair: createPair(tee.id, target.id, { fairwayId: fairway.id }),
-      });
-    }
-
     setSelectedHoleId(hole.id);
   }, [course, dispatch]);
 
@@ -226,20 +210,58 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
   });
 
   /*
-   * Reshaping, live only for a selected line or area under the select tool.
+   * What the vertex handles are attached to.
    *
-   * Gated on the tool because handles are hit targets: leaving them up while the
-   * fairway tool is active would mean a click meant to place a vertex grabs an
-   * existing one instead. Gated on the drawing state for the same reason.
+   * A selected line or area, or — when a hole is selected — that hole's
+   * fairway. The second case is the reason this is a shape rather than a
+   * feature: a fairway is the line between a tee and a target whether or not
+   * the document stores one, and dragging its midpoint is the moment it starts
+   * being stored. `shapeFairway` returns a single batch that creates the
+   * feature and attaches it to the pair, so one ⌘Z takes both back.
+   */
+  const editableShape = useMemo<EditableShape | null>(() => {
+    if (selected && selected.geometry.type !== 'point') {
+      const { type, coordinates } = selected.geometry;
+      return {
+        key: selected.id,
+        type,
+        coordinates,
+        write: (next, gesture) =>
+          dispatch({
+            type: 'setGeometry',
+            id: selected.id,
+            geometry: { type, coordinates: next } as Geometry,
+            ...(gesture === undefined ? {} : { gesture }),
+          }),
+      };
+    }
+
+    if (!selectedHole || !selectedPair) return null;
+    const fairway = derived.fairways.find(
+      (f) => f.teeId === selectedPair.teeId && f.targetId === selectedPair.targetId,
+    );
+    if (!fairway) return null;
+
+    return {
+      key: `${fairway.teeId} ${fairway.targetId}`,
+      type: 'line',
+      coordinates: fairway.line,
+      write: (next, gesture) =>
+        dispatch(
+          shapeFairway(course, fairway.teeId, fairway.targetId, next, selectedHole.id, gesture),
+        ),
+    };
+  }, [selected, selectedHole, selectedPair, derived.fairways, course, dispatch]);
+
+  /*
+   * Gated on the tool because handles are hit targets: leaving them up while a
+   * drawing tool is active would mean a click meant to place a vertex grabs an
+   * existing one instead.
    */
   const editing = useVertexEditing({
     map,
-    feature: selected,
+    shape: editableShape,
     enabled: nav.effective === 'select' && !drawing.active,
-    onGeometry: useCallback(
-      (id: string, geometry: Geometry) => dispatch({ type: 'setGeometry', id, geometry }),
-      [dispatch],
-    ),
   });
 
   const deleteSelected = useCallback(() => {
@@ -329,7 +351,7 @@ export function CourseEditor({ units, hidden }: { units: UnitSystem; hidden: boo
       },
       'tool.tee': () => setTool('tee'),
       'tool.basket': () => setTool('target'),
-      'tool.fairway': () => setTool('fairway'),
+      'tool.path': () => setTool('path'),
       'tool.mando': () => setTool('mando'),
       'tool.ob': () => setTool('ob'),
       'edit.cancel': () => {

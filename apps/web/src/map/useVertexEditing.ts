@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type maplibregl from 'maplibre-gl';
-import type { Feature, Geometry, Position } from '@hyzerlines/core';
+import type { Position } from '@hyzerlines/core';
 
 /**
  * Reshaping a line or an area after it has been drawn.
@@ -16,7 +16,27 @@ import type { Feature, Geometry, Position } from '@hyzerlines/core';
  * length in the panel and the corridor under the cursor both track the vertex
  * live rather than snapping into place on release. `canCoalesce` folds the run
  * into one undo entry.
+ *
+ * The shape being edited is deliberately NOT a `Feature`. A fairway is the line
+ * between a tee and a target whether or not the document stores one, and
+ * dragging its midpoint is exactly the moment it becomes stored — so this works
+ * against an interface that can describe a shape the document does not yet have,
+ * and lets the caller decide what writing to it means.
  */
+
+export interface EditableShape {
+  /** Identity, for rebinding. A feature id, or a pair key for a derived line. */
+  key: string;
+  type: 'line' | 'polygon';
+  coordinates: readonly Position[];
+  /**
+   * Persist a new outline. May create the feature that holds it.
+   *
+   * `gesture` is stable for one continuous drag, so every write it makes lands
+   * as a single undo entry however long the drag takes.
+   */
+  write: (coordinates: Position[], gesture?: string) => void;
+}
 
 /** Below these a shape stops being its own geometry type. */
 const MINIMUM_VERTICES = { line: 2, polygon: 3 } as const;
@@ -33,11 +53,11 @@ const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: 
  * than a great-circle midpoint — over a fairway segment the difference is
  * centimetres, and the handle's whole purpose is to be dragged somewhere else.
  */
-export function vertexHandles(feature: Feature | null): GeoJSON.FeatureCollection {
-  if (!feature || feature.geometry.type === 'point') return EMPTY;
+export function vertexHandles(shape: EditableShape | null): GeoJSON.FeatureCollection {
+  if (!shape) return EMPTY;
 
-  const coordinates = feature.geometry.coordinates;
-  const closed = feature.geometry.type === 'polygon';
+  const coordinates = shape.coordinates;
+  const closed = shape.type === 'polygon';
   const features: GeoJSON.Feature[] = [];
 
   coordinates.forEach((position, index) => {
@@ -68,53 +88,40 @@ export function vertexHandles(feature: Feature | null): GeoJSON.FeatureCollectio
 
 interface UseVertexEditingArgs {
   map: maplibregl.Map | null;
-  /** The feature being reshaped, or null when nothing editable is selected. */
-  feature: Feature | null;
+  /** The shape being reshaped, or null when nothing editable is in focus. */
+  shape: EditableShape | null;
   /** Off while a tool is drawing or the zoom hold is down. */
   enabled: boolean;
-  onGeometry: (id: string, geometry: Geometry) => void;
 }
 
-export function useVertexEditing({ map, feature, enabled, onGeometry }: UseVertexEditingArgs): {
+export function useVertexEditing({ map, shape, enabled }: UseVertexEditingArgs): {
   handles: GeoJSON.FeatureCollection;
 } {
   // Handlers bind to the map once and read current values through refs, so a
   // re-render mid-drag does not tear down the listener holding the gesture.
-  const featureRef = useRef(feature);
-  featureRef.current = feature;
-  const onGeometryRef = useRef(onGeometry);
-  onGeometryRef.current = onGeometry;
+  const shapeRef = useRef(shape);
+  shapeRef.current = shape;
 
-  /** Rewrite the selected feature's coordinates, keeping its geometry type. */
-  const write = useCallback((next: Position[]) => {
-    const current = featureRef.current;
-    if (!current || current.geometry.type === 'point') return;
-    onGeometryRef.current(current.id, {
-      type: current.geometry.type,
-      coordinates: next,
-    } as Geometry);
+  const write = useCallback((next: Position[], gesture?: string) => {
+    shapeRef.current?.write(next, gesture);
   }, []);
 
   useEffect(() => {
-    if (!map || !enabled || !feature || feature.geometry.type === 'point') return;
+    if (!map || !enabled || !shape) return;
 
     /** Live drag terminators, so unmounting mid-gesture cannot strand one. */
     const releases = new Set<() => void>();
 
-    const coordinatesNow = (): Position[] | null => {
-      const current = featureRef.current;
-      return current && current.geometry.type !== 'point'
-        ? [...current.geometry.coordinates]
-        : null;
-    };
+    const coordinatesNow = (): Position[] | null =>
+      shapeRef.current ? [...shapeRef.current.coordinates] : null;
 
     /** Follow the pointer until it comes up, moving one vertex as it goes. */
-    const beginDrag = (index: number) => {
+    const beginDrag = (index: number, gesture: string) => {
       const onMove = (move: maplibregl.MapMouseEvent) => {
         const coordinates = coordinatesNow();
         if (!coordinates || index >= coordinates.length) return;
         coordinates[index] = [move.lngLat.lng, move.lngLat.lat];
-        write(coordinates);
+        write(coordinates, gesture);
       };
 
       const onUp = () => {
@@ -154,14 +161,14 @@ export function useVertexEditing({ map, feature, enabled, onGeometry }: UseVerte
          * still shapes, and dropping to one point would fail the schema and
          * lose the whole thing.
          */
-        const floor = MINIMUM_VERTICES[featureRef.current!.geometry.type as 'line' | 'polygon'];
+        const floor = MINIMUM_VERTICES[shapeRef.current!.type];
         if (coordinates.length <= floor) return;
         coordinates.splice(index, 1);
         write(coordinates);
         return;
       }
 
-      beginDrag(index);
+      beginDrag(index, crypto.randomUUID());
     };
 
     const onMidpointDown = (e: maplibregl.MapLayerMouseEvent) => {
@@ -174,11 +181,16 @@ export function useVertexEditing({ map, feature, enabled, onGeometry }: UseVerte
       const coordinates = coordinatesNow();
       if (!coordinates) return;
 
+      /*
+       * The insert and the drag that follows share one gesture id, so adding a
+       * corner and putting it where you meant is a single undo step.
+       */
+      const gesture = crypto.randomUUID();
       coordinates.splice(index, 0, geometry.coordinates as Position);
-      write(coordinates);
+      write(coordinates, gesture);
       // Straight into a drag on the new vertex: clicking a midpoint means "I
       // want a corner here", and here is almost never exactly halfway.
-      beginDrag(index);
+      beginDrag(index, gesture);
     };
 
     // Handles read as grabbable. Set on the canvas, matching how FeatureLayer
@@ -206,9 +218,17 @@ export function useVertexEditing({ map, feature, enabled, onGeometry }: UseVerte
       }
       for (const release of [...releases]) release();
     };
-    // `feature` is in the deps only so that selecting a different shape rebinds
-    // against the right minimum; the handlers themselves read it through a ref.
-  }, [map, enabled, feature, write]);
+    /*
+     * Keyed on identity, not on the object.
+     *
+     * `shape` is rebuilt on every render — its coordinates change with each
+     * pointer move — so depending on it would tear down and rebind these
+     * handlers mid-drag and drop the gesture. The handlers read the current
+     * shape through a ref; only a change of *which* shape is being edited
+     * needs a rebind.
+     */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, enabled, shape?.key, write]);
 
-  return { handles: enabled ? vertexHandles(feature) : EMPTY };
+  return { handles: enabled ? vertexHandles(shape) : EMPTY };
 }

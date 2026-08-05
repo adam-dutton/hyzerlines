@@ -134,7 +134,15 @@ export interface KindDefinition {
 export const KIND_DEFINITIONS: Record<FeatureKind, KindDefinition> = {
   tee: { label: 'Tee pad', geometry: 'point', command: 'tool.tee', placedRectangle: true },
   target: { label: 'Target', geometry: 'point', command: 'tool.basket' },
-  fairway: { label: 'Fairway', geometry: 'line', command: 'tool.fairway' },
+  /*
+   * No `command`, and deliberately so: a fairway is not drawn.
+   *
+   * A tee and a target already imply the line between them, so every measurable
+   * pair has a fairway from the moment both ends exist — see `courseFairways`.
+   * The feature is stored only once the designer bends that line, which is why
+   * the kind still exists while the tool does not.
+   */
+  fairway: { label: 'Fairway', geometry: 'line' },
   mando: { label: 'Mandatory', geometry: 'point', command: 'tool.mando' },
   dropzone: { label: 'Drop zone', geometry: 'point', placedRectangle: true },
 
@@ -146,7 +154,7 @@ export const KIND_DEFINITIONS: Record<FeatureKind, KindDefinition> = {
   boundary: { label: 'Property boundary', geometry: 'polygon' },
   notedArea: { label: 'Noted area', geometry: 'polygon' },
   notedPoint: { label: 'Noted point', geometry: 'point' },
-  path: { label: 'Path', geometry: 'line' },
+  path: { label: 'Path', geometry: 'line', command: 'tool.path' },
   water: { label: 'Water', geometry: 'polygon' },
   terrain: { label: 'Terrain feature', geometry: 'polygon' },
 };

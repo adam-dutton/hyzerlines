@@ -416,9 +416,11 @@ rather than an error.
 > over the treetops to shorten the dogleg or throw straight completely over the
 > water.
 
-This is the citation for `measureHole` preferring the routed length along a drawn
-fairway over the tee-to-basket chord, and falling back to the chord only when no
-route has been drawn.
+This is the citation for `measurePair` preferring the routed length along the
+fairway over the tee-to-target chord, and falling back to the chord only when the
+fairway is still the straight line it starts as. The two agree exactly until the
+designer bends it — which is the point at which they have stated an intended
+route, and this passage says that is what to measure.
 
 ---
 
@@ -486,7 +488,9 @@ knows how a basket is mounted, and nothing ever will from satellite imagery.
 > non-players could be walking on a well-defined park pathway.
 
 **Only "fairways should not cross one another" is checked** (`pdga.fairways-cross`).
-Crossing is a geometric fact about two drawn lines. "Far enough apart" and "too
+Crossing is a geometric fact about two lines, and since every hole now has a
+fairway the moment it has a tee and a target, the check works from the first hole
+rather than waiting for anyone to draw a route. "Far enough apart" and "too
 close to" are separation distances the document declines to put a number on, and
 this project does not supply numbers the PDGA has not published — least of all a
 safety one. Dispersion-based separation is PR 7's problem, and it will be built on
