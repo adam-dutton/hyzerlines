@@ -199,8 +199,10 @@ export function footprintOf(
  *                   thing you throw from, because at the moment of release that
  *                   is exactly how much room there is.
  *
- *   at the target   10 m, the Circle 1 radius from [RULES] 806.01.A. The
- *                   corridor arrives as wide as the putting circle is deep.
+ *   at the target   20 m — Circle 1, across. [RULES] 806.01.A puts its radius
+ *                   at 10 m, so the corridor arrives exactly as wide as the
+ *                   putting circle and its edges land on the ring the map
+ *                   already draws around every target.
  *
  * The interpolation between them is a designer's convenience, nothing more. It
  * exists so a drawn line reads as ground rather than as a hairline, and every
@@ -214,8 +216,14 @@ export const FAIRWAY_CORRIDOR = {
    * legitimately be narrow, but a metre-wide corridor stops being drawable.
    */
   minimumWidthAtTeeM: 1,
-  /** Circle 1's radius — see TARGET_CIRCLES in pdga.ts. */
-  widthAtTargetM: TARGET_CIRCLES.find((c) => c.id === 'c1')!.radiusM,
+  /**
+   * Circle 1, across — see TARGET_CIRCLES in pdga.ts.
+   *
+   * A width, so it is the diameter rather than the published radius. Reading
+   * the 10 m as a width instead put the corridor's edge halfway to a ring drawn
+   * on the same map, which read as the taper failing rather than as a decision.
+   */
+  widthAtTargetM: TARGET_CIRCLES.find((c) => c.id === 'c1')!.radiusM * 2,
   /**
    * How far a dogleg's outside corner may spike past the corridor width.
    *

@@ -94,10 +94,10 @@ rather than as a circle, and the 3 m bullseye is league convention that appears 
 no PDGA document at all. Each is labelled with which it is.
 
 The same discipline applies to shapes. The fairway corridor drawn around a
-centreline runs from the tee pad's own width to Circle 1's 10 m at the target —
-two published figures — but **the taper between them is the app's, not the
-PDGA's**, which publishes no fairway width at all. It is a drawing aid anchored to
-real numbers, said in exactly those words in
+centreline runs from the tee pad's own width to the width of Circle 1 at the
+target — two published figures — but **the taper between them is the app's, not
+the PDGA's**, which publishes no fairway width at all. It is a drawing aid
+anchored to real numbers, said in exactly those words in
 [`docs/PDGA.md`](docs/PDGA.md#derived-geometry--what-is-sourced-and-what-is-ours),
 and every width it produces is overridable.
 
@@ -144,6 +144,20 @@ Anchoring at the middle of the pad instead would add half a pad length to every
 hole on the course, invisibly. It faces down the fairway's first segment rather
 than at the pin — on a dogleg those differ, and players stand facing the gap they
 are throwing into.
+
+Every fairway is drawn **dashed**, routed or not, because none of it is on the
+ground. A solid line is reserved for things somebody actually drew. And all of it
+switches off — per hole, or course-wide from the inspector, lines and corridors
+separately, and the same for the three rings around a basket. Those switches live
+in the document, not in the browser: turning the corridors off to read the canopy
+underneath is a decision about how the course is presented, and it should survive
+being sent to somebody.
+
+Colour is spent sparingly. Everything is white over imagery except **out of
+bounds**, which is red — not a styling choice this project gets to make, but what
+OB looks like on every course map a player has ever seen. A property boundary is
+the opposite: a thin dotted outline and no fill at all, because a translucent
+wash over the whole site dims the terrain you are reading it from.
 
 All of it is computed in metres on a local tangent plane rather than in degrees.
 Offsetting a line in degrees gives you a corridor 40% fatter north-to-south than

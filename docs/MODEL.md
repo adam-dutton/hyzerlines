@@ -57,6 +57,7 @@ interface Course {
   layouts: Layout[];
   activeLayoutId: string | null;
   dismissedRules: string[];
+  display: Display; // which drawing aids the map shows
 }
 
 interface Feature {
@@ -76,6 +77,7 @@ interface Hole {
   notes: string;
   teeIds: string[];
   targetIds: string[];
+  showFairway: boolean; // default true
 }
 
 interface Pair {
@@ -275,7 +277,7 @@ would balloon a dogleg's corridor to full width inside the first short leg:
 | Width         | Comes from                                                               |
 | ------------- | ------------------------------------------------------------------------ |
 | At the tee    | The tee pad's own width. Falls back to the typical pad width, floor 1 m. |
-| At the target | 10 m — Circle 1's radius, [RULES] 806.01.A.                              |
+| At the target | 20 m — Circle 1 across; its radius is 10 m, [RULES] 806.01.A.            |
 
 **The taper is ours, not the PDGA's.** The PDGA publishes no fairway width. What
 this does is draw a straight line between two figures that _are_ published, and
@@ -338,6 +340,42 @@ whoever the course was sent to.
 
 ---
 
+## Drawing aids are part of the document
+
+```ts
+interface Display {
+  fairways: boolean; // master
+  fairwayLines: boolean;
+  fairwayAreas: boolean;
+  circles: boolean; // master
+  bullseye: boolean;
+  c1: boolean;
+  c2: boolean;
+}
+```
+
+Every switch defaults to on, and each group is a **master and its parts** —
+`fairways: false` hides both halves whatever the two below it say, which is what
+makes it a master rather than a third checkbox. The per-hole switch is
+`hole.showFairway`, because the reason to hide one corridor is local: a hole
+threading a tight gap reads better with the canopy visible while the rest of the
+course keeps its aids.
+
+Hiding a fairway takes its vertex handles with it. An aid you cannot see must not
+be one you can edit by accident. It never deletes a routed line — the feature
+stays in the document and comes back when the switch does.
+
+This is the one place the document holds something that could be argued to be a
+preference, and it is deliberate. A designer who sends someone a wooded site with
+the corridors switched off meant them to see it that way, and splitting the
+course-wide switches from the per-hole one would put half the answer in the file
+and half in whichever browser last touched it.
+
+Added without a version bump: the field carries defaults, so a version 2 document
+written before it existed parses with everything on.
+
+---
+
 ## Derived, never stored
 
 Played number · distance · effective length · par suggestion · course and layout
@@ -350,7 +388,6 @@ label position · polygon area and course acreage · elevation
 |                                                 | Where it lives                    |
 | ----------------------------------------------- | --------------------------------- |
 | "Save as default" — surface, colour, dimensions | localStorage, keyed by tee colour |
-| Target circle overlays                          | View setting                      |
 | Par readout show/hide                           | View setting                      |
 | Which pair a hole panel is describing           | Editor state, per selection       |
 

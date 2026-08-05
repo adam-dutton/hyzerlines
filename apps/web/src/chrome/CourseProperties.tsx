@@ -12,12 +12,14 @@ import {
   totalPar,
   viewHoles,
   SKILL_LEVEL_INFO,
+  TARGET_CIRCLES,
   type Course,
+  type Display,
   type Op,
 } from '@hyzerlines/core';
 
 import { formatArea, formatDistance, formatRange, type UnitSystem } from '../units';
-import { Row, SectionTitle, sectionClass } from './propertyRow';
+import { Row, SectionTitle, ToggleRow, sectionClass } from './propertyRow';
 
 /**
  * The course itself — what the right panel shows when nothing is selected.
@@ -46,6 +48,9 @@ export function CourseProperties({
   const skill = courseSkillLevel(layout, course.features, featureById);
   const playable = layout ? isLayoutPlayable(layout, featureById) : true;
   const range = skill ? COURSE_LENGTH_FT[skill] : null;
+
+  const display = course.display;
+  const setDisplay = (changes: Partial<Display>) => onOp({ type: 'setDisplay', changes });
 
   return (
     <>
@@ -171,6 +176,57 @@ export function CourseProperties({
           )}
         </div>
       )}
+
+      {/*
+        What the map draws.
+
+        Here rather than in a view menu because it is part of the document — see
+        display.ts. A designer reading a wooded site turns the corridors off to
+        see the canopy, and that is a decision about this course rather than
+        about this browser.
+      */}
+      <div className={sectionClass}>
+        <SectionTitle>Show on map</SectionTitle>
+
+        <ToggleRow
+          label="Fairways"
+          checked={display.fairways}
+          onChange={(fairways) => setDisplay({ fairways })}
+        />
+        <ToggleRow
+          label="Lines"
+          indent
+          checked={display.fairwayLines}
+          disabled={!display.fairways}
+          onChange={(fairwayLines) => setDisplay({ fairwayLines })}
+        />
+        <ToggleRow
+          label="Corridors"
+          indent
+          checked={display.fairwayAreas}
+          disabled={!display.fairways}
+          onChange={(fairwayAreas) => setDisplay({ fairwayAreas })}
+        />
+
+        <ToggleRow
+          label="Putting circles"
+          checked={display.circles}
+          onChange={(circles) => setDisplay({ circles })}
+        />
+        {/* Named and ordered from TARGET_CIRCLES, so a ring the app draws can
+            never be a ring this panel has no switch for. Outermost first, which
+            is how they are read on the ground. */}
+        {[...TARGET_CIRCLES].reverse().map((circle) => (
+          <ToggleRow
+            key={circle.id}
+            label={circle.label}
+            indent
+            checked={display[circle.id]}
+            disabled={!display.circles}
+            onChange={(on) => setDisplay({ [circle.id]: on })}
+          />
+        ))}
+      </div>
 
       <div className={sectionClass}>
         <SectionTitle>Features</SectionTitle>

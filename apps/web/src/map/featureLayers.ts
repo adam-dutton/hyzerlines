@@ -86,6 +86,54 @@ const LINE_CASING_WIDTH: ExpressionSpecification = ['case', selected, 8, 6];
 const POINT_RADIUS: ExpressionSpecification = ['case', selected, 9, 7];
 
 /**
+ * A dash pattern and the casing pattern that lines up underneath it.
+ *
+ * `line-dasharray` is measured in line widths, so a casing twice as wide as its
+ * stroke needs half the dash numbers to break in the same places. Get that wrong
+ * and the casing fills the gaps — which is exactly how a dashed line ends up
+ * looking solid, and is what made selected fairways read as solid strokes: the
+ * gaps were there, filled in by a casing in a near-identical blue.
+ *
+ * The ratio has to be constant for this to hold, so widths that vary with
+ * selection vary together.
+ */
+function casingDash(dash: readonly [number, number], ratio: number): [number, number] {
+  return [dash[0] / ratio, dash[1] / ratio];
+}
+
+/** Casing width as a multiple of stroke width, wherever a dash has to align. */
+const CASING_RATIO = 2.2;
+
+const CENTRELINE_DASH = [3, 2] as const;
+const CENTRELINE_WIDTH: ExpressionSpecification = ['case', selected, 4, 2.5];
+const CENTRELINE_CASING_WIDTH: ExpressionSpecification = [
+  'case',
+  selected,
+  4 * CASING_RATIO,
+  2.5 * CASING_RATIO,
+];
+
+/**
+ * A property boundary is a note about the land, not a thing on it.
+ *
+ * So it gets the thinnest dotted line on the map and no fill at all. The fill
+ * was the real problem: a boundary is routinely the largest shape on screen, and
+ * a translucent wash over the whole site dims the imagery a designer is reading
+ * the terrain from — every tree line and every fall of ground goes through it.
+ * A dotted outline says the same thing and takes nothing away.
+ */
+const BOUNDARY_DASH = [1, 2] as const;
+const BOUNDARY_WIDTH: ExpressionSpecification = ['case', selected, 2, 1.25];
+const BOUNDARY_CASING_WIDTH: ExpressionSpecification = [
+  'case',
+  selected,
+  2 * CASING_RATIO,
+  1.25 * CASING_RATIO,
+];
+
+const isBoundary: ExpressionSpecification = ['==', ['get', 'kind'], 'boundary'];
+
+/**
  * A point marker fades out once the shape it stands for is legible.
  *
  * Only affects features that have a derived footprint — everything else stays
@@ -187,30 +235,38 @@ export function derivedLayers(): LayerSpecification[] {
       },
     },
     /*
-     * The centreline, cased like any other vector.
+     * The centreline, cased like any other vector, and always dashed.
      *
-     * Dashed until the designer bends it. A straight line is a consequence of
-     * where the tee and the pin are; a shaped one is a decision, and the two
-     * should not look alike.
+     * Always: a fairway is a drawing aid the app worked out, not a thing on the
+     * ground, and it should say so whether or not anybody has bent it. It used
+     * to go solid once shaped, which put the two most similar-looking marks on
+     * the map — a routed fairway and a drawn path — one keystroke apart.
+     *
+     * Butt caps, not round: round caps swell each dash into a lozenge and close
+     * the gaps at this width.
      */
     {
       id: 'derived-centreline-casing',
       type: 'line',
       source: DERIVED_SOURCE,
       filter: isCentreline,
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': CASING_COLOR, 'line-width': LINE_CASING_WIDTH },
+      layout: { 'line-join': 'round', 'line-cap': 'butt' },
+      paint: {
+        'line-color': CASING_COLOR,
+        'line-width': CENTRELINE_CASING_WIDTH,
+        'line-dasharray': casingDash(CENTRELINE_DASH, CASING_RATIO),
+      },
     },
     {
       id: 'derived-centreline',
       type: 'line',
       source: DERIVED_SOURCE,
       filter: isCentreline,
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      layout: { 'line-join': 'round', 'line-cap': 'butt' },
       paint: {
         'line-color': selectableColor('stroke'),
-        'line-width': LINE_WIDTH,
-        'line-dasharray': ['case', ['get', 'shaped'], ['literal', [1, 0]], ['literal', [3, 2]]],
+        'line-width': CENTRELINE_WIDTH,
+        'line-dasharray': [...CENTRELINE_DASH],
       },
     },
     {
@@ -270,13 +326,26 @@ function basketLayer(
 }
 
 export function featureLayers(): LayerSpecification[] {
+  const isArea: ExpressionSpecification = ['==', ['geometry-type'], 'Polygon'];
+  /*
+   * Boundaries are split out rather than styled by a `case` inside one layer.
+   *
+   * `line-dasharray` takes no data-driven expression — MapLibre accepts only a
+   * constant or a zoom function — so "dashed for one kind, solid for the rest"
+   * cannot be written as a paint expression at all. Two filtered layers is the
+   * supported way to say it, and the filters are exact complements so nothing
+   * is drawn twice or missed.
+   */
+  const isPlainArea: ExpressionSpecification = ['all', isArea, ['!', isBoundary]];
+  const isBoundaryArea: ExpressionSpecification = ['all', isArea, isBoundary];
+
   return [
     // --- Areas. Fill first so outlines sit on top of their own fill.
     {
       id: 'features-polygon-fill',
       type: 'fill',
       source: FEATURES_SOURCE,
-      filter: ['==', ['geometry-type'], 'Polygon'],
+      filter: isPlainArea,
       paint: {
         'fill-color': selectableColor('fill'),
         'fill-opacity': ['case', selected, 0.9, 0.7],
@@ -286,7 +355,7 @@ export function featureLayers(): LayerSpecification[] {
       id: 'features-polygon-casing',
       type: 'line',
       source: FEATURES_SOURCE,
-      filter: ['==', ['geometry-type'], 'Polygon'],
+      filter: isPlainArea,
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: { 'line-color': CASING_COLOR, 'line-width': LINE_CASING_WIDTH },
     },
@@ -294,9 +363,35 @@ export function featureLayers(): LayerSpecification[] {
       id: 'features-polygon-stroke',
       type: 'line',
       source: FEATURES_SOURCE,
-      filter: ['==', ['geometry-type'], 'Polygon'],
+      filter: isPlainArea,
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: { 'line-color': selectableColor('stroke'), 'line-width': LINE_WIDTH },
+    },
+
+    // The property boundary: no fill, a thin dotted outline. See BOUNDARY_DASH.
+    {
+      id: 'features-boundary-casing',
+      type: 'line',
+      source: FEATURES_SOURCE,
+      filter: isBoundaryArea,
+      layout: { 'line-join': 'round', 'line-cap': 'butt' },
+      paint: {
+        'line-color': CASING_COLOR,
+        'line-width': BOUNDARY_CASING_WIDTH,
+        'line-dasharray': casingDash(BOUNDARY_DASH, CASING_RATIO),
+      },
+    },
+    {
+      id: 'features-boundary-stroke',
+      type: 'line',
+      source: FEATURES_SOURCE,
+      filter: isBoundaryArea,
+      layout: { 'line-join': 'round', 'line-cap': 'butt' },
+      paint: {
+        'line-color': selectableColor('stroke'),
+        'line-width': BOUNDARY_WIDTH,
+        'line-dasharray': [...BOUNDARY_DASH],
+      },
     },
 
     /*
@@ -378,6 +473,20 @@ export function featureLayers(): LayerSpecification[] {
 }
 
 /**
+ * How far the hole number sits off the point it labels, in screen pixels.
+ *
+ * It has to sit off it at all because the label's home is the midpoint of the
+ * shot, and on a straight fairway that is exactly where the midpoint handle
+ * appears when the hole is selected — so selecting a hole put a vertex handle
+ * dead centre over its own number. Everything else on that spot is small, so
+ * clearing the handle's radius is enough.
+ *
+ * Screen pixels, not ground metres: the gap has to stay the same at every zoom
+ * because the thing it is clearing is drawn in screen pixels too.
+ */
+const LABEL_OFFSET_PX: [number, number] = [0, -22];
+
+/**
  * The hole's number, on the ground.
  *
  * A disc, not bare text: a number floating over satellite imagery is unreadable
@@ -401,6 +510,7 @@ export function holeLabelLayers(): LayerSpecification[] {
         'circle-radius': ['case', selected, 14, 12],
         'circle-stroke-color': featureColors.tee.stroke,
         'circle-stroke-width': ['case', selected, 2, 1],
+        'circle-translate': LABEL_OFFSET_PX,
       },
     },
     {
@@ -416,7 +526,10 @@ export function holeLabelLayers(): LayerSpecification[] {
         'text-allow-overlap': true,
         'text-ignore-placement': true,
       },
-      paint: { 'text-color': featureColors.tee.stroke },
+      paint: {
+        'text-color': featureColors.tee.stroke,
+        'text-translate': LABEL_OFFSET_PX,
+      },
     },
   ];
 }
@@ -476,8 +589,18 @@ export const INTERACTIVE_LAYERS = [
   'features-point',
   'features-line-stroke',
   'features-polygon-fill',
+  /*
+   * A boundary has no fill, so its outline is the only thing to click, and the
+   * casing is used rather than the stroke because it is the wider of the two —
+   * a 1.25 px dotted line is not a target anybody can hit. It carries the same
+   * feature id, so which one answers makes no difference to the caller.
+   */
+  'features-boundary-casing',
   'derived-footprint',
 ] as const;
+
+/** The layers that stand for a drawn area, whichever way it is styled. */
+const AREA_LAYERS: readonly string[] = ['features-polygon-fill', 'features-boundary-casing'];
 
 /**
  * Layers a drag can pick a feature up by. Everything interactive except areas.
@@ -493,7 +616,7 @@ export const INTERACTIVE_LAYERS = [
  * a point a few metres across, and dragging the pad is how you move the tee.
  */
 export const DRAGGABLE_LAYERS = INTERACTIVE_LAYERS.filter(
-  (layer) => layer !== 'features-polygon-fill',
+  (layer) => !AREA_LAYERS.includes(layer),
 );
 
 /**

@@ -8,6 +8,9 @@ import {
   holeLabelPosition,
   holeName,
   KIND_DEFINITIONS,
+  showsCircle,
+  showsFairwayAreas,
+  showsFairwayLines,
   TARGET_CIRCLES,
   type Course,
   type FairwayChoices,
@@ -83,8 +86,22 @@ export function derivedGeometry(course: Course, choices?: FairwayChoices): Deriv
   const features: GeoJSON.Feature[] = [];
   const withFootprint = new Set<string>();
 
-  const fairways = courseFairways(course, choices);
-  const teeBearings = fairwayBearings(fairways);
+  /*
+   * Every fairway is computed, and only some are drawn.
+   *
+   * The two must not be the same list. A tee faces down the first leg of its
+   * fairway and a hole's number sits at the midpoint of its shot — both remain
+   * true of a hole whose corridor is switched off, and computing from the
+   * filtered list would spin the pad and move the number when you hid the line
+   * you were trying to see past.
+   */
+  const allFairways = courseFairways(course, choices);
+  const teeBearings = fairwayBearings(allFairways);
+
+  const holeById = new Map(course.holes.map((hole) => [hole.id, hole]));
+  const fairways = allFairways.filter(
+    (f) => f.holeId === null || (holeById.get(f.holeId)?.showFairway ?? true),
+  );
 
   for (const feature of course.features) {
     if (!KIND_DEFINITIONS[feature.kind].placedRectangle) continue;
@@ -118,6 +135,7 @@ export function derivedGeometry(course: Course, choices?: FairwayChoices): Deriv
   for (const feature of course.features) {
     if (feature.kind !== 'target' || feature.geometry.type !== 'point') continue;
     for (const circle of TARGET_CIRCLES) {
+      if (!showsCircle(course.display, circle.id)) continue;
       const ring = circleRing(feature.geometry.coordinates, circle.radiusM);
       features.push({
         type: 'Feature',
@@ -133,10 +151,13 @@ export function derivedGeometry(course: Course, choices?: FairwayChoices): Deriv
     }
   }
 
+  const drawLines = showsFairwayLines(course.display);
+  const drawAreas = showsFairwayAreas(course.display);
+
   for (const fairway of fairways) {
     const pair = `${fairway.teeId} ${fairway.targetId}`;
 
-    if (fairway.corridor) {
+    if (fairway.corridor && drawAreas) {
       features.push({
         type: 'Feature',
         properties: {
@@ -159,6 +180,7 @@ export function derivedGeometry(course: Course, choices?: FairwayChoices): Deriv
      * shot goes. On a wide corridor over broken canopy the fill alone does not
      * read as a direction, and the line is also what carries the vertex handles.
      */
+    if (!drawLines) continue;
     features.push({
       type: 'Feature',
       properties: {
@@ -166,9 +188,6 @@ export function derivedGeometry(course: Course, choices?: FairwayChoices): Deriv
         pair,
         kind: 'fairway',
         derived: 'centreline',
-        // Straight lines are drawn more quietly than shaped ones: one is a
-        // consequence of where the tee and pin are, the other is a decision.
-        shaped: fairway.fairwayId !== null,
       },
       geometry: { type: 'LineString', coordinates: fairway.line },
     });
@@ -182,7 +201,7 @@ export function derivedGeometry(course: Course, choices?: FairwayChoices): Deriv
    * seven meant clicking things. The label carries the hole's id, which is what
    * makes it selectable.
    */
-  const byHole = new Map(fairways.filter((f) => f.holeId).map((f) => [f.holeId!, f]));
+  const byHole = new Map(allFairways.filter((f) => f.holeId).map((f) => [f.holeId!, f]));
   for (const hole of course.holes) {
     const at = holeLabelPosition(course, hole, byHole.get(hole.id));
     if (!at) continue;

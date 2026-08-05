@@ -178,10 +178,12 @@ describe('fairway corridors', () => {
     expect(corridor.selfIntersects).toBe(false);
   });
 
-  it('the target width is Circle 1, not a number of its own', () => {
+  it('the target width is Circle 1 across, not a number of its own', () => {
     // Pins the link: if TARGET_CIRCLES ever changes, this says so out loud
-    // rather than the corridor quietly becoming a different shape.
-    expect(FAIRWAY_CORRIDOR.widthAtTargetM).toBe(10);
+    // rather than the corridor quietly becoming a different shape. A width, so
+    // it is the diameter — the corridor arrives with its edges on the ring the
+    // map draws, which is the whole reason the figure was chosen.
+    expect(FAIRWAY_CORRIDOR.widthAtTargetM).toBe(20);
   });
 
   it('interpolates by distance along the line, not by vertex index', () => {
@@ -236,7 +238,7 @@ describe('fairway corridors', () => {
     expect(defaultCorridorWidths(null).atStart).toBe(TEE_PAD_M.typicalWidth);
     // A pad narrower than the floor still gets a drawable corridor.
     expect(defaultCorridorWidths(0.2).atStart).toBe(FAIRWAY_CORRIDOR.minimumWidthAtTeeM);
-    expect(defaultCorridorWidths(6).atEnd).toBe(10);
+    expect(defaultCorridorWidths(6).atEnd).toBe(20);
   });
 });
 

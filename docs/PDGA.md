@@ -718,7 +718,14 @@ the join as an app convention:
 | At the tee    | The tee pad's own width | The designer's measurement, when they have entered one. |
 | — unset       | 6 ft (2 m)              | `[ELEMENTS]` p2 typical pad width, as above.            |
 | — floor       | 1 m                     | **Ours.** Below this a corridor stops being drawable.   |
-| At the target | 10 m                    | `[RULES]` 806.01.A — Circle 1's radius.                 |
+| At the target | 20 m                    | `[RULES]` 806.01.A — Circle 1 across, radius 10 m.      |
+
+The target figure is Circle 1's **diameter**, chosen so the corridor arrives with
+its edges on the ring the map already draws around every target. Reading the
+published 10 m as a width instead put the corridor's edge halfway to that ring,
+which looked like the taper failing rather than like a decision. Which of the two
+to use is not a question the PDGA answers — it publishes no fairway width at all
+— so it is the app's, and it is written down here for that reason.
 
 The interpolation between them, the mitre limit of 2 at doglegs, and the square
 end caps are all app conventions with no PDGA basis, and none of them is

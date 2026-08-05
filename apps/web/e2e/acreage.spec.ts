@@ -75,6 +75,24 @@ test.describe('acreage', () => {
   });
 
   /*
+   * A boundary has no fill, so `features-polygon-fill` is not what answers for
+   * it. That layer is the click target for every other area, which makes this
+   * the one kind that could quietly become unselectable — invisible to types,
+   * to lint and to every unit test.
+   */
+  test('a boundary is still selectable without a fill to click', async ({ page }) => {
+    await openEditor(page, { zoom: 15 });
+    await drawBoundary(page);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('textbox', { name: 'Feature name' })).toBeHidden();
+
+    // On the edge, which is all there is to hit.
+    await clickMap(page, 615, 560);
+    await expect(page.getByRole('textbox', { name: 'Feature name' })).toBeVisible();
+    await expect(page.getByText(/[\d.,]+ acres/).first()).toBeVisible();
+  });
+
+  /*
    * An area is usually the biggest thing on the screen, so if its fill were a
    * drag target the map would stop panning: you reach for the one gesture used
    * constantly and take the boundary with you instead. Only a browser can

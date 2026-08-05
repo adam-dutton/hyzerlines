@@ -14,7 +14,7 @@ import {
 } from '@hyzerlines/core';
 
 import { formatDistance, type UnitSystem } from '../units';
-import { Row, SectionTitle, sectionClass, selectClass } from './propertyRow';
+import { Row, SectionTitle, ToggleRow, sectionClass, selectClass } from './propertyRow';
 
 /**
  * Properties of the selected hole.
@@ -307,9 +307,26 @@ export function HoleProperties({
             </span>
           )}
         </Row>
-        {pair && !fairway && (
+        {pair && !fairway && hole.showFairway && (
           <p className="mt-1 text-2xs leading-4 text-text-muted">
             Drag a point on the line to route it around something.
+          </p>
+        )}
+        {/*
+          Per hole, because the reason to hide one is local: a hole threading a
+          tight gap is easier to judge with the canopy visible while every other
+          corridor stays up. Hiding takes the handles with it — an aid you cannot
+          see must not be one you can edit by accident — and never deletes a line
+          that was already routed.
+        */}
+        <ToggleRow
+          label="Show fairway"
+          checked={hole.showFairway}
+          onChange={(showFairway) => update({ showFairway })}
+        />
+        {!hole.showFairway && fairway && (
+          <p className="mt-1 text-2xs leading-4 text-text-muted">
+            The routed line is kept, just not drawn.
           </p>
         )}
         <Claim course={course} hole={hole} kind="tee" onOp={onOp} />

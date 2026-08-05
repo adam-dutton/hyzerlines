@@ -478,6 +478,56 @@ ever rescheduled. The edit was real in memory and gone on refresh, which is the
 worst shape a persistence bug can take. `markClean` now names the document that
 was written and declines to clean anything newer.
 
+### What the map draws, and how much of it
+
+A pass over the drawing, from looking at a real site rather than at a test
+fixture.
+
+**A boundary has no fill and the thinnest dotted line on the map.** It is a note
+about the land, not a thing on it, and it is routinely the largest shape on
+screen — a translucent wash over the whole site dims the imagery every other
+judgement is made from. `line-dasharray` takes no data-driven expression in
+MapLibre, so "dashed for one kind, solid for the rest" is two filtered layers
+rather than one paint expression. The casing is the click target, because a
+1.25 px dotted line is not one.
+
+**Out of bounds is red.** The only exception to the monochrome pass, and it earns
+it: red for OB is what a player has seen on every course map, every tournament
+handout and every rulebook diagram. Drawing it in the same white as a path
+withholds the one thing the map can say without a label about the only area that
+costs a throw. The other regulated areas stay white — they are penalties too, but
+they have no established colour, and inventing three more puts the map back where
+the monochrome pass started.
+
+**Fairways are always dashed**, routed or not. They used to go solid once shaped,
+which put the two most similar-looking marks on the map — a routed fairway and a
+drawn path — one keystroke apart. It also never worked: a selected fairway's
+casing is a near-identical blue, so it filled the gaps and the dashes vanished.
+Dash patterns are measured in line widths, so the casing now carries the same
+pattern divided by the width ratio, which is the only way two stacked lines break
+in the same places.
+
+**The corridor arrives at Circle 1, not at half of it.** The published figure is
+a 10 m radius and the code was reading it as a width, so the corridor's edge
+landed halfway to a ring drawn on the same map. Which of the two to use is not a
+question the PDGA answers — it publishes no fairway width at all — so it is the
+app's, and it is written down in `docs/PDGA.md` as such.
+
+**A selected basket now reads as selected.** Its selected glyph kept the feature
+colour and inverted the casing to white, which was right while baskets were red
+and became a white glyph cased in white the moment everything went monochrome.
+Selecting a hole lit up its tee, its corridor and its number, and left the basket
+looking untouched.
+
+**The hole number sits 22 px off the point it labels.** Its home is the midpoint
+of the shot, which on a straight fairway is exactly where the midpoint handle
+appears when the hole is selected — so selecting a hole put a vertex handle dead
+centre over its own number.
+
+**And all of it switches off**, per hole and course-wide, lines and corridors
+separately, circles individually. Those switches are in the document rather than
+in the browser — see `docs/MODEL.md` for why.
+
 ### Deliberately not in this PR
 
 **Whether the course actually fits inside its boundary.** Geometrically easy, and

@@ -133,7 +133,7 @@ describe('corridor widths', () => {
 
   it('starts at the tee pad width and ends at Circle 1', () => {
     const tee = createFeature('tee', point(AT), { props: { width: 4 } });
-    expect(corridorWidthsFor(fairwayWith({}), tee)).toEqual({ atStart: 4, atEnd: 10 });
+    expect(corridorWidthsFor(fairwayWith({}), tee)).toEqual({ atStart: 4, atEnd: 20 });
   });
 
   it('falls back to the typical pad width when the tee has none', () => {
@@ -159,7 +159,7 @@ describe('corridor widths', () => {
 
     const [fairway, ...rest] = courseFairways(course);
     expect(rest).toHaveLength(0);
-    expect(fairway!.corridor!.widths).toEqual({ atStart: 6, atEnd: 10 });
+    expect(fairway!.corridor!.widths).toEqual({ atStart: 6, atEnd: 20 });
     expect(fairway!.corridor!.selfIntersects).toBe(false);
   });
 });
