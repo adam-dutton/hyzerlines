@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react';
+import { createContext, useContext, useId, useState, type ReactNode } from 'react';
 
 import { cn } from '../cn.js';
 
@@ -21,6 +21,41 @@ import { cn } from '../cn.js';
  * button, a region, and `aria-expanded`. There is no focus management to get
  * wrong.
  */
+
+interface AccordionGroupValue {
+  openId: string | null;
+  setOpenId: (id: string | null) => void;
+}
+
+const AccordionGroupContext = createContext<AccordionGroupValue | null>(null);
+
+/**
+ * Wrap sections so that opening one closes the rest.
+ *
+ * Only worth it where the sections share a bounded column, which is the case
+ * this exists for: the course panel sits above the hole list, and two open
+ * sections is enough to start squeezing it. Left to their own devices, the
+ * sections re-create the problem folding was meant to solve, one at a time.
+ *
+ * Outside a group each section keeps its own state, so an `Accordion` used
+ * alone still behaves.
+ */
+export function AccordionGroup({
+  children,
+  defaultOpen = null,
+}: {
+  children: ReactNode;
+  /** Section title to open on mount. Null means all closed. */
+  defaultOpen?: string | null;
+}) {
+  const [openId, setOpenId] = useState<string | null>(defaultOpen);
+  return (
+    <AccordionGroupContext.Provider value={{ openId, setOpenId }}>
+      {children}
+    </AccordionGroupContext.Provider>
+  );
+}
+
 export function Accordion({
   title,
   preview,
@@ -30,11 +65,19 @@ export function Accordion({
   title: string;
   /** Shown to the right of the title while closed. Omit when there is nothing. */
   preview?: ReactNode;
+  /** Ignored inside an `AccordionGroup`, which owns which one is open. */
   defaultOpen?: boolean;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const group = useContext(AccordionGroupContext);
+  const [ownOpen, setOwnOpen] = useState(defaultOpen);
   const id = useId();
+
+  const open = group ? group.openId === title : ownOpen;
+  const toggle = () => {
+    if (group) group.setOpenId(open ? null : title);
+    else setOwnOpen((v) => !v);
+  };
 
   return (
     <div className="border-b border-border-subtle last:border-b-0">
@@ -52,7 +95,7 @@ export function Accordion({
         aria-label={title}
         aria-expanded={open}
         aria-controls={id}
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         className={cn(
           'flex w-full items-center gap-2 px-3 py-2 text-left',
           'transition-colors duration-fast hover:bg-surface-hover',
@@ -99,12 +142,18 @@ export function Accordion({
 
       {/*
         Unmounted when closed rather than hidden with CSS. These sections hold
-        live controls, and a hidden-but-present checkbox is still in the tab
-        order and still findable by a screen reader — a section that folded
-        away but could still be operated by keyboard.
+        live controls, and a hidden-but-present switch is still in the tab order
+        and still findable by a screen reader — a section that folded away but
+        could still be operated by keyboard.
+
+        Which is also why the open animation is on the content and not a height
+        transition on a wrapper: there is nothing to transition from. It grows
+        from a hairline and fades in, which reads as unfolding without needing
+        to measure anything. `hz-reveal` is in the design package's stylesheet
+        and its duration comes from a motion token, so reduced-motion zeroes it.
       */}
       {open && (
-        <div id={id} className="px-3 pb-2">
+        <div id={id} className="hz-reveal overflow-hidden px-3 pb-2">
           {children}
         </div>
       )}

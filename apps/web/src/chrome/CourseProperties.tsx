@@ -1,4 +1,4 @@
-import { Accordion } from '@hyzerlines/design';
+import { Accordion, AccordionGroup, TextArea, cn } from '@hyzerlines/design';
 import {
   activeLayout,
   courseAcreage,
@@ -16,7 +16,7 @@ import {
 } from '@hyzerlines/core';
 
 import { formatArea, formatRange, type UnitSystem } from '../units';
-import { Row, SectionTitle, ToggleRow } from './propertyRow';
+import { Row, SectionTitle, ToggleRow, fieldWidth, selectClass } from './propertyRow';
 
 /**
  * What the app has worked out about the course, and what it draws.
@@ -27,6 +27,18 @@ import { Row, SectionTitle, ToggleRow } from './propertyRow';
  * a few times a session. Folded, each section says what it is holding in one
  * line and opens when you want the rest.
  *
+ * One at a time, because they share a bounded column with the hole list: two
+ * open sections is enough to start squeezing it, which is the problem folding
+ * was introduced to solve. See `AccordionGroup`.
+ *
+ * ## No sub-headings
+ *
+ * Analysis used to be three titled groups — Skill level, Site, Features — of
+ * one or two rows each. A heading over a single row says the same word twice
+ * in two type sizes, and the nesting made a folded section that opens into
+ * more folded-looking structure. The heading is now the row's label: `Plays
+ * as` became `Skill level`, `Drawn` became `Features drawn`.
+ *
  * The totals that used to sit here are gone. `9 · Par 28 · 2545 ft` is now the
  * course header's subheading, next to the name it describes, which is where
  * you look for it anyway.
@@ -36,11 +48,14 @@ export function CourseProperties({
   units,
   onOp,
   onUnitsChange,
+  onDrawBoundary,
 }: {
   course: Course;
   units: UnitSystem;
   onOp: (op: Op) => void;
   onUnitsChange: (units: UnitSystem) => void;
+  /** Arms the boundary tool, for the prompt shown when there is no site yet. */
+  onDrawBoundary: () => void;
 }) {
   const acreage = courseAcreage(course);
   const layout = activeLayout(course);
@@ -65,7 +80,7 @@ export function CourseProperties({
     .join(' · ');
 
   return (
-    <>
+    <AccordionGroup>
       {/*
         Named for what it is rather than for where it came from. Skill level,
         site and feature count were three sections describing one thing: what
@@ -82,8 +97,7 @@ export function CourseProperties({
           so rather than averaging two published tables into a number that is
           in neither.
         */}
-        <SectionTitle>Skill level</SectionTitle>
-        <Row label="Plays as">
+        <Row label="Skill level">
           <span className="text-xs text-text-primary">
             {skill ? SKILL_LEVEL_INFO[skill].label : 'Mixed'}
           </span>
@@ -109,14 +123,20 @@ export function CourseProperties({
         )}
 
         {/*
-          The site, once there is one to measure. Hidden entirely until a
-          boundary is drawn rather than showing "0 acres", which would read as
-          a measurement of a property rather than the absence of one.
+          The site.
+
+          Without a boundary this used to disappear entirely, which was right
+          about not printing "0 acres" — that reads as a measurement of a
+          property rather than the absence of one — and wrong about everything
+          else. Acreage is one of the two headline numbers in this section and
+          the preview promises it; a row that vanishes leaves no trace of what
+          is missing or how to get it. So the row stays and carries the action
+          that fills it, which also happens to be the only place in the app
+          that explains why you would draw a boundary at all.
         */}
-        {acreage.boundaryCount > 0 && (
-          <div className="mt-3">
-            <SectionTitle>Site</SectionTitle>
-            <Row label="Area">
+        {acreage.boundaryCount > 0 ? (
+          <>
+            <Row label="Site area">
               <span className="font-mono text-xs tabular-nums text-text-primary">
                 {formatArea(acreage.squareMeters, units)}
               </span>
@@ -149,17 +169,30 @@ export function CourseProperties({
                   : 'Tees are set to more than one color, so no acreage guidance applies.'}
               </p>
             )}
-          </div>
+          </>
+        ) : (
+          <>
+            <Row label="Site area">
+              <button
+                type="button"
+                onClick={onDrawBoundary}
+                className="text-xs text-text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+              >
+                Draw a property boundary
+              </button>
+            </Row>
+            <p className="mt-1 text-2xs leading-4 text-text-muted">
+              Trace the land you have to work with and the app measures it, then compares the
+              acreage against the PDGA chart for a course of this level.
+            </p>
+          </>
         )}
 
-        <div className="mt-3">
-          <SectionTitle>Features</SectionTitle>
-          <Row label="Drawn">
-            <span className="font-mono text-xs tabular-nums text-text-primary">
-              {course.features.length}
-            </span>
-          </Row>
-        </div>
+        <Row label="Features drawn">
+          <span className="font-mono text-xs tabular-nums text-text-primary">
+            {course.features.length}
+          </span>
+        </Row>
       </Accordion>
 
       {/*
@@ -168,19 +201,29 @@ export function CourseProperties({
         current contents has to be renamed the moment anything else arrives.
       */}
       <Accordion title="Settings">
-        <SectionTitle>Units</SectionTitle>
         {/*
-          Not in the document, unlike everything below it. Feet or meters is a
-          fact about the reader, not about the course: a US club and a European
-          one should be able to open the same file and each see it in the units
-          they think in. So it lives in localStorage and travels with the
-          browser, while the aids below travel with the file.
+          A picker, not a switch. Everything below this is a thing that is
+          either drawn or not — a switch is the right control for those — but
+          units is a choice between two named systems, and "Feet and acres:
+          off" does not name the thing you get instead.
+
+          Not in the document, either. Feet or meters is a fact about the
+          reader, not about the course: a US club and a European one should be
+          able to open the same file and each see it in the units they think
+          in. So it lives in localStorage and travels with the browser, while
+          the aids below travel with the file.
         */}
-        <ToggleRow
-          label="Feet and acres"
-          checked={units === 'imperial'}
-          onChange={(imperial) => onUnitsChange(imperial ? 'imperial' : 'metric')}
-        />
+        <Row label="Units">
+          <select
+            aria-label="Units"
+            value={units}
+            onChange={(e) => onUnitsChange(e.target.value === 'metric' ? 'metric' : 'imperial')}
+            className={cn(selectClass, fieldWidth, 'truncate')}
+          >
+            <option value="imperial">Feet and acres</option>
+            <option value="metric">Meters and hectares</option>
+          </select>
+        </Row>
 
         <div className="mt-3">
           <SectionTitle>Show on map</SectionTitle>
@@ -235,19 +278,16 @@ export function CourseProperties({
         says whether there is anything in it.
       */}
       <Accordion title="Notes" preview={course.notes.trim().split('\n')[0] ?? ''}>
-        <textarea
-          aria-label="Course notes"
+        <TextArea
+          label="Course notes"
+          size="sm"
           value={course.notes}
           rows={4}
           placeholder="Anything worth remembering — access, permissions, the tree that has to go."
           onChange={(e) => onOp({ type: 'setNotes', notes: e.target.value })}
-          className={[
-            'w-full resize-y rounded-lg border border-border-default bg-surface-inset',
-            'px-2 py-1.5 text-xs leading-5 text-text-primary placeholder:text-text-muted',
-            'focus:border-border-accent focus:outline-none focus:ring-2 focus:ring-focus-ring/40',
-          ].join(' ')}
+          className="w-full text-xs leading-5"
         />
       </Accordion>
-    </>
+    </AccordionGroup>
   );
 }

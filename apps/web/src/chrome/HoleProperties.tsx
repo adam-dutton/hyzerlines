@@ -342,7 +342,17 @@ export function HoleProperties({
             Assign a tee and a basket to get a par.
           </p>
         )}
+      </div>
 
+      {/*
+        The measurements get their own section, under a rule.
+
+        Par carries a paragraph of reasoning beneath it, and with the distances
+        in the same block that reasoning read as though it belonged to them —
+        the numbers appeared to be a continuation of the argument rather than
+        the inputs to it. A hairline is enough to say where one ends.
+      */}
+      <div className={sectionClass}>
         <Row label="Tee to basket">
           <span className="font-mono text-xs tabular-nums text-text-primary">
             {measurement?.straight == null ? '—' : formatDistance(measurement.straight, units)}

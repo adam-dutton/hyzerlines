@@ -275,7 +275,17 @@ export function FeatureLayer({
     const handleClick = (e: MapMouseEvent) => {
       if (overHandle(e)) return;
       const hits = map.queryRenderedFeatures(e.point, { layers: [...INTERACTIVE_LAYERS] });
-      const id = hits[0]?.properties?.['id'];
+      /*
+       * `selectAs` wins where a feature has one.
+       *
+       * A fairway corridor's id has to stay its own key so feature-state
+       * highlighting finds it, but clicking one means the hole it belongs to —
+       * the corridor is the room that hole's shot has, not an object in its
+       * own right. Carrying the answer on the feature keeps the branching in
+       * the thing that knows, rather than here.
+       */
+      const properties = hits[0]?.properties;
+      const id = properties?.['selectAs'] ?? properties?.['id'];
       onSelect(typeof id === 'string' ? id : null);
     };
 

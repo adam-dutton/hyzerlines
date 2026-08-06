@@ -1,4 +1,4 @@
-import { TextField, cn, shortcutFor } from '@hyzerlines/design';
+import { Switch, TextField, cn, shortcutFor } from '@hyzerlines/design';
 import {
   KIND_DEFINITIONS,
   assignToHole,
@@ -17,9 +17,10 @@ import {
 
 import { formatArea, formatDistance, toFeet, toMeters, type UnitSystem } from '../units';
 import {
+  DegreeField,
   Row,
   SectionTitle,
-  checkboxClass,
+  ToggleRow,
   fieldWidth,
   rowLabelClass,
   sectionClass,
@@ -47,6 +48,22 @@ function NumberField({
   units: UnitSystem;
   onChange: (value: number | undefined) => void;
 }) {
+  // An angle is not a measurement in the user's units — it is the same number
+  // in Denver and in Helsinki — so it skips the conversion entirely and gets
+  // the field that writes the degree sign into the value.
+  if (field.unit === 'degrees') {
+    return (
+      <Row label={field.label}>
+        <DegreeField
+          label={field.label}
+          value={value ?? null}
+          onChange={onChange}
+          className={fieldWidth}
+        />
+      </Row>
+    );
+  }
+
   /*
    * Stored metric, shown in the user's units.
    *
@@ -54,10 +71,7 @@ function NumberField({
    * feet. Mixed-unit internals are the classic way a measurement tool ends up
    * quietly wrong, and being right about distance is this app's whole premise.
    */
-  const degrees = field.unit === 'degrees';
-  const display =
-    value === undefined ? '' : degrees || units === 'metric' ? value : toFeet(value);
-  const suffix = degrees ? '°' : units === 'metric' ? 'm' : 'ft';
+  const display = value === undefined ? '' : units === 'metric' ? value : toFeet(value);
 
   return (
     <Row label={field.label}>
@@ -66,14 +80,14 @@ function NumberField({
         size="sm"
         type="number"
         inputMode="decimal"
-        suffix={suffix}
+        suffix={units === 'metric' ? 'm' : 'ft'}
         value={display === '' ? '' : Number(display.toFixed(1))}
         onChange={(e) => {
           const raw = e.target.value;
           if (raw === '') return onChange(undefined);
           const parsed = Number(raw);
           if (Number.isNaN(parsed)) return;
-          onChange(degrees || units === 'metric' ? parsed : toMeters(parsed));
+          onChange(units === 'metric' ? parsed : toMeters(parsed));
         }}
         className={cn(fieldWidth, 'text-right tabular-nums')}
       />
@@ -108,21 +122,19 @@ function Field({
   if (field.type === 'boolean') {
     return (
       <Row label={field.label}>
-        <input
-          type="checkbox"
-          aria-label={field.label}
+        <Switch
+          label={field.label}
           checked={raw === true}
-          onChange={(e) =>
+          onChange={(checked) =>
             onOp({
               type: 'setProp',
               id: feature.id,
               key: field.key,
               // Unset rather than false, so a document does not accumulate
               // every flag anyone ever toggled and toggled back.
-              value: e.target.checked ? true : undefined,
+              value: checked ? true : undefined,
             })
           }
-          className={checkboxClass}
         />
       </Row>
     );
@@ -417,43 +429,35 @@ function LayoutSection({
         {dimension('length', 'L')}
       </div>
 
+      {/*
+        Aligned to the fairway is the default, so it comes first and the field
+        it governs sits under it — reading downwards, "aligned to the fairway,
+        which means 118°". The field stays visible and keeps showing the real
+        angle rather than emptying: the number is still true, it is just not
+        yours to type in while the fairway owns it. `TextField`'s disabled state
+        is dashed and dimmed so that reads as locked rather than as low
+        contrast.
+      */}
       <p className={`${rowLabelClass} mb-1 mt-3`}>Orientation</p>
-      <div className="flex items-center gap-2">
-        <TextField
+      <ToggleRow
+        label="Align to fairway"
+        checked={!hasOwnBearing}
+        onChange={(aligned) => {
+          // Turning it off writes the angle it was already facing, so the field
+          // opens on a real number rather than empty — you are taking over a
+          // value, not inventing one.
+          set('bearing', aligned ? undefined : (derived ?? 0));
+        }}
+      />
+      <Row label="Facing">
+        <DegreeField
           label="Facing"
-          size="sm"
-          type="number"
-          inputMode="numeric"
-          min={0}
-          max={360}
-          suffix="°"
+          value={effective}
           disabled={!hasOwnBearing}
-          value={effective === null ? '' : Math.round(effective)}
-          onChange={(e) => {
-            const value = e.target.value;
-            if (value === '') return set('bearing', undefined);
-            const parsed = Number(value);
-            if (Number.isNaN(parsed)) return;
-            set('bearing', ((parsed % 360) + 360) % 360);
-          }}
-          className="w-24 text-right tabular-nums"
+          onChange={(value) => set('bearing', value)}
+          className={fieldWidth}
         />
-        <label className="flex min-w-0 flex-1 items-center gap-1.5 text-2xs text-text-secondary">
-          <input
-            type="checkbox"
-            aria-label="Align to fairway"
-            checked={!hasOwnBearing}
-            onChange={(e) => {
-              // Unticking writes the angle it was already facing, so the field
-              // opens on a real number rather than empty — you are taking over
-              // a value, not inventing one.
-              set('bearing', e.target.checked ? undefined : (derived ?? 0));
-            }}
-            className={checkboxClass}
-          />
-          Align to fairway
-        </label>
-      </div>
+      </Row>
       {!hasOwnBearing && derived === null && (
         <p className="mt-1 text-2xs leading-4 text-text-muted">
           No fairway to face yet, so the pad is not drawn.

@@ -139,17 +139,39 @@ export async function openEditor(page: Page, options: OpenOptions = {}): Promise
  * Open one of the course panel's collapsible sections.
  *
  * The panel folds now, and its sections start closed — everything they hold is
- * unmounted until opened, deliberately, so a folded checkbox is not still in
- * the tab order. Tests that reach for those controls have to open the section
- * the way a person would.
+ * unmounted until opened, deliberately, so a folded switch is not still in the
+ * tab order. Tests that reach for those controls have to open the section the
+ * way a person would.
  *
  * Idempotent: calling it on an already-open section leaves it open, so a test
- * does not have to track which of its own steps opened what.
+ * does not have to track which of its own steps opened what. Note that the
+ * course panel's sections are a group — opening one closes the last — so a
+ * test cannot have two of them open at once.
  */
 export async function openSection(page: Page, title: string): Promise<void> {
   const header = page.getByRole('button', { name: title, exact: true });
   if ((await header.getAttribute('aria-expanded')) !== 'true') await header.click();
   await expect(header).toHaveAttribute('aria-expanded', 'true');
+}
+
+/**
+ * A labelled switch, and setting one.
+ *
+ * Every instant-effect toggle in the panels is a `Switch` now rather than a
+ * checkbox: none of them wait for a Save, and a checkbox is the control that
+ * promises one. It renders as `role="switch"`, so `getByRole('checkbox')` no
+ * longer matches, and Playwright's `check`/`uncheck` refuse anything that is
+ * not an input. `setSwitch` does what those did — click only when the state is
+ * wrong — and asserts the result, so a test reads as the state it wanted
+ * rather than as the gesture it made.
+ */
+export const switchControl = (page: Page, name: string) =>
+  page.getByRole('switch', { name, exact: true });
+
+export async function setSwitch(page: Page, name: string, on: boolean): Promise<void> {
+  const control = switchControl(page, name);
+  if ((await control.getAttribute('aria-checked')) !== String(on)) await control.click();
+  await expect(control).toHaveAttribute('aria-checked', String(on));
 }
 
 /**
@@ -163,6 +185,35 @@ export async function openSection(page: Page, title: string): Promise<void> {
  * real reasons rather than for naming collisions.
  */
 export const rail = (page: Page) => page.getByRole('toolbar', { name: 'Tools' });
+
+/**
+ * Click a feature where it currently is.
+ *
+ * Fixed canvas coordinates only hold while the camera has not moved, and the
+ * camera moves on its own now: selecting a hole in the list frames it. A test
+ * that places a basket at (950, 500) and clicks there twenty lines later is
+ * clicking wherever that pixel has since ended up.
+ *
+ * Projecting the feature's own position asks the map where the thing is at the
+ * moment of the click, which is what a person does with their eyes.
+ */
+export async function clickFeature(page: Page, id: string): Promise<void> {
+  const point = await page.evaluate((featureId) => {
+    const feature = window
+      .hyzerlinesStore!.getSnapshot()
+      .course.features.find((f) => f.id === featureId);
+    if (!feature) throw new Error(`no feature ${featureId}`);
+
+    // Points carry a position; lines and rings carry a list of them, and the
+    // first vertex is as good a place to click as any.
+    const raw = feature.geometry.coordinates as number[] | number[][];
+    const position = (typeof raw[0] === 'number' ? raw : raw[0]) as [number, number];
+    const { x, y } = window.hyzerlinesMap!.project(position);
+    return { x, y };
+  }, id);
+
+  await clickMap(page, point.x, point.y);
+}
 
 /** Click a point on the map canvas, in canvas-relative pixels. */
 export const clickMap = (page: Page, x: number, y: number) =>

@@ -1,6 +1,15 @@
 import { test, expect, type Page } from '@playwright/test';
 
-import { clickMap, openEditor, openSection, place, rail, waitForSave } from './fixtures';
+import {
+  clickMap,
+  openEditor,
+  openSection,
+  place,
+  rail,
+  setSwitch,
+  switchControl,
+  waitForSave,
+} from './fixtures';
 
 /**
  * The insides of the inspectors.
@@ -61,7 +70,7 @@ test.describe('the course panel', () => {
   test('sections start closed and unmount what they hold', async ({ page }) => {
     await openEditor(page, { zoom: 16 });
 
-    const fairways = page.getByRole('checkbox', { name: 'Fairways', exact: true });
+    const fairways = switchControl(page, 'Fairways');
     await expect(fairways).toBeHidden();
 
     await openSection(page, 'Settings');
@@ -93,8 +102,10 @@ test.describe('the course panel', () => {
 
     await expect(page.getByText(/ft/).first()).toBeVisible();
 
+    // A picker, not a switch: "Feet and acres: off" does not name what you get
+    // instead, and a choice between two named systems is what a select is for.
     await openSection(page, 'Settings');
-    await page.getByRole('checkbox', { name: 'Feet and acres' }).uncheck();
+    await page.getByRole('combobox', { name: 'Units' }).selectOption('metric');
 
     await expect(page.getByText(/1 hole · Par \d+ · [\d,]+ m/)).toBeVisible();
   });
@@ -169,27 +180,31 @@ test.describe('the feature panel', () => {
   /*
    * "Align to fairway" is the absence of a stored bearing, not a flag beside
    * one — `footprintOf` already prefers a stored bearing and falls back to the
-   * fairway's. Unticking has to hand over the angle it was already facing, or
-   * the field opens blank and the pad jumps to north.
+   * fairway's. Turning it off has to hand over the angle it was already
+   * facing, or the field opens blank and the pad jumps to north.
+   *
+   * The field is a textbox rather than a spinbutton because the degree sign is
+   * part of the value now rather than a suffix beside it, and `240 °` is not
+   * how anybody writes a bearing.
    */
-  test('unticking align-to-fairway keeps the angle it was facing', async ({ page }) => {
+  test('turning off align-to-fairway keeps the angle it was facing', async ({ page }) => {
     await holeWithEnds(page);
     await selectTee(page);
 
-    const facing = page.getByRole('spinbutton', { name: 'Facing' });
-    const align = page.getByRole('checkbox', { name: 'Align to fairway' });
+    const facing = page.getByRole('textbox', { name: 'Facing' });
 
-    await expect(align).toBeChecked();
+    await expect(switchControl(page, 'Align to fairway')).toBeChecked();
     await expect(facing).toBeDisabled();
     const derived = await facing.inputValue();
-    expect(Number(derived)).toBeGreaterThan(0);
+    expect(derived).toMatch(/^\d+°$/);
+    expect(Number(derived.slice(0, -1))).toBeGreaterThan(0);
 
-    await align.uncheck();
+    await setSwitch(page, 'Align to fairway', false);
     await expect(facing).toBeEnabled();
     await expect(facing).toHaveValue(derived);
 
-    // And re-ticking gives the bearing back to the fairway.
-    await align.check();
+    // And turning it back on gives the bearing to the fairway again.
+    await setSwitch(page, 'Align to fairway', true);
     await expect(facing).toBeDisabled();
     await expect
       .poll(() =>

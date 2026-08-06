@@ -137,7 +137,7 @@ function Shell() {
         <CourseEditor
           units={units}
           hidden={chromeHidden}
-          coursePanel={
+          coursePanel={({ drawBoundary }) => (
             <CoursePanel
               course={course}
               units={units}
@@ -149,8 +149,9 @@ function Shell() {
               onOpen={() => void openFile()}
               onSave={() => downloadCourse(course)}
               onUnitsChange={changeUnits}
+              onDrawBoundary={drawBoundary}
             />
-          }
+          )}
         />
 
         {showSearch && !chromeHidden && (

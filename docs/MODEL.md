@@ -362,7 +362,7 @@ interface Display {
 
 Every switch defaults to on, and each group is a **master and its parts** —
 `fairways: false` hides both halves whatever the two below it say, which is what
-makes it a master rather than a third checkbox. The per-hole switch is
+makes it a master rather than a third switch beside them. The per-hole switch is
 `hole.showFairway`, because the reason to hide one corridor is local: a hole
 threading a tight gap reads better with the canopy visible while the rest of the
 course keeps its aids.

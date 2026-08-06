@@ -77,6 +77,23 @@ test.describe('chrome layout', () => {
   });
 
   /*
+   * The rail is centred on the top edge, between the two columns.
+   *
+   * "Centred" is the kind of claim that survives a refactor in the comment and
+   * not in the CSS — it is one utility class, and the class that breaks it
+   * (`left-4`, say) looks just as deliberate.
+   */
+  test('the tool rail is centred on the top edge', async ({ page }) => {
+    await openEditor(page, { zoom: 16 });
+
+    const tools = await box(page, 'Tools');
+    const viewport = page.viewportSize()!;
+
+    expect(tools.y).toBeLessThan(40);
+    expect(Math.abs(tools.x + tools.width / 2 - viewport.width / 2)).toBeLessThan(2);
+  });
+
+  /*
    * Undo and redo moved out of the top bar and into the rail. Scoped to the
    * toolbar so this fails if they end up somewhere else and merely happen to
    * still exist.
@@ -121,6 +138,64 @@ test.describe('chrome layout', () => {
     ]) {
       await expect(page.getByRole('menuitem', { name })).toBeVisible();
     }
+  });
+});
+
+test.describe('finding the course again', () => {
+  /*
+   * Losing the course is easy — two scroll-wheel flicks and it is a speck in
+   * the middle of a county — and the recovery was a keyboard shortcut, which is
+   * not where anybody looks when the screen has gone blank green.
+   *
+   * Only a browser can answer this: it is a question about projected pixels
+   * against the viewport, and the button's whole value is that it is absent the
+   * rest of the time.
+   */
+  test('a lost course offers a way back, and only then', async ({ page }) => {
+    await openEditor(page, { zoom: 16 });
+    await place(page, 'Tee pad', 480, 460);
+    await place(page, 'Target', 800, 260);
+
+    const recenter = page.getByRole('button', { name: 'Recenter on course' });
+    await expect(recenter).toBeHidden();
+
+    // Far enough out that the course is a few pixels across.
+    await page.evaluate(() => window.hyzerlinesMap!.setZoom(9));
+    await expect(recenter).toBeVisible();
+
+    await recenter.click();
+    await expect(recenter).toBeHidden();
+  });
+
+  /*
+   * The hole list doubles as navigation: on an eighteen-hole course it is how
+   * you get from hole 3 to hole 12, and clicking a row that only highlighted
+   * something off-screen made it a list of names rather than a way around.
+   */
+  test('selecting a hole in the list flies to it', async ({ page }) => {
+    await openEditor(page, { zoom: 16 });
+
+    await place(page, 'Tee pad', 420, 520);
+    await place(page, 'Target', 560, 420);
+    await page.getByRole('button', { name: 'Add hole' }).click();
+    await page.keyboard.press('Escape');
+
+    // Well away from the first, so framing it has somewhere to go.
+    await place(page, 'Tee pad', 900, 200);
+    await place(page, 'Target', 1000, 140);
+    await page.getByRole('button', { name: 'Add hole' }).click();
+    await page.keyboard.press('Escape');
+
+    const center = () => page.evaluate(() => window.hyzerlinesMap!.getCenter().toArray());
+    const before = await center();
+
+    await page
+      .getByRole('button', { name: /Hole 1/ })
+      .first()
+      .click();
+    await page.waitForTimeout(700);
+
+    expect(await center()).not.toEqual(before);
   });
 });
 

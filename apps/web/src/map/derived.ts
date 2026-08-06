@@ -180,6 +180,16 @@ export function derivedGeometry(course: Course, choices?: FairwayChoices): Deriv
           pair,
           kind: 'fairway',
           derived: 'corridor',
+          /*
+           * What clicking it should select, which is not what its `id` says.
+           *
+           * The id has to stay the corridor's own key so feature-state
+           * highlighting finds it, but a corridor is not a thing you select —
+           * it is the room hole 7's shot has, and clicking it means hole 7.
+           * `hole <id>` is the same convention the hole label uses, so the
+           * editor's existing selection path handles it with no branching.
+           */
+          ...(fairway.holeId ? { selectAs: `hole ${fairway.holeId}` } : {}),
         },
         geometry: {
           type: 'Polygon',

@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import { Switch, TextField, cn } from '@hyzerlines/design';
 
 /**
  * The shared shape of a properties row.
@@ -49,14 +50,11 @@ export function Row({ label, children }: { label: string; children: ReactNode })
   );
 }
 
-export const checkboxClass = [
-  'h-4 w-4 rounded border-border-default bg-surface-inset accent-accent-solid',
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
-  'disabled:opacity-40',
-].join(' ');
-
 /**
- * A labelled checkbox row.
+ * A labelled switch row.
+ *
+ * A switch rather than a checkbox because none of these wait for a Save — the
+ * corridor leaves the map as the thumb slides. See `Switch`.
  *
  * `indent` is for a switch that only means anything while its master is on —
  * the parts of a group sit under the switch that governs them, and go disabled
@@ -79,15 +77,62 @@ export function ToggleRow({
   return (
     <div className={`flex items-center justify-between gap-3 py-1 ${indent ? 'pl-3' : ''}`}>
       <span className={disabled ? 'text-xs text-text-disabled' : rowLabelClass}>{label}</span>
-      <input
-        type="checkbox"
-        aria-label={label}
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.checked)}
-        className={checkboxClass}
-      />
+      <Switch label={label} checked={checked} disabled={disabled} onChange={onChange} />
     </div>
+  );
+}
+
+/**
+ * An angle, with the degree sign inside the value.
+ *
+ * It used to be a field suffix, in the slot that carries `m` and `ft`. But a
+ * suffix sits apart from the number in muted type, and `240 °` is not how
+ * anybody writes a bearing: feet are a unit *of* a value, degrees are part of
+ * how the value is written. So the sign travels with the digits.
+ *
+ * Which means the field cannot be `type="number"`, and cannot reformat while
+ * you are typing in it — a controlled value that re-appends `°` after every
+ * keystroke makes backspace delete the sign and nothing else, forever. So the
+ * field holds a plain draft while focused and formats on blur, which is the
+ * only arrangement where both reading and editing work.
+ */
+export function DegreeField({
+  label,
+  value,
+  disabled = false,
+  onChange,
+  className,
+}: {
+  label: string;
+  /** Null shows an empty field: no angle, rather than an angle of zero. */
+  value: number | null;
+  disabled?: boolean;
+  onChange: (value: number | undefined) => void;
+  className?: string;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const rounded = value === null ? '' : String(Math.round(value));
+
+  return (
+    <TextField
+      label={label}
+      size="sm"
+      type="text"
+      inputMode="numeric"
+      disabled={disabled}
+      value={draft ?? (rounded === '' ? '' : `${rounded}°`)}
+      onFocus={() => setDraft(rounded)}
+      onBlur={() => setDraft(null)}
+      onChange={(e) => {
+        const digits = e.target.value.replace(/[^0-9]/g, '');
+        setDraft(digits);
+        if (digits === '') onChange(undefined);
+        // Wrapped rather than rejected: 370 is a bearing somebody meant, and
+        // refusing the keystroke would look like the field was broken.
+        else onChange(Number(digits) % 360);
+      }}
+      className={cn('text-right tabular-nums', className)}
+    />
   );
 }
 

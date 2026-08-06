@@ -60,6 +60,61 @@
   animation: hz-pop-out var(--duration-fast) var(--ease-exit);
 }
 
+/*
+ * Accordion content, unfolding.
+ *
+ * A height transition is the obvious way to animate a disclosure and is not
+ * available here: the content is unmounted while closed, so there is no
+ * measured height to travel from. Growing from a hairline with `scaleY` and
+ * fading in reads as unfolding, costs no measurement, and — because it is a
+ * transform — does not reflow the panel on every frame.
+ */
+@keyframes hz-reveal-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+.hz-reveal {
+  animation: hz-reveal-in var(--duration-fast) var(--ease-enter);
+  transform-origin: top;
+}
+
+/*
+ * A textarea that is exactly as tall as its content.
+ *
+ * The wrapper is a single grid cell holding two things: the textarea, and an
+ * invisible pseudo-element carrying the same string. The pseudo-element has no
+ * fixed height, so the cell is as tall as the text needs and the textarea
+ * stretches to fill it — no JS measuring pass, and no frame where the box is
+ * the wrong size. The trailing space in `content` keeps the box from collapsing
+ * a line when the text ends in a newline. See `TextArea`.
+ */
+.hz-autogrow {
+  display: grid;
+}
+
+.hz-autogrow::after {
+  content: attr(data-value) ' ';
+  visibility: hidden;
+}
+
+.hz-autogrow > textarea,
+.hz-autogrow::after {
+  grid-area: 1 / 1;
+  /* Both have to wrap identically, or the sizer measures a different shape
+     from the one being displayed. */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  font: inherit;
+  letter-spacing: inherit;
+}
+
 /* Dialog scrim. */
 .hz-scrim[data-state='open'] {
   animation: hz-fade-in var(--duration-normal) var(--ease-enter);

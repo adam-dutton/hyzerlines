@@ -36,6 +36,20 @@ interface TextFieldProps extends Omit<
   suffix?: ReactNode;
 }
 
+/*
+ * Disabled has to look disabled.
+ *
+ * A greyed value alone is not enough on a dark surface — it reads as a low
+ * contrast choice rather than a locked control. The dashed border is the tell:
+ * it says the field still exists and is still showing you a real number, it is
+ * just not yours to type in right now. Which is exactly the state a tee's
+ * facing is in while it is aligned to the fairway.
+ */
+const disabledClass = cn(
+  'disabled:cursor-not-allowed disabled:text-text-disabled',
+  'disabled:border-dashed disabled:border-border-subtle disabled:bg-transparent',
+);
+
 const variants = {
   bordered: cn(
     'rounded-lg border border-border-default bg-surface-inset',
@@ -74,7 +88,9 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function T
         // With an affix the wrapper owns the border and background, so the
         // input drops both and keeps only its own focus behaviour — otherwise
         // there would be a box inside a box.
-        prefix || suffix ? 'min-w-0 flex-1 bg-transparent outline-none' : variants[variant],
+        prefix || suffix
+          ? 'min-w-0 flex-1 bg-transparent outline-none disabled:cursor-not-allowed disabled:text-text-disabled'
+          : cn(variants[variant], disabledClass),
         sizes[size],
         prefix ? 'pl-1' : '',
         suffix ? 'pr-1' : '',

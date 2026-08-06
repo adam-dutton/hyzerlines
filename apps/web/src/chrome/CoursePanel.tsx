@@ -1,4 +1,4 @@
-import { Panel, TextField, type ThemeName } from '@hyzerlines/design';
+import { Panel, TextArea, TextField, type ThemeName } from '@hyzerlines/design';
 import {
   DESCRIPTION_MAX,
   totalLength,
@@ -90,6 +90,7 @@ export function CoursePanel({
   onOpen,
   onSave,
   onUnitsChange,
+  onDrawBoundary,
 }: {
   course: Course;
   units: UnitSystem;
@@ -101,6 +102,7 @@ export function CoursePanel({
   onOpen: () => void;
   onSave: () => void;
   onUnitsChange: (units: UnitSystem) => void;
+  onDrawBoundary: () => void;
 }) {
   const views = viewHoles(course, course.holes);
   const holes = course.holes.length;
@@ -190,7 +192,16 @@ export function CoursePanel({
             onChange={(e) => onOp({ type: 'setLocation', location: e.target.value })}
             className="w-full text-2xs text-text-secondary"
           />
-          <TextField
+          {/*
+            The description is the one that wraps.
+
+            As a single-line input it truncated at the panel's width, so a
+            sentence you had just typed became unreadable the moment you left
+            the field — the field was hiding its own contents. It grows
+            downwards instead; there is room below it, and the 280-character
+            cap keeps "grows" from meaning "takes the column". See `TextArea`.
+          */}
+          <TextArea
             label="Course description"
             variant="bare"
             size="sm"
@@ -198,7 +209,7 @@ export function CoursePanel({
             maxLength={DESCRIPTION_MAX}
             placeholder="Add a description"
             onChange={(e) => onOp({ type: 'setDescription', description: e.target.value })}
-            className="w-full text-2xs text-text-secondary"
+            className="w-full text-2xs leading-4 text-text-secondary"
           />
         </div>
       </header>
@@ -209,6 +220,7 @@ export function CoursePanel({
           units={units}
           onOp={onOp}
           onUnitsChange={onUnitsChange}
+          onDrawBoundary={onDrawBoundary}
         />
       </div>
     </Panel>

@@ -732,8 +732,10 @@ produce a document the schema then refuses to parse back.
 They were in the course menu after 8a, which was a holding position. Feet or
 meters is a fact about the reader, not about the land — a US club and a European
 one should be able to open one file and each see it in what they think in — so
-the switch is in Settings next to the drawing aids, and stored per browser while
-the aids beside it are in the document.
+the control is in Settings next to the drawing aids, and stored per browser while
+the aids beside it are in the document. It is a **picker**, not a switch:
+everything else in that section is a thing the map either draws or does not, and
+"Feet and acres: off" does not name what you get instead.
 
 ### The name is the heading, everywhere
 
@@ -772,9 +774,13 @@ field, so a column of controls stepped in and out down its right-hand edge.
 **Units moved inside the fields.** A unit floating outside the box reads as a
 separate thing on the row, drifts out of alignment the moment two fields sit
 side by side, and leaves the field claiming to be a bare number. `12 ft` is one
-value. Degrees got the same treatment, and the generic number field learned
-about `unit: 'degrees'` — it had been quietly showing bearings with a metre
-suffix.
+value. The generic number field learned about `unit: 'degrees'` too — it had
+been quietly showing bearings with a metre suffix — but degrees get the sign
+_inside_ the value rather than in the suffix slot: feet are a unit **of** a
+value, degrees are part of how the value is written, and `240 °` is not how
+anybody writes a bearing. Which means an angle cannot be `type="number"` and
+cannot reformat while you are typing in it, so `DegreeField` holds a plain draft
+while focused and formats on blur.
 
 ### Two rearrangements that changed behaviour
 
@@ -792,6 +798,72 @@ second boolean saying which mode you are in could disagree with the geometry;
 this cannot, because it is the geometry. Unticking writes the angle the pad was
 already facing, so the field opens on a real number: you are taking over a
 value, not inventing one.
+
+### The corrections round
+
+Everything above was drawn, looked at, and then corrected. What changed:
+
+**Selection is a colour change and nothing else.** It used to also thicken the
+stroke and add a casing, which moves every edge of the thing you just clicked —
+so the shape appears to grow at the moment you are trying to judge where it
+sits. Geometry stays put; it turns blue. `derived-corridor` joined
+`INTERACTIVE_LAYERS` last, so **clicking a corridor selects its hole** (via a
+`selectAs` property on the corridor's GeoJSON) while a tee drawn on top of it
+still wins the click. The corridor also went from 0.5 to a flat 0.75 opacity —
+at 0.5 over satellite imagery it was more or less invisible over grass.
+
+**All the checkboxes became switches.** None of them wait for a Save — the
+corridor leaves the map as the thumb slides — and a checkbox is the control that
+promises one. The new `Switch` renders as `role="switch"`, which is why the
+browser tests grew a `setSwitch` fixture: Playwright's `check`/`uncheck` refuse
+anything that is not an input.
+
+**The accordions animate, and only one opens at a time.** `AccordionGroup`, for
+the reason the sections fold in the first place: they share a bounded column
+with the hole list, and two open sections is enough to start squeezing it.
+
+**Analysis lost its sub-headings.** Three titled groups of one or two rows each,
+inside a section that itself folds — a heading over a single row says the same
+word twice in two type sizes. The heading is the row's label now: `Plays as`
+became `Skill level`, `Drawn` became `Features drawn`.
+
+**A missing site is an action, not an absence.** With no boundary the site row
+used to disappear entirely, which was right about not printing "0 acres" — that
+reads as a measurement rather than the absence of one — and wrong about
+everything else: acreage is one of the two numbers the section's preview
+promises, and a row that is not there leaves no trace of what is missing or how
+to get it. It now offers **Draw a property boundary**, which arms the tool. That
+made `coursePanel` a render prop: tool state belongs in the editor next to the
+map, so the editor hands the panel the actions it needs rather than the shell
+reaching in for them.
+
+**The course description grows downwards.** As a single-line input it truncated
+at the panel's width, so a sentence became unreadable the moment you left the
+field — the field was hiding its own contents. `TextArea` sizes itself with a
+grid cell and a hidden pseudo-element carrying the same string: no ref, no
+resize observer, no frame where the box is the wrong height.
+
+**Disabled looks disabled.** A greyed value alone reads as low contrast rather
+than as locked, which matters now that "Align to fairway" disables the facing
+field beside it rather than leaving it editable and ignored. `TextField`'s
+disabled state is dashed and dimmed.
+
+**The tool rail moved to top centre**, level with the two panel columns it sits
+between, and the holes panel now hugs its content instead of taking every pixel
+the course panel left — a one-hole course had a card of empty space under its
+single row.
+
+**Two ways to find the course again.** Selecting a hole in the list frames it,
+so an eighteen-hole list is navigation rather than a list of names; and
+`courseIsAdrift` watches for the course being panned off the edge or zoomed down
+to a speck, which puts a **Recenter on course** button under the rail at exactly
+the moment it is useful and nowhere the rest of the time.
+
+That last one broke a browser test in a way worth recording: `geometry.spec.ts`
+placed a basket at a canvas pixel, selected a hole twenty lines later, and
+clicked that same pixel — which the camera had since flown away from. Fixed
+detection is `clickFeature`, which projects the feature's own position at the
+moment of the click.
 
 ### Deliberately not in this PR
 

@@ -6,10 +6,15 @@ import type { Tool } from '../map/tools';
 /**
  * The tool palette.
  *
- * Bottom centre, horizontal: the map is the product, and the widest thing on
+ * Top centre, horizontal: the map is the product, and the widest thing on
  * screen is the horizon. A vertical rail down the left edge eats into the same
  * column as the course panel and pushes the usable canvas sideways, while a
- * bottom bar costs only a strip of sky.
+ * horizontal bar costs only a strip.
+ *
+ * Top rather than bottom, level with the two panel columns it sits between.
+ * The bottom edge is where the land you are working on is — a course runs down
+ * and away from you on screen more often than up — and it was already carrying
+ * the camera controls and the attribution.
  *
  * Navigation first, then a divider, then the things that create geometry, then
  * a divider and undo/redo. History belongs here rather than up in the document
@@ -243,7 +248,7 @@ export function ToolRail({
 }) {
   return (
     <div
-      className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2"
+      className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2"
       style={{ zIndex: 'var(--hz-z-chrome)' }}
     >
       <Panel className="flex items-center gap-0.5" role="toolbar" aria-label="Tools">
@@ -251,7 +256,7 @@ export function ToolRail({
           label="Select"
           command="tool.select"
           size="lg"
-          tooltipSide="top"
+          tooltipSide="bottom"
           active={tool === 'select'}
           onClick={() => onToolChange('select')}
         >
@@ -262,7 +267,7 @@ export function ToolRail({
         <IconButton
           label="Zoom — hold Z, drag a region, Alt to zoom out"
           size="lg"
-          tooltipSide="top"
+          tooltipSide="bottom"
           active={tool === 'zoom'}
           onClick={() => onToolChange('zoom')}
         >
@@ -279,7 +284,7 @@ export function ToolRail({
               ? { command: KIND_DEFINITIONS[kind].command }
               : {})}
             size="lg"
-            tooltipSide="top"
+            tooltipSide="bottom"
             active={tool === kind}
             onClick={() => onToolChange(kind)}
           >
@@ -293,7 +298,7 @@ export function ToolRail({
           label="Undo"
           command="edit.undo"
           size="lg"
-          tooltipSide="top"
+          tooltipSide="bottom"
           disabled={!canUndo}
           onClick={onUndo}
         >
@@ -303,7 +308,7 @@ export function ToolRail({
           label="Redo"
           command="edit.redo"
           size="lg"
-          tooltipSide="top"
+          tooltipSide="bottom"
           disabled={!canRedo}
           onClick={onRedo}
         >

@@ -80,10 +80,23 @@ const CASING_COLOR: ExpressionSpecification = [
  * legible at every zoom rather than shrinking to nothing when you zoom out to
  * see the whole property. Areas differ: an OB boundary encloses real ground, so
  * its fill scales naturally with the map while its outline stays readable.
+ *
+ * ## Selection changes color and nothing else
+ *
+ * Every one of these used to be a `case` on selection: lines thickened, points
+ * grew, outlines appeared. Which meant selecting a hole *redrew* it — the
+ * geometry on screen stopped being the geometry you had drawn, and a fairway's
+ * apparent width depended on whether you happened to have it selected. On a map
+ * whose whole job is to be measured off, that is the one thing the drawing must
+ * not do.
+ *
+ * So the shapes are fixed and selection is a color swap. It is legible enough:
+ * accent blue against white over satellite imagery is not a subtle difference,
+ * and it is the only thing on screen that is ever blue.
  */
-const LINE_WIDTH: ExpressionSpecification = ['case', selected, 4, 2.5];
-const LINE_CASING_WIDTH: ExpressionSpecification = ['case', selected, 8, 6];
-const POINT_RADIUS: ExpressionSpecification = ['case', selected, 9, 7];
+const LINE_WIDTH = 2.5;
+const LINE_CASING_WIDTH = 6;
+const POINT_RADIUS = 7;
 
 /**
  * A dash pattern and the casing pattern that lines up underneath it.
@@ -105,13 +118,8 @@ function casingDash(dash: readonly [number, number], ratio: number): [number, nu
 const CASING_RATIO = 2.2;
 
 const CENTRELINE_DASH = [3, 2] as const;
-const CENTRELINE_WIDTH: ExpressionSpecification = ['case', selected, 4, 2.5];
-const CENTRELINE_CASING_WIDTH: ExpressionSpecification = [
-  'case',
-  selected,
-  4 * CASING_RATIO,
-  2.5 * CASING_RATIO,
-];
+const CENTRELINE_WIDTH = 2.5;
+const CENTRELINE_CASING_WIDTH = CENTRELINE_WIDTH * CASING_RATIO;
 
 /**
  * A property boundary is a note about the land, not a thing on it.
@@ -123,15 +131,21 @@ const CENTRELINE_CASING_WIDTH: ExpressionSpecification = [
  * A dotted outline says the same thing and takes nothing away.
  */
 const BOUNDARY_DASH = [1, 2] as const;
-const BOUNDARY_WIDTH: ExpressionSpecification = ['case', selected, 2, 1.25];
-const BOUNDARY_CASING_WIDTH: ExpressionSpecification = [
-  'case',
-  selected,
-  2 * CASING_RATIO,
-  1.25 * CASING_RATIO,
-];
+const BOUNDARY_WIDTH = 1.25;
+const BOUNDARY_CASING_WIDTH = BOUNDARY_WIDTH * CASING_RATIO;
 
 const isBoundary: ExpressionSpecification = ['==', ['get', 'kind'], 'boundary'];
+
+/**
+ * How solid a fairway corridor reads.
+ *
+ * It was 0.5, which was tuned against a corridor that also had a dashed
+ * outline holding its shape. With the outline gone the fill is the only thing
+ * saying where the corridor is, and at half strength over green canopy it
+ * barely said it — the room a shot has is one of the two things this map is
+ * for, and it was the faintest mark on screen.
+ */
+const CORRIDOR_OPACITY = 0.75;
 
 /**
  * The plain point marker is suppressed once a feature has a footprint.
@@ -235,7 +249,7 @@ export function derivedLayers(): LayerSpecification[] {
         'fill-color': selectableColor('fill'),
         // Fainter than a drawn area of the same kind: it is the room the shot
         // has, not a thing in its own right.
-        'fill-opacity': ['case', selected, 0.8, 0.5],
+        'fill-opacity': CORRIDOR_OPACITY,
       },
     },
     /*
@@ -321,7 +335,7 @@ export function derivedLayers(): LayerSpecification[] {
       source: DERIVED_SOURCE,
       filter: isFootprint,
       layout: { 'line-join': 'round' },
-      paint: { 'line-color': CASING_COLOR, 'line-width': ['case', selected, 5, 3.5] },
+      paint: { 'line-color': CASING_COLOR, 'line-width': 3.5 },
     },
     {
       id: 'derived-footprint',
@@ -380,7 +394,7 @@ export function featureLayers(): LayerSpecification[] {
       filter: isPlainArea,
       paint: {
         'fill-color': selectableColor('fill'),
-        'fill-opacity': ['case', selected, 0.9, 0.7],
+        'fill-opacity': 0.7,
       },
     },
     {
@@ -486,7 +500,7 @@ export function featureLayers(): LayerSpecification[] {
         'circle-opacity': POINT_OPACITY,
         // The casing, as a stroke rather than a second layer.
         'circle-stroke-color': CASING_COLOR,
-        'circle-stroke-width': ['case', selected, 3, 2],
+        'circle-stroke-width': 2,
         'circle-stroke-opacity': POINT_OPACITY,
       },
     },
@@ -525,9 +539,9 @@ export function holeLabelLayers(): LayerSpecification[] {
       filter: isLabel,
       paint: {
         'circle-color': ['case', selected, featureColors.selected.casing, CASING],
-        'circle-radius': ['case', selected, 14, 12],
+        'circle-radius': 12,
         'circle-stroke-color': featureColors.tee.stroke,
-        'circle-stroke-width': ['case', selected, 2, 1],
+        'circle-stroke-width': 1,
       },
     },
     {
@@ -615,10 +629,31 @@ export const INTERACTIVE_LAYERS = [
   'features-boundary-casing',
   'derived-front',
   'derived-footprint',
+  /*
+   * The corridor is the biggest thing a hole owns, and until now the only part
+   * of one you could not click. Selecting hole 7 meant hitting its centreline,
+   * its pad or its number — three small targets — while the wide translucent
+   * band that obviously *is* hole 7 did nothing.
+   *
+   * It sits last because it is installed first and therefore renders below
+   * everything else, which is also the priority we want: anything standing on
+   * a corridor wins the click.
+   */
+  'derived-corridor',
 ] as const;
 
-/** The layers that stand for a drawn area, whichever way it is styled. */
-const AREA_LAYERS: readonly string[] = ['features-polygon-fill', 'features-boundary-casing'];
+/**
+ * Layers that stand for something too large to drag by.
+ *
+ * The two drawn-area layers, plus the fairway corridor — which is not draggable
+ * for a second reason as well: it is derived, so there is nothing there to
+ * move. Dragging it would have to mean dragging the hole.
+ */
+const AREA_LAYERS: readonly string[] = [
+  'features-polygon-fill',
+  'features-boundary-casing',
+  'derived-corridor',
+];
 
 /**
  * Layers a drag can pick a feature up by. Everything interactive except areas.
