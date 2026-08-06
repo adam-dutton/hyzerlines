@@ -380,6 +380,40 @@ and half in whichever browser last touched it.
 Added without a version bump: the field carries defaults, so a version 2 document
 written before it existed parses with everything on.
 
+## Terrain overlays are too, and default the other way
+
+`course.overlays` is a sibling of `basemapId`, not part of `display`:
+
+```ts
+{
+  hillshade: boolean;
+  contours: boolean;
+}
+```
+
+The split is what each is about. `display` is the course — the fairways and
+putting circles the app derives from what you drew. These are the **ground**:
+readings of the land itself, from a source outside the document, sitting between
+the basemap and the design. `basemapId` was already in the document for the same
+reason, and a wooded site sent to a reviewer with hillshade on was sent that way
+on purpose — the designer is saying "the reason hole 7 doglegs is this ridge".
+
+**They default off, where every drawing aid defaults on.** A fairway corridor is
+the app drawing something you made; a contour is the app fetching tiles from a
+third party and printing lines over your imagery. Nobody's first impression of a
+course should be a network request they did not ask for.
+
+Additive with defaults, so no version bump — a document written before this
+existed parses with both off, which is what it was showing.
+
+**What the numbers are worth is part of the model.** The elevation source is
+roughly 10m over the US and 30m elsewhere. That will show a ridge, a bowl and a
+fall line; it will not show a two-metre mound behind a green, and a contour drawn
+through one is interpolation rather than measurement. The interval stops
+tightening past z13 because the data stops improving there, and the layers panel
+says so next to the switch. Everything else in this document is a measurement;
+these are a reading, and the interface has to be honest about the difference.
+
 ---
 
 ## Derived, never stored

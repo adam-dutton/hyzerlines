@@ -1,7 +1,9 @@
-import { IconButton, Menu, MenuRadioGroup, MenuRadioItem, Panel } from '@hyzerlines/design';
+import { IconButton, Panel, Popover, Switch, cn } from '@hyzerlines/design';
+import type { Overlays } from '@hyzerlines/core';
 
 import { useMap } from '../map/MapContext';
 import { basemaps } from '../map/basemaps';
+import { OVERLAY_DEFINITIONS } from '../map/terrain';
 
 /**
  * Camera controls, and the choice of what is under them.
@@ -42,12 +44,25 @@ function LayersIcon() {
   );
 }
 
+/** A section heading inside the layers panel. */
+function GroupTitle({ children }: { children: string }) {
+  return (
+    <p className="px-3 pb-1 pt-2 text-2xs font-semibold uppercase tracking-wider text-text-muted">
+      {children}
+    </p>
+  );
+}
+
 export function MapControls({
   basemapId,
+  overlays,
   onBasemapChange,
+  onOverlaysChange,
 }: {
   basemapId: string;
+  overlays: Overlays;
   onBasemapChange: (id: string) => void;
+  onOverlaysChange: (changes: Partial<Overlays>) => void;
 }) {
   const { map, view } = useMap();
 
@@ -60,23 +75,100 @@ export function MapControls({
           camera is pointed are different questions, and a shared card would
           make the layers button read as a third zoom control. */}
       <Panel>
-        <Menu
-          label="Basemap"
-          align="end"
+        {/*
+          A popover, not a menu. It used to be a menu with a radio group, which
+          was right while picking one of three was all it did. Now there are two
+          groups and you work in it — flip hillshade, look at the map, flip
+          contours, look again — and a menu that closes on select is fighting
+          that. See `Popover`.
+        */}
+        <Popover
+          label="Layers"
           trigger={
-            <IconButton label="Basemap" command="view.toggleBasemap" tooltipSide="left">
+            <IconButton label="Layers" command="view.toggleBasemap" tooltipSide="left">
               <LayersIcon />
             </IconButton>
           }
         >
-          <MenuRadioGroup value={basemapId} onValueChange={onBasemapChange}>
-            {basemaps.map((basemap) => (
-              <MenuRadioItem key={basemap.id} value={basemap.id} hint={basemap.hint}>
-                {basemap.label}
-              </MenuRadioItem>
+          {/*
+            Base first, overlays second, in the order they stack on the map.
+            A radiogroup rather than a listbox: three named alternatives with
+            one always chosen is exactly what radio semantics describe, and it
+            gets "Satellite, selected, 1 of 3" announced for free.
+          */}
+          <div role="radiogroup" aria-label="Basemap" className="p-1">
+            {basemaps.map((basemap) => {
+              const active = basemap.id === basemapId;
+              return (
+                <button
+                  key={basemap.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => onBasemapChange(basemap.id)}
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left',
+                    'transition-colors duration-fast hover:bg-surface-hover',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+                  )}
+                >
+                  <span className="grid h-4 w-4 shrink-0 place-items-center text-text-accent">
+                    {active && (
+                      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                        <path
+                          d="m2.5 6.2 2.4 2.4 4.6-5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs text-text-primary">{basemap.label}</span>
+                    <span className="block truncate text-2xs text-text-muted">
+                      {basemap.hint}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="border-t border-border-subtle pb-2">
+            <GroupTitle>Terrain</GroupTitle>
+            {OVERLAY_DEFINITIONS.map((overlay) => (
+              <div
+                key={overlay.id}
+                className="flex items-center justify-between gap-3 px-3 py-1"
+              >
+                <span className="min-w-0">
+                  <span className="block text-xs text-text-secondary">{overlay.label}</span>
+                  <span className="block truncate text-2xs text-text-muted">
+                    {overlay.hint}
+                  </span>
+                </span>
+                <Switch
+                  label={overlay.label}
+                  checked={overlays[overlay.id]}
+                  onChange={(on) => onOverlaysChange({ [overlay.id]: on })}
+                />
+              </div>
             ))}
-          </MenuRadioGroup>
-        </Menu>
+            {/*
+              Say what the data is worth, where the switch is.
+              Ten-metre posts will show a ridge and a fall line; they will not
+              show the two-metre mound behind a green, and a designer who reads
+              a contour as a survey line is being misled by our own UI.
+            */}
+            <p className="px-3 pt-1.5 text-2xs leading-4 text-text-muted">
+              Public elevation data, around 10m detail. Good for reading slope, not for spot
+              heights.
+            </p>
+          </div>
+        </Popover>
       </Panel>
 
       <Panel className="flex flex-col items-center gap-0.5">

@@ -44,9 +44,11 @@ current as PRs land.
 | **5**   | Document model v2: pairs, layouts, migration                                       | ✅ done |
 | **6**   | Derived geometry: tee footprints, pair picker, fairway corridors, vertex editing   | ✅ done |
 | **7**   | Boundaries and acreage                                                             | ✅ done |
-| **8**   | Layouts and routing: named layouts, skip, repeat, reorder                          | next    |
-| **9**   | Expanded palette: relief areas, noted areas, drop zones, invert, circles           |         |
-| **10**  | Terrain: DEM sampling, elevation profiles, hillshade                               |         |
+| **8**   | UI/UX: the chrome rearranged (8a), the insides of the panels (8b)                  | ✅ done |
+| **9**   | Map overlays: one style, hillshade, contours                                       | ✅ done |
+| **10**  | Layouts and routing: named layouts, skip, repeat, reorder                          | next    |
+| **10a** | Expanded palette: relief areas, noted areas, drop zones, invert, circles           |         |
+| **10b** | Terrain 2: 3D tilt, DEM sampling, elevation profiles, slope shading                |         |
 | **11**  | Parametric flight model, shot editor, disc database                                |         |
 | **12**  | Safety: dispersion envelopes, overlap and proximity rules                          |         |
 | **13**  | Accounts, share links, published course pages (backend begins here)                |         |
@@ -94,7 +96,9 @@ Notable decisions encoded there:
 **App shell.** MapLibre with Esri imagery (default), Esri topo, and OSM — all
 keyless, so the app works on first load with no signup and no billing
 relationship. The map instance is created once and never torn down; basemap
-switches swap the style in place so the camera and future editing state survive.
+switches swapped the style in place so the camera and future editing state
+survived. (PR 9 went further and stopped swapping the style at all — every
+basemap is a source in one style now, and switching is a visibility change.)
 
 **Chrome.** Inline-editable course name, theme toggle, basemap segmented control,
 zoom and bearing controls, an adaptive scale bar, live coordinates, a units
@@ -870,6 +874,131 @@ moment of the click.
 **The Features section on a hole is still one shot.** A hole with three tees and
 three pins is nine shots and the panel still picks one to describe. Making that
 a real list is the multi-tee work, and it wants layouts first.
+
+---
+
+## PR 9 — overlays, and reading the land
+
+Imagery answers what is growing there and where the paths already run. It cannot
+answer the question that decides half a course's routing: **which way does this
+fall, and by how much.** A hole that plays flat in a photograph and drops fifteen
+metres in its last eighty is a different hole.
+
+### One style, switched rather than swapped
+
+The enabling change, and it is not about terrain at all. Changing the basemap
+called `setStyle`, which throws away every source and layer the app added and
+re-parses the document — a large hammer for "show a different picture", and one
+that had already cost a real bug: `FeatureLayer` had to reinstall its whole scene
+on `styledata`, that handler was bound once, so it closed over first-render props
+and re-added the sources with an empty document. Switching the basemap emptied
+the map until you reloaded.
+
+So **every basemap is a source in one style from the start**, and switching is a
+`visibility` change. MapLibre does not request tiles for a source no visible
+layer uses, so the two unused basemaps cost a few lines of JSON and nothing else
+— there is a test for exactly that claim, because the whole design rests on it.
+Nothing is ever removed, so the course, the handles and the preview are never
+disturbed. `setStyle` is gone from the app entirely.
+
+Once layers are switched rather than swapped, **an overlay is not a new concept**
+— it is another layer that starts hidden. That is the entire architecture.
+
+### The readiness trap
+
+`map.isStyleLoaded()` looks like the right gate for "can I change a layer yet"
+and is not. It means every _source_ has loaded too, and it stays false while any
+of them is still fetching — on a bad network, forever. Gating a visibility change
+on it means a switch that silently does nothing.
+
+What has to be true is that the **layers exist**, which happens as soon as the
+style JSON parses. `styleReady` checks that directly. The effect applies
+immediately if it can and waits on `styledata` if it cannot, dropping the
+listener the moment it succeeds — that last part matters, because applying
+visibility itself fires `styledata`.
+
+This is not hypothetical. Restoring the autosave is asynchronous: the map is
+built from a default document and the real one, which may have had hillshade on,
+lands a beat later. The first version of this used `once('load')`, which never
+fires if load has already happened, and every overlay toggle did nothing.
+
+### Hillshade and contours, from one fetch
+
+[AWS Open Data terrain tiles](https://registry.opendata.aws/terrain-tiles/):
+keyless, no signup, no billing relationship — the same bar every basemap has to
+clear. Terrarium encoding, which MapLibre decodes natively.
+
+**Contours are computed in the browser**, not fetched. `maplibre-contour` runs
+isolines over the elevation tiles in a worker and hands MapLibre a vector tile.
+So the hillshade source points at that library's shared DEM protocol rather than
+at S3: with both overlays on, a tile is downloaded and decoded **once** and
+serves the shading and the lines.
+
+**Igor hillshade, not the default.** The standard method darkens by slope in both
+directions, which over aerial imagery reads as grime — flat ground goes muddy and
+the photograph stops being legible. Igor shades only the shadowed side, so canopy
+still looks like canopy and relief arrives as a separate signal. Highlights are
+fully transparent for the same reason.
+
+**Contours are quoted in the reader's units.** The interval and the
+metres-to-feet multiplier are encoded in the tile url, so switching units
+re-points the source with `setTiles` rather than rebuilding anything — and it
+compares before writing, because re-pointing throws away every contour tile
+already computed.
+
+**Warm tan is the fourth channel.** The drawing is white, selection is blue, OB is
+red. Terrain is not part of the design and not the interface talking about the
+design — it is a reading of the ground both sit on — so it needs a hue that
+cannot be mistaken for any of the three. It is also what a topographic sheet has
+used for a century.
+
+### Saying what the data is worth
+
+Roughly 10m over the US and 30m elsewhere. That shows a ridge, a bowl and a fall
+line; it does not show the two-metre mound behind a green, and a contour through
+one is interpolation rather than measurement. The interval **stops tightening
+past z13** because the data stops improving there — drawing foot contours off a
+30m grid would be inventing precision — and the layers panel says so next to the
+switch. Everything else in this app is a measurement; this is a reading, and the
+interface has to be honest about the difference.
+
+### A popover, because the layers control became a panel
+
+It was a menu with a radio group, which was right while picking one of three was
+all it did. Now there are two groups and you _work_ in it — flip hillshade, look
+at the map, flip contours, look again — and a menu that closes on select is
+fighting that. `Popover` is Radix, for the reasons `Menu` and `Dialog` are.
+
+**Attribution composes**, because the map does. Turning on an overlay adds a
+second provider's data to what is on screen, so it adds that provider's credit —
+and turning it off takes it away again, since crediting a source that is not
+being drawn is its own kind of wrong.
+
+### Testing something computed in a worker
+
+The browser tests stub a **synthetic terrarium tile**: a hillside falling across
+the diagonal, 0m to about 510m corner to corner. A flat tile would satisfy "the
+layer is visible" and prove nothing about whether the isoline generator ever ran,
+which is the only interesting question. Verified by flattening it and watching
+the test fail.
+
+### Deliberately not in this PR
+
+**3D terrain.** The same DEM would drive `setTerrain` in a few lines, but it
+changes how every drawing tool converts a screen point to a ground point while
+the map is tilted — placement, dragging and vertex editing all need re-testing
+under pitch. Hillshade and contours carry the elevation information and are inert
+at pitch 0, which is where all the drawing happens. Tilt gets its own PR.
+
+**Slope shading.** Arguably more useful than contours for disc golf — where a
+disc rolls, where water runs — but MapLibre has no native slope layer, so it
+means computing a raster ourselves through a custom protocol. That is a
+subsystem, not a layer.
+
+**Parcels, and higher-resolution imagery.** There is no free nationwide parcel
+source; only about ten US states publish a statewide layer. Both wait for a
+per-jurisdiction registry or a keyed provider behind a tile proxy, and neither is
+free.
 
 ---
 

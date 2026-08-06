@@ -64,21 +64,25 @@ export function FeatureLayer({
   const selectedRef = useRef<readonly string[]>([]);
 
   /*
-   * The live data, for the reinstall that follows a basemap change.
+   * The live data, for an install that may land after the props have moved on.
    *
-   * `install` is bound once, for the lifetime of the map, and runs again on
-   * every `styledata` — so without these it would close over whatever the
-   * props were on the very first render, which is an empty document. That is
-   * not theoretical: `setStyle` discards every source, install re-added them
-   * with the mount-time data, and the `setData` effects below never fired
-   * because `features` had not changed. Switching the basemap emptied the map
-   * and only a reload brought the course back.
+   * `install` runs when the style is ready, which is not when this effect
+   * runs — so without these it would close over whatever the props were on the
+   * first render, which is an empty document, and the `setData` effects below
+   * would never fire because `features` had not changed. That is the exact
+   * shape of a real bug: switching the basemap used to empty the map until you
+   * reloaded, because a `setStyle` reinstall re-added every source with
+   * mount-time data.
+   *
+   * `setStyle` is gone now — see `style.ts` — so this only has to survive the
+   * gap before the style parses rather than an arbitrary number of style swaps.
+   * The ref covers both, and `basemap switch keeps the course` in the e2e suite
+   * is what keeps the old bug from coming back.
    */
   const dataRef = useRef({ features, derived, preview, handles });
   dataRef.current = { features, derived, preview, handles };
 
-  // Install sources and layers. Re-runs after a basemap change, because
-  // setStyle() discards everything not in the new style.
+  // Install sources and layers, once, as soon as the style can hold them.
   useEffect(() => {
     if (!map) return;
 
@@ -176,13 +180,10 @@ export function FeatureLayer({
     };
 
     if (map.isStyleLoaded()) install();
-    map.on('styledata', install);
-    return () => {
-      map.off('styledata', install);
-    };
-    // Data props are deliberately not deps: this installs the scene once and
-    // reinstalls it after a style swap, reading current data from `dataRef`.
-    // Ordinary updates go through the `setData` effects below.
+    else map.once('load', install);
+    // Data props are deliberately not deps: this installs the scene once,
+    // reading current data from `dataRef`. Ordinary updates go through the
+    // `setData` effects below.
   }, [map]);
 
   // Push document features to the map.

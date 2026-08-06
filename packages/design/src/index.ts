@@ -6,6 +6,7 @@ export * from './cn.js';
 // Primitives — Radix behavior, Hyzerlines styling.
 export * from './primitives/Dialog.js';
 export * from './primitives/Menu.js';
+export * from './primitives/Popover.js';
 export * from './primitives/Tooltip.js';
 
 // Components.

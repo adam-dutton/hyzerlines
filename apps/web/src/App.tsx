@@ -118,13 +118,20 @@ function Shell() {
        */
       data-hydrated={hydrating ? undefined : 'true'}
     >
-      <MapCanvas basemapId={course.basemapId} onViewChange={handleViewChange}>
+      <MapCanvas
+        basemapId={course.basemapId}
+        overlays={course.overlays}
+        units={units}
+        onViewChange={handleViewChange}
+      >
         {!chromeHidden && (
           <>
-            <Attribution basemapId={course.basemapId} />
+            <Attribution basemapId={course.basemapId} overlays={course.overlays} />
             <MapControls
               basemapId={course.basemapId}
+              overlays={course.overlays}
               onBasemapChange={(basemapId) => dispatch({ type: 'setBasemap', basemapId })}
+              onOverlaysChange={(changes) => dispatch({ type: 'setOverlays', changes })}
             />
           </>
         )}

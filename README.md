@@ -201,6 +201,14 @@ placements, because building one is a single task with two clicks in it.
 The course sits top left — its name is the panel's heading, and everything else
 about it is underneath, in sections that fold — one at a time, so the hole list
 below never gets squeezed out. Its holes are in the column below.
+The layers button in the bottom-right corner picks what is underneath —
+satellite, topographic or street — and what is drawn over it. **Hillshade**
+shades the slopes, and **contours** draws lines you can count. Both read public
+elevation data at roughly 10m detail: enough to see which way a hole falls and
+how far, not enough for spot heights, and the panel says so where the switch is.
+Contours are quoted in whatever units you have set, and are computed in your
+browser rather than fetched.
+
 Whatever you select opens top right. The tools are along the top, centred
 between the two columns, with undo and redo on the end of the rail; the camera
 controls — imagery, north, zoom — stack in the bottom right corner. Everything

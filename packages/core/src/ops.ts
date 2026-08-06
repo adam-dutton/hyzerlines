@@ -1,5 +1,6 @@
 import { DESCRIPTION_MAX, type Course } from './schema.js';
 import type { Display } from './display.js';
+import type { Overlays } from './overlays.js';
 import type { View } from './geo.js';
 import type { Feature, Geometry } from './features.js';
 import type { Hole } from './holes.js';
@@ -61,6 +62,11 @@ export type Op =
    * not have to restate the other six, and the inverse restores all of them.
    */
   | { type: 'setDisplay'; changes: Partial<Display> }
+  /**
+   * Turn the terrain overlays on and off. Partial for the same reason
+   * `setDisplay` is — see overlays.ts for why these are in the document.
+   */
+  | { type: 'setOverlays'; changes: Partial<Overlays> }
   /**
    * Several edits that are one action.
    *
@@ -385,6 +391,14 @@ export function applyOp(course: Course, op: Op): ApplyResult {
         // to land on the state that existed, and a partial inverse would leave
         // whatever a coalesced run of toggles happened to set in between.
         { type: 'setDisplay', changes: course.display },
+        undoable,
+      );
+
+    case 'setOverlays':
+      return result(
+        { ...course, overlays: { ...course.overlays, ...op.changes } },
+        // The whole previous object, for the reason setDisplay's inverse is.
+        { type: 'setOverlays', changes: course.overlays },
         undoable,
       );
 
