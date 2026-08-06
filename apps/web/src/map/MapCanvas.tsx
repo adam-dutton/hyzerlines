@@ -21,6 +21,12 @@ interface MapCanvasProps {
   overlays: Overlays;
   /** Contour intervals are quoted in whatever the reader thinks in. */
   units: UnitSystem;
+  /**
+   * An imported survey is supplying the elevation, so the global overlay stands
+   * down. Both drawn at once would be two hillshades of the same hill at
+   * different resolutions, stacked.
+   */
+  suppressTerrain: boolean;
   children?: React.ReactNode;
   /** Debounced camera reports, for persisting where the user was working. */
   onViewChange?: (view: MapViewState) => void;
@@ -56,6 +62,7 @@ export function MapCanvas({
   basemapId,
   overlays,
   units,
+  suppressTerrain,
   children,
   onViewChange,
 }: MapCanvasProps) {
@@ -158,8 +165,8 @@ export function MapCanvas({
    * Values come from a ref rather than the closure, so a listener registered on
    * one render applies whatever is current when it finally runs.
    */
-  const desiredRef = useRef({ basemapId, overlays, units });
-  desiredRef.current = { basemapId, overlays, units };
+  const desiredRef = useRef({ basemapId, overlays, units, suppressTerrain });
+  desiredRef.current = { basemapId, overlays, units, suppressTerrain };
 
   useEffect(() => {
     if (!map) return;
@@ -168,7 +175,10 @@ export function MapCanvas({
       if (!styleReady(map)) return false;
       const desired = desiredRef.current;
       applyBasemap(map, desired.basemapId);
-      applyOverlays(map, desired.overlays);
+      applyOverlays(
+        map,
+        desired.suppressTerrain ? { hillshade: false, contours: false } : desired.overlays,
+      );
       applyContourUnits(map, desired.units);
       return true;
     };
@@ -182,7 +192,7 @@ export function MapCanvas({
     return () => {
       map.off('styledata', retry);
     };
-  }, [map, basemapId, overlays, units]);
+  }, [map, basemapId, overlays, units, suppressTerrain]);
 
   return (
     <MapContext.Provider value={{ map, view }}>

@@ -1,0 +1,270 @@
+import { describe, expect, it } from 'vitest';
+
+import { TILE_SIZE, boundsFromGrid, resampleTile, type SourceGrid } from './resample.js';
+import { decodeTerrarium, tileBounds, tileForPosition } from './survey.js';
+
+/**
+ * Resampling, against grids whose every value is known.
+ *
+ * This is the part of the import that can be silently, plausibly wrong: terrain
+ * that lands mirrored, or half a pixel north, or with nodata smeared into real
+ * ground, all render as *something*, and something is much harder to notice
+ * than nothing. So the fixtures below encode position into the elevation — a
+ * ramp, a corner marker — and the assertions read the position back out.
+ */
+
+/**
+ * Elevation of the grid's westmost column.
+ *
+ * Deliberately not zero: sea level is what a failed lookup produces, so a ramp
+ * starting at 0 cannot tell "clamped to the edge correctly" apart from "fell
+ * back to nothing". Every real elevation in these fixtures is at least this.
+ */
+const BASE_ELEVATION = 100;
+
+/**
+ * A grid in a fake "projected" CRS that is just degrees, so the forward
+ * transform is the identity and the test is about resampling rather than about
+ * proj4. Elevation ramps with the column index, so a sample's value says which
+ * column it came from.
+ */
+function rampGrid(options: Partial<SourceGrid> = {}): SourceGrid {
+  const width = 100;
+  const height = 100;
+  const data = new Float32Array(width * height);
+  for (let row = 0; row < height; row++) {
+    for (let col = 0; col < width; col++) data[row * width + col] = BASE_ELEVATION + col;
+  }
+  return {
+    data,
+    width,
+    height,
+    // One degree square at the origin, which at z10 spans several tiles.
+    bbox: [0, 0, 1, 1],
+    noDataValue: null,
+    ...options,
+  };
+}
+
+const identity = (lngLat: [number, number]): [number, number] => lngLat;
+
+/** Read one pixel's elevation back out of a resampled tile. */
+function elevationAt(rgba: Uint8ClampedArray, px: number, py: number): number | null {
+  const i = (py * TILE_SIZE + px) * 4;
+  if (rgba[i + 3] === 0) return null;
+  return decodeTerrarium(rgba[i]!, rgba[i + 1]!, rgba[i + 2]!);
+}
+
+/** The tile containing a position, at a zoom. */
+function tileAt(lng: number, lat: number, z: number) {
+  const { x, y } = tileForPosition(lng, lat, z);
+  return { z, x: Math.floor(x), y: Math.floor(y) };
+}
+
+describe('resampleTile', () => {
+  it('samples the source value at the matching position', () => {
+    const grid = rampGrid();
+    const { z, x, y } = tileAt(0.5, 0.5, 12);
+    const rgba = resampleTile(grid, identity, z, x, y);
+    expect(rgba).not.toBeNull();
+
+    // Take the tile's own centre pixel, work out its longitude, and check the
+    // elevation matches the column that longitude falls in.
+    const [west, , east] = tileBounds(z, x, y);
+    const centreLng = west + ((TILE_SIZE / 2 + 0.5) / TILE_SIZE) * (east - west);
+    const expectedColumn = Math.floor(centreLng * grid.width);
+
+    expect(elevationAt(rgba!, TILE_SIZE / 2, TILE_SIZE / 2)).toBe(
+      BASE_ELEVATION + expectedColumn,
+    );
+  });
+
+  /*
+   * The failure that would look like bad data rather than a bug: tile rows run
+   * north to south while grid rows run from maxY down, so a sign error here
+   * flips the terrain vertically. A north-south ramp catches it; the east-west
+   * ramp above cannot.
+   */
+  it('does not flip north and south', () => {
+    const width = 100;
+    const height = 100;
+    const data = new Float32Array(width * height);
+    // Row 0 is the NORTH edge of the grid. Make elevation increase southwards.
+    for (let row = 0; row < height; row++) {
+      for (let col = 0; col < width; col++) data[row * width + col] = row;
+    }
+    const grid: SourceGrid = { data, width, height, bbox: [0, 0, 1, 1], noDataValue: null };
+
+    const { z, x, y } = tileAt(0.5, 0.5, 12);
+    const rgba = resampleTile(grid, identity, z, x, y)!;
+
+    const top = elevationAt(rgba, TILE_SIZE / 2, 2)!;
+    const bottom = elevationAt(rgba, TILE_SIZE / 2, TILE_SIZE - 3)!;
+    expect(bottom).toBeGreaterThan(top);
+  });
+
+  it('does not flip east and west', () => {
+    const grid = rampGrid();
+    const { z, x, y } = tileAt(0.5, 0.5, 12);
+    const rgba = resampleTile(grid, identity, z, x, y)!;
+
+    const left = elevationAt(rgba, 2, TILE_SIZE / 2)!;
+    const right = elevationAt(rgba, TILE_SIZE - 3, TILE_SIZE / 2)!;
+    expect(right).toBeGreaterThan(left);
+  });
+
+  /*
+   * A tile with nothing in it must not be stored: MapLibre should fall through
+   * to the global overlay outside the survey rather than draw a flat plain at
+   * sea level, whose hillshade is a cliff along the survey's own edge.
+   */
+  it('returns null for a tile entirely outside the grid', () => {
+    const grid = rampGrid();
+    const { z, x, y } = tileAt(50, 50, 12);
+    expect(resampleTile(grid, identity, z, x, y)).toBeNull();
+  });
+
+  /*
+   * The edge case that decides whether an imported survey looks like terrain or
+   * like a plateau someone dropped on the map. Alpha cannot express "no data"
+   * here — MapLibre's DEM decoder reads RGB and ignores it — so a tile
+   * straddling the boundary either continues the last real elevation outward or
+   * falls off a cliff to sea level. It has to continue.
+   */
+  it('clamps to the edge outside the grid rather than cliffing to sea level', () => {
+    /*
+     * The grid's west edge has to fall *inside* a tile for any of this tile's
+     * pixels to be outside it. At z12 a tile spans 0.088°, so a grid starting
+     * at lng 0 aligns exactly with a tile boundary and nothing straddles —
+     * hence 0.04, which lands mid-tile.
+     */
+    const grid = rampGrid({ bbox: [0.04, 0, 1, 1] });
+    const { z, x, y } = tileAt(0.05, 0.5, 12);
+    const [west, , east] = tileBounds(z, x, y);
+    expect(west).toBeLessThan(0.04);
+    expect(east).toBeGreaterThan(0.04);
+
+    const rgba = resampleTile(grid, identity, z, x, y)!;
+    expect(rgba).not.toBeNull();
+
+    // Every pixel across the row carries a real elevation — none is absent, and
+    // none has dropped to sea level.
+    const row = TILE_SIZE / 2;
+    for (let px = 0; px < TILE_SIZE; px++) {
+      const value = elevationAt(rgba, px, row);
+      expect(value).not.toBeNull();
+      expect(value).toBeGreaterThanOrEqual(BASE_ELEVATION);
+    }
+
+    // West of the grid the value is pinned to column 0's elevation, and the
+    // ramp only begins once the samples are genuinely inside.
+    expect(elevationAt(rgba, 0, row)).toBe(BASE_ELEVATION);
+    expect(elevationAt(rgba, TILE_SIZE - 1, row)).toBeGreaterThan(BASE_ELEVATION);
+  });
+
+  /*
+   * Clamping must not become a licence to invent terrain: a tile whose every
+   * pixel is outside the grid is all repeats of one edge sample, and storing it
+   * would smear the survey's border across the county.
+   */
+  it('rejects a tile made entirely of clamped edge samples', () => {
+    const grid = rampGrid();
+    // Adjacent to the grid but not overlapping it.
+    const { z, x, y } = tileAt(1.5, 0.5, 12);
+    expect(resampleTile(grid, identity, z, x, y)).toBeNull();
+  });
+
+  /*
+   * Except for the skirt, which exists because `maplibre-contour` builds each
+   * contour tile from a 3×3 neighbourhood and throws the whole thing away if
+   * any of the nine is missing. A course-sized survey is narrower than three
+   * tiles, so without this it produces no contours at all — which is exactly
+   * what it did until this was added.
+   */
+  it('produces a fully clamped tile when asked, for the contour skirt', () => {
+    const grid = rampGrid();
+    const { z, x, y } = tileAt(1.5, 0.5, 12);
+
+    const rgba = resampleTile(grid, identity, z, x, y, { allowFullyClamped: true });
+    expect(rgba).not.toBeNull();
+
+    // Every sample is the grid's eastern edge, repeated.
+    const easternmost = BASE_ELEVATION + 99;
+    expect(elevationAt(rgba!, 0, TILE_SIZE / 2)).toBe(easternmost);
+    expect(elevationAt(rgba!, TILE_SIZE - 1, TILE_SIZE / 2)).toBe(easternmost);
+  });
+
+  /*
+   * Nodata sentinels are not heights. A producer's -9999 must not be encoded as
+   * a very deep hole, and a nearest-neighbour sampler must never let one bleed
+   * into a neighbouring cell the way bilinear would.
+   */
+  it('treats a nodata sentinel as absent, not as a very low elevation', () => {
+    const grid = rampGrid();
+    grid.data.fill(-9999);
+    const { z, x, y } = tileAt(0.5, 0.5, 12);
+    expect(resampleTile(grid, identity, z, x, y)).toBeNull();
+  });
+
+  it('honours a producer-declared nodata value that is a plausible height', () => {
+    const grid = rampGrid({ noDataValue: BASE_ELEVATION + 50 });
+    const { z, x, y } = tileAt(0.5, 0.5, 12);
+    const rgba = resampleTile(grid, identity, z, x, y)!;
+
+    // Column 50 carries the sentinel, so no pixel anywhere should decode to it.
+    for (let px = 0; px < TILE_SIZE; px++) {
+      expect(elevationAt(rgba, px, TILE_SIZE / 2)).not.toBe(BASE_ELEVATION + 50);
+    }
+  });
+
+  it('rejects NaN, which is how some GeoTIFFs spell nodata', () => {
+    const grid = rampGrid();
+    grid.data.fill(Number.NaN);
+    const { z, x, y } = tileAt(0.5, 0.5, 12);
+    expect(resampleTile(grid, identity, z, x, y)).toBeNull();
+  });
+
+  /*
+   * Sampling at pixel corners rather than centres biases every tile half a
+   * pixel north-west — half a metre at 1m, in the same direction everywhere.
+   * With the grid and the tile aligned, a centre-sampled tile is symmetric
+   * about its middle; a corner-sampled one is not.
+   */
+  it('samples pixel centres, so the tile is not offset half a pixel', () => {
+    const width = 256;
+    const height = 256;
+    const data = new Float32Array(width * height);
+    // A single peak at the exact centre of the grid.
+    data[128 * width + 128] = 1000;
+
+    const [west, south, east, north] = tileBounds(12, 2048, 2048);
+    const grid: SourceGrid = {
+      data,
+      width,
+      height,
+      bbox: [west, south, east, north],
+      noDataValue: null,
+    };
+
+    const rgba = resampleTile(grid, identity, 12, 2048, 2048)!;
+    expect(elevationAt(rgba, 128, 128)).toBe(1000);
+  });
+});
+
+describe('boundsFromGrid', () => {
+  it('takes the extremes of all four corners, not just two', () => {
+    /*
+     * A transform that bows the north edge, standing in for what UTM does away
+     * from its central meridian. Using only SW and NE would clip the bulge.
+     */
+    const bow = ([x, y]: [number, number]): [number, number] => [x, y + (x === 10 ? 0 : 5)];
+
+    const bounds = boundsFromGrid([0, 0, 10, 10], bow);
+    expect(bounds[3]).toBe(15);
+  });
+
+  it('errs outwards rather than inwards', () => {
+    const identityXY = ([x, y]: [number, number]): [number, number] => [x, y];
+    expect(boundsFromGrid([1, 2, 3, 4], identityXY)).toEqual([1, 2, 3, 4]);
+  });
+});

@@ -18,6 +18,17 @@ import { BASKET_ICON, BASKET_ICON_SELECTED } from './icons';
  * That is why each geometry gets a pair of layers rather than one.
  */
 
+/**
+ * The lowest layer the course itself draws.
+ *
+ * Anything installed at runtime that belongs *under* the design — an imported
+ * survey's hillshade, say — inserts before this, so it cannot end up over a
+ * fairway corridor or a hole number. Exported rather than spelled out at the
+ * call site so that reordering `derivedLayers` cannot silently change what
+ * "under the course" means.
+ */
+export const COURSE_BOTTOM_LAYER = 'derived-circle';
+
 export const FEATURES_SOURCE = 'course-features';
 export const DERIVED_SOURCE = 'derived-geometry';
 export const HANDLES_SOURCE = 'edit-handles';

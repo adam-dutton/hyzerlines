@@ -209,6 +209,20 @@ how far, not enough for spot heights, and the panel says so where the switch is.
 Contours are quoted in whatever units you have set, and are computed in your
 browser rather than fetched.
 
+**For real detail, import a site survey.** Nobody hosts 1m elevation for the
+whole world — it is petabytes — but LiDAR at 1m is published free for most of
+the United States ([The National Map](https://apps.nationalmap.gov/downloader/))
+and all of England ([Environment
+Agency](https://environment.data.gov.uk/survey)), and a course is about a square
+kilometre. Download the GeoTIFF for your site, drop it on the layers panel, and
+the app reprojects and tiles it in your browser. No account, no API key, nothing
+uploaded anywhere. At 1m the contours stop being a hint and start being a
+measurement.
+
+The tiles live in your browser rather than in the `.hyzer` file, so sending
+someone a course sends the design and not forty megabytes of elevation — they
+are told which survey it was designed against and can import the same file.
+
 Whatever you select opens top right. The tools are along the top, centred
 between the two columns, with undo and redo on the end of the rail; the camera
 controls — imagery, north, zoom — stack in the bottom right corner. Everything

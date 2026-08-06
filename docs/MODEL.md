@@ -414,6 +414,37 @@ tightening past z13 because the data stops improving there, and the layers panel
 says so next to the switch. Everything else in this document is a measurement;
 these are a reading, and the interface has to be honest about the difference.
 
+## A site survey is metadata here and pixels elsewhere
+
+`course.siteSurvey` is the one field that deliberately does **not** carry its own
+data:
+
+```ts
+{
+  name: string; // the file it came from
+  bounds: [w, s, e, n]; // WGS84, after reprojection
+  resolutionMeters: number; // what the tiles achieved, not what the file claims
+  crs: string; // 'EPSG:26916' — shown, not used again
+  minZoom: number;
+  maxZoom: number;
+  importedAt: string;
+}
+```
+
+The tiles live in IndexedDB, in their own database, keyed by `z/x/y`. A `.hyzer`
+is a document you email and forty megabytes of elevation is not.
+
+But the record still travels, because **it describes how the course was
+designed**. Someone opening a file you sent is told the design was drawn against
+a 1m survey and which one, even though they do not have it — that is a missing
+attachment, not a corrupt document, and the interface says exactly that rather
+than failing.
+
+**`resolutionMeters` is the tiles', never the file's.** A large GeoTIFF is read
+from a coarser overview level to fit a memory budget; reporting its headline
+number would overstate what was actually built, which is the one thing this
+document model refuses to do anywhere else.
+
 ---
 
 ## Derived, never stored

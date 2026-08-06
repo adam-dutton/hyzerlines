@@ -18,6 +18,8 @@ import { CourseEditor } from './CourseEditor';
 import { useShortcuts } from './keyboard/useShortcuts';
 import { getStoredUnits, storeUnits, type UnitSystem } from './units';
 import { CourseProvider, useCourse } from './document/CourseProvider';
+import { useSurvey } from './survey/useSurvey';
+import { SurveyLayers } from './survey/SurveyLayers';
 import { downloadCourse, openCourseFile } from './document/fileActions';
 
 /**
@@ -32,6 +34,15 @@ function Shell() {
   // Undo and redo are still bound as shortcuts here, but their buttons now live
   // in the tool rail, which reads `canUndo`/`canRedo` from the store directly.
   const { course, dispatch, undo, redo, load, saveStatus, hydrating, restored } = useCourse();
+
+  /*
+   * Survey state lives up here, above the canvas, and its map layers live
+   * inside it — see the note in `useSurvey`. Splitting them is what keeps
+   * React's child-before-parent effect order from putting the global terrain
+   * back on top of an imported one.
+   */
+  const survey = useSurvey({ survey: course.siteSurvey, onOp: dispatch });
+  const hasSurvey = survey.state.status === 'ready';
 
   const [theme, setTheme] = useState<ThemeName>(resolveInitialTheme);
   const [units, setUnits] = useState<UnitSystem>(getStoredUnits);
@@ -122,14 +133,29 @@ function Shell() {
         basemapId={course.basemapId}
         overlays={course.overlays}
         units={units}
+        suppressTerrain={hasSurvey}
         onViewChange={handleViewChange}
       >
+        <SurveyLayers state={survey.state} overlays={course.overlays} units={units} />
+
         {!chromeHidden && (
           <>
-            <Attribution basemapId={course.basemapId} overlays={course.overlays} />
+            <Attribution
+              basemapId={course.basemapId}
+              overlays={course.overlays}
+              hasSurvey={hasSurvey}
+            />
             <MapControls
               basemapId={course.basemapId}
               overlays={course.overlays}
+              units={units}
+              survey={{
+                state: survey.state,
+                status: survey.state.status,
+                onImport: (file) => void survey.importFile(file),
+                onRemove: () => void survey.remove(),
+                onDismissError: survey.dismissError,
+              }}
               onBasemapChange={(basemapId) => dispatch({ type: 'setBasemap', basemapId })}
               onOverlaysChange={(changes) => dispatch({ type: 'setOverlays', changes })}
             />

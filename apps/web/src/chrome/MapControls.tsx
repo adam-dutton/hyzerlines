@@ -4,6 +4,9 @@ import type { Overlays } from '@hyzerlines/core';
 import { useMap } from '../map/MapContext';
 import { basemaps } from '../map/basemaps';
 import { OVERLAY_DEFINITIONS } from '../map/terrain';
+import { SurveySection } from './SurveySection';
+import type { SurveyState } from '../survey/useSurvey';
+import type { UnitSystem } from '../units';
 
 /**
  * Camera controls, and the choice of what is under them.
@@ -56,11 +59,27 @@ function GroupTitle({ children }: { children: string }) {
 export function MapControls({
   basemapId,
   overlays,
+  units,
+  survey,
   onBasemapChange,
   onOverlaysChange,
 }: {
   basemapId: string;
   overlays: Overlays;
+  units: UnitSystem;
+  /**
+   * The imported-elevation controls, passed whole.
+   *
+   * One object rather than five props because they are one feature and this
+   * component does nothing with them but hand them on — see `SurveySection`.
+   */
+  survey: {
+    state: SurveyState;
+    status: SurveyState['status'];
+    onImport: (file: File) => void;
+    onRemove: () => void;
+    onDismissError: () => void;
+  };
   onBasemapChange: (id: string) => void;
   onOverlaysChange: (changes: Partial<Overlays>) => void;
 }) {
@@ -163,11 +182,24 @@ export function MapControls({
               show the two-metre mound behind a green, and a designer who reads
               a contour as a survey line is being misled by our own UI.
             */}
-            <p className="px-3 pt-1.5 text-2xs leading-4 text-text-muted">
-              Public elevation data, around 10m detail. Good for reading slope, not for spot
-              heights.
-            </p>
+            {/* The caveat belongs to the global data, so it goes away once a
+                survey supersedes it — repeating "around 10m" under 1m LiDAR
+                would be the panel contradicting itself. */}
+            {survey.status !== 'ready' && (
+              <p className="px-3 pt-1.5 text-2xs leading-4 text-text-muted">
+                Public elevation data, around 10m detail. Good for reading slope, not for spot
+                heights.
+              </p>
+            )}
           </div>
+
+          <SurveySection
+            state={survey.state}
+            units={units}
+            onImport={survey.onImport}
+            onRemove={survey.onRemove}
+            onDismissError={survey.onDismissError}
+          />
         </Popover>
       </Panel>
 

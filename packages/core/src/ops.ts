@@ -1,6 +1,7 @@
 import { DESCRIPTION_MAX, type Course } from './schema.js';
 import type { Display } from './display.js';
 import type { Overlays } from './overlays.js';
+import type { SiteSurvey } from './survey.js';
 import type { View } from './geo.js';
 import type { Feature, Geometry } from './features.js';
 import type { Hole } from './holes.js';
@@ -67,6 +68,15 @@ export type Op =
    * `setDisplay` is — see overlays.ts for why these are in the document.
    */
   | { type: 'setOverlays'; changes: Partial<Overlays> }
+  /**
+   * Attach or clear the imported elevation for this site.
+   *
+   * Whole-value rather than partial: a survey is one artefact from one file,
+   * and there is no such thing as changing its bounds without changing the
+   * pixels underneath. Undoable like everything else — importing the wrong
+   * file should cost one ⌘Z, not a hunt for a Remove button.
+   */
+  | { type: 'setSiteSurvey'; survey: SiteSurvey | null }
   /**
    * Several edits that are one action.
    *
@@ -399,6 +409,13 @@ export function applyOp(course: Course, op: Op): ApplyResult {
         { ...course, overlays: { ...course.overlays, ...op.changes } },
         // The whole previous object, for the reason setDisplay's inverse is.
         { type: 'setOverlays', changes: course.overlays },
+        undoable,
+      );
+
+    case 'setSiteSurvey':
+      return result(
+        { ...course, siteSurvey: op.survey },
+        { type: 'setSiteSurvey', survey: course.siteSurvey },
         undoable,
       );
 

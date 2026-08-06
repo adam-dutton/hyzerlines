@@ -20,6 +20,12 @@ export interface TestCourse {
   holes: { id: string; teeIds: string[]; targetIds: string[] }[];
   pairs: { teeId: string; targetId: string; fairwayId: string | null }[];
   overlays: { hillshade: boolean; contours: boolean };
+  siteSurvey: {
+    name: string;
+    crs: string;
+    resolutionMeters: number;
+    bounds: [number, number, number, number];
+  } | null;
 }
 
 declare global {
@@ -137,6 +143,55 @@ export function fakeDemTile(): Buffer {
     const packed = elevation + 32768;
     return [Math.floor(packed / 256), packed % 256, 0];
   });
+}
+
+/**
+ * A small UTM GeoTIFF with real relief, standing in for a LiDAR survey.
+ *
+ * Written with `geotiff`'s own writer rather than hand-rolled, because the
+ * thing under test is whether the importer reads a *real* file — projection
+ * recovered from GeoKeys, elevation off the band, bounds reprojected — and a
+ * fixture we encoded ourselves to match our own reader would prove none of it.
+ *
+ * NAD83 / UTM zone 15N (EPSG:26915) covers Minnesota, which is where the rest
+ * of the browser tests put their courses. The surface is a diagonal ramp so a
+ * sample's value says where it came from, the same trick `fakeDemTile` uses.
+ *
+ * Returned as bytes for `setInputFiles`, which is how a file reaches the page
+ * without a real file dialog.
+ */
+export async function fakeSurveyGeoTiff(): Promise<Buffer> {
+  const { writeArrayBuffer } = await import('geotiff');
+
+  const size = 128;
+  const values = new Float32Array(size * size);
+  for (let row = 0; row < size; row++) {
+    for (let col = 0; col < size; col++) {
+      // 200m of fall across the tile, which produces contours at every
+      // interval terrain.ts defines.
+      values[row * size + col] = 100 + (col + row) * 0.8;
+    }
+  }
+
+  // A 1km square near Minneapolis, in metres, at 1 sample per ~8m.
+  const originEasting = 480_000;
+  const originNorthing = 4_975_000;
+  const metersPerPixel = 8;
+
+  const buffer = writeArrayBuffer(values, {
+    width: size,
+    height: size,
+    ModelPixelScale: [metersPerPixel, metersPerPixel, 0],
+    // Ties raster (0,0) — the top-left corner — to its projected position.
+    ModelTiepoint: [0, 0, 0, originEasting, originNorthing, 0],
+    GTModelTypeGeoKey: 1,
+    GTRasterTypeGeoKey: 1,
+    ProjectedCSTypeGeoKey: 26915,
+    GeogCitationGeoKey: 'NAD83',
+    GTCitationGeoKey: 'NAD83 / UTM zone 15N',
+  });
+
+  return Buffer.from(buffer);
 }
 
 export interface OpenOptions {

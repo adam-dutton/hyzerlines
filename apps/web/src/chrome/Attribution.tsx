@@ -37,16 +37,28 @@ export const SOURCE_URL = 'https://github.com/adam-dutton/hyzerlines';
 export function Attribution({
   basemapId,
   overlays,
+  hasSurvey,
 }: {
   basemapId: string;
   overlays: Overlays;
+  /** An imported survey is supplying the elevation instead of the global one. */
+  hasSurvey: boolean;
 }) {
   const basemap = basemapById(basemapId);
 
-  // Both terrain overlays read one elevation source, so they credit it once.
-  const credits = [basemap.attribution, hasOverlays(overlays) ? TERRAIN_ATTRIBUTION : null]
-    .filter(Boolean)
-    .join(' &middot; ');
+  /*
+   * Both terrain overlays read one elevation source, so they credit it once —
+   * and only while something is actually reading it.
+   *
+   * An imported survey replaces that source, so the AWS credit goes with it.
+   * The survey's own provenance is not ours to state: it is a file the designer
+   * supplied, from a publisher we never spoke to, and inventing a credit line
+   * for it would be worse than the honest silence. The layers panel names the
+   * file and its projection, which is the accurate thing we can say.
+   */
+  const elevationCredit = hasOverlays(overlays) && !hasSurvey ? TERRAIN_ATTRIBUTION : null;
+
+  const credits = [basemap.attribution, elevationCredit].filter(Boolean).join(' &middot; ');
 
   return (
     <ChromeLayer className="bottom-3 left-4 max-w-sm">

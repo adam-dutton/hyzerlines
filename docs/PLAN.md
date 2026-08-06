@@ -46,9 +46,10 @@ current as PRs land.
 | **7**   | Boundaries and acreage                                                             | ✅ done |
 | **8**   | UI/UX: the chrome rearranged (8a), the insides of the panels (8b)                  | ✅ done |
 | **9**   | Map overlays: one style, hillshade, contours                                       | ✅ done |
-| **10**  | Layouts and routing: named layouts, skip, repeat, reorder                          | next    |
-| **10a** | Expanded palette: relief areas, noted areas, drop zones, invert, circles           |         |
-| **10b** | Terrain 2: 3D tilt, DEM sampling, elevation profiles, slope shading                |         |
+| **10**  | Site surveys: import LiDAR GeoTIFFs, reproject and tile in-browser                 | ✅ done |
+| **11**  | Layouts and routing: named layouts, skip, repeat, reorder                          | next    |
+| **11a** | Expanded palette: relief areas, noted areas, drop zones, invert, circles           |         |
+| **11b** | Terrain 2: 3D tilt, canopy height, elevation profiles, slope shading               |         |
 | **11**  | Parametric flight model, shot editor, disc database                                |         |
 | **12**  | Safety: dispersion envelopes, overlap and proximity rules                          |         |
 | **13**  | Accounts, share links, published course pages (backend begins here)                |         |
@@ -999,6 +1000,100 @@ subsystem, not a layer.
 source; only about ten US states publish a statewide layer. Both wait for a
 per-jurisdiction registry or a keyed provider behind a tile proxy, and neither is
 free.
+
+---
+
+## PR 10 — site surveys: bring your own LiDAR
+
+The global overlay reads roughly 10m data and says so. At 10m you get a ridge
+and a fall line; you do not get the two-metre mound behind a green. **1m LiDAR
+exists, free and public domain, for most of the United States and all of
+England** — and the reason no app offers it as a basemap is that a global 1m
+tileset is petabytes.
+
+But **a course is about a square kilometre**, and a square kilometre of 1m
+elevation is a few megabytes. That reframing is the whole PR: you do not need
+global 1m, you need 1m _here_. So the designer brings a GeoTIFF for their own
+site and the browser turns it into tiles. No backend, no API key, no
+per-request cost, and it works anywhere LiDAR is published rather than only
+where we built an integration.
+
+### It was spiked before it was planned
+
+Against a real USGS 3DEP tile, over the real internet, before any of this was
+designed: ranged reads work, the projection comes out of the GeoKeys cleanly,
+proj4 round-trips it, and the file carries six overview levels so the pyramid is
+free. The one thing that would have killed the approach — `maplibre-cog-protocol`
+refuses anything that is not already EPSG:3857 and does not reproject — is why
+we resample ourselves rather than pointing a plugin at the bucket.
+
+### Metadata in the document, pixels in IndexedDB
+
+`course.siteSurvey` records the file's name, bounds, CRS, zoom range and the
+resolution **actually achieved**. The tiles do not travel with it.
+
+That split is deliberate rather than merely pragmatic. A `.hyzer` is a document
+you email; forty megabytes of elevation is not. But someone opening a course you
+sent should still be told the design was drawn against a 1m survey and which one
+— that is a fact about how the course was designed. A missing survey is a
+missing attachment, not a corrupt document, and the panel says so in those
+words.
+
+**The resolution reported is the tiles', never the file's.** A large file is
+read from a coarser overview to fit a memory budget; claiming its headline
+number would be the same overstatement of precision this app exists to avoid.
+
+### Three things that only showed up in a browser
+
+**Alpha is not an escape hatch.** The obvious way to mark "no data" is a
+transparent pixel, and MapLibre's DEM decoder ignores alpha entirely — it reads
+RGB regardless. A transparent pixel carrying zeroes decodes as −32768 and
+hillshades as a thirty-kilometre pit. Edges are handled by **clamping to the
+nearest edge sample** instead, the way every texture sampler does, so a tile
+straddling the survey's border continues the last real elevation outward
+instead of falling off a cliff to sea level.
+
+**`maplibre-contour` fetches its own tiles.** `DemSource` takes a URL and calls
+`fetch` on it in its worker, so a MapLibre custom protocol like `survey://` is
+invisible to it — MapLibre resolves those, `fetch` does not. The failure was
+silent in the worst way: hillshade drew, because MapLibre loaded that source,
+and contours simply never appeared. `LocalDemManager` is the seam — same isoline
+machinery, exported separately, and it accepts a `getTile` we can point at
+IndexedDB.
+
+**Contours need a 3×3 neighbourhood, and reject the tile if any of the nine is
+missing.** A course-sized survey is narrower than three tiles, so it produced
+_zero_ contours. Fixed with a one-tile skirt of edge-clamped tiles that the
+generator can read and MapLibre never draws, because both survey sources carry
+the survey's real bounds. Diagnosed by instrumenting the page — the import was
+provably correct (right tiles, right zooms, right bounds) and the output was
+still empty, which is not something types or unit tests can tell you.
+
+### Where the work is testable
+
+Everything that can be wrong quietly is pure and lives in core: tile bounds,
+terrarium encoding, and the resampler, tested against grids whose every value
+encodes its own position. Terrain that lands mirrored, half a pixel north, or
+with nodata smeared into real ground all render as _something_, and something is
+much harder to notice than nothing — so the fixtures ramp with the column index
+and the assertions read the position back out.
+
+The browser tests import a real GeoTIFF, written with `geotiff`'s own writer
+rather than hand-rolled: a fixture we encoded to match our own reader would
+prove nothing about reading a real file.
+
+### Deliberately not in this PR
+
+**Canopy height.** LiDAR ships two surfaces — bare earth and top of canopy — and
+subtracting them gives tree heights per square metre, which answers "can I throw
+over that gap" from data. It is the most novel thing this data enables and it
+wants a second import slot and a way to display a derived raster; neither exists
+yet.
+
+**Fetching surveys for the user.** OpenTopography has an API that would remove
+the download step, and it needs a key that is free only for academics. A tiling
+backend that subsets 3DEP for a bounding box would be better than either, and
+waits for the backend that arrives with accounts at PR 13.
 
 ---
 
