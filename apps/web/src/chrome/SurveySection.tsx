@@ -105,8 +105,14 @@ export function SurveySection({
             {/* The resolution actually achieved, not the file's own. A large
                 file is tiled from a coarser overview to fit in memory, and
                 claiming its headline number would overstate the tiles. */}
-            {formatDistance(state.survey.resolutionMeters, units)} detail &middot;{' '}
-            {state.survey.crs}
+            {formatDistance(state.survey.resolutionMeters, units)} detail
+          </p>
+          {/* The projection's published name where we have it — it is the thing
+              a designer can check against what they exported, and it says
+              outright when a survey came in feet. The bare code is the fallback
+              for documents written before the name was recorded. */}
+          <p className="truncate text-2xs text-text-muted" title={state.survey.crsName}>
+            {state.survey.crsName || state.survey.crs}
           </p>
           <button
             type="button"

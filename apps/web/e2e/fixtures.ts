@@ -24,6 +24,7 @@ export interface TestCourse {
     name: string;
     crs: string;
     resolutionMeters: number;
+    crsName: string;
     bounds: [number, number, number, number];
   } | null;
 }
@@ -145,50 +146,61 @@ export function fakeDemTile(): Buffer {
   });
 }
 
+export interface SurveyTiffOptions {
+  /** The projection to declare. Defaults to NAD83 / UTM zone 15N. */
+  epsg?: number;
+  /** Top-left corner in that projection's own linear unit. */
+  origin?: [number, number];
+  /** Ground sample distance, in that projection's own linear unit. */
+  pixelSize?: number;
+}
+
 /**
- * A small UTM GeoTIFF with real relief, standing in for a LiDAR survey.
+ * A small projected GeoTIFF with real relief, standing in for a LiDAR survey.
  *
  * Written with `geotiff`'s own writer rather than hand-rolled, because the
  * thing under test is whether the importer reads a *real* file — projection
  * recovered from GeoKeys, elevation off the band, bounds reprojected — and a
  * fixture we encoded ourselves to match our own reader would prove none of it.
  *
- * NAD83 / UTM zone 15N (EPSG:26915) covers Minnesota, which is where the rest
- * of the browser tests put their courses. The surface is a diagonal ramp so a
- * sample's value says where it came from, the same trick `fakeDemTile` uses.
+ * Defaults to NAD83 / UTM zone 15N (EPSG:26915), which covers Minnesota, where
+ * the rest of the browser tests put their courses. The surface is a diagonal
+ * ramp so a sample's value says where it came from, the same trick
+ * `fakeDemTile` uses.
+ *
+ * Parameterised because the projection is the interesting variable: a survey in
+ * State Plane feet exercises a completely different path through the EPSG table
+ * than one in UTM metres.
  *
  * Returned as bytes for `setInputFiles`, which is how a file reaches the page
  * without a real file dialog.
  */
-export async function fakeSurveyGeoTiff(): Promise<Buffer> {
+export async function fakeSurveyGeoTiff({
+  epsg = 26915,
+  origin = [480_000, 4_975_000],
+  pixelSize = 8,
+}: SurveyTiffOptions = {}): Promise<Buffer> {
   const { writeArrayBuffer } = await import('geotiff');
 
   const size = 128;
   const values = new Float32Array(size * size);
   for (let row = 0; row < size; row++) {
     for (let col = 0; col < size; col++) {
-      // 200m of fall across the tile, which produces contours at every
-      // interval terrain.ts defines.
+      // Enough fall across the tile to produce contours at every interval
+      // terrain.ts defines.
       values[row * size + col] = 100 + (col + row) * 0.8;
     }
   }
 
-  // A 1km square near Minneapolis, in metres, at 1 sample per ~8m.
-  const originEasting = 480_000;
-  const originNorthing = 4_975_000;
-  const metersPerPixel = 8;
-
   const buffer = writeArrayBuffer(values, {
     width: size,
     height: size,
-    ModelPixelScale: [metersPerPixel, metersPerPixel, 0],
+    ModelPixelScale: [pixelSize, pixelSize, 0],
     // Ties raster (0,0) — the top-left corner — to its projected position.
-    ModelTiepoint: [0, 0, 0, originEasting, originNorthing, 0],
+    ModelTiepoint: [0, 0, 0, origin[0], origin[1], 0],
     GTModelTypeGeoKey: 1,
     GTRasterTypeGeoKey: 1,
-    ProjectedCSTypeGeoKey: 26915,
-    GeogCitationGeoKey: 'NAD83',
-    GTCitationGeoKey: 'NAD83 / UTM zone 15N',
+    ProjectedCSTypeGeoKey: epsg,
   });
 
   return Buffer.from(buffer);

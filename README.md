@@ -219,6 +219,11 @@ the app reprojects and tiles it in your browser. No account, no API key, nothing
 uploaded anywhere. At 1m the contours stop being a hint and start being a
 measurement.
 
+Any projection the EPSG registry defines and proj4 can compute — UTM, State
+Plane in feet or metres, national grids — is read and named back to you, so you
+can check the file was understood the way you meant. Anything that _cannot_ be
+reprojected accurately is refused rather than placed approximately.
+
 The tiles live in your browser rather than in the `.hyzer` file, so sending
 someone a course sends the design and not forty megabytes of elevation — they
 are told which survey it was designed against and can import the same file.

@@ -129,7 +129,10 @@ test.describe('site survey', () => {
 
     await openLayers(page);
     await expect(page.getByText('survey-1m.tif')).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(/EPSG:26915/)).toBeVisible();
+    // The projection's published name rather than its code: `EPSG:26915` says
+    // only that something was read, where the name is a fact the designer can
+    // check against the file they exported.
+    await expect(page.getByText('NAD83 / UTM zone 15N')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Remove survey' })).toBeVisible();
   });
 
@@ -180,6 +183,61 @@ test.describe('site survey', () => {
         { timeout: 20_000 },
       )
       .toBe(true);
+  });
+
+  /*
+   * State Plane, in US survey feet.
+   *
+   * The importer started with a hand-written table of UTM, British National
+   * Grid and lat/long, and refused `EPSG:6428` — NAD83(2011) / Colorado Central
+   * (ftUS) — which is an entirely ordinary projection for county LiDAR. It
+   * reads the whole EPSG registry now.
+   *
+   * Feet are the part worth a test of its own: every other supported projection
+   * is in metres, and a linear unit silently ignored would place a survey about
+   * three times too far from the projection's origin.
+   */
+  test('a State Plane survey in US survey feet imports', async ({ page }) => {
+    await openEditor(page, { center: [-104.99, 39.74], zoom: 14 });
+    await openLayers(page);
+
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'denver-1m.tif',
+      mimeType: 'image/tiff',
+      // Colorado Central's origin is 3,000,000 x 1,000,000 ftUS; this sits a
+      // little north-east of Denver, and the pixel size is in feet too.
+      buffer: await fakeSurveyGeoTiff({
+        epsg: 6428,
+        origin: [3_140_000, 1_700_000],
+        pixelSize: 26,
+      }),
+    });
+
+    await expect
+      .poll(async () => (await course(page)).siteSurvey?.crs, { timeout: 20_000 })
+      .toBe('EPSG:6428');
+
+    const survey = (await course(page)).siteSurvey!;
+    // The published name, not just the code — it is what a designer can check
+    // against what they exported, and it says outright that this one is in feet.
+    expect(survey.crsName).toContain('Colorado Central');
+
+    /*
+     * Landed in Colorado rather than somewhere the units got lost. Denver is
+     * near -105, 39.7; treating ftUS as metres would put this over 1000km away.
+     */
+    const [west, south, east, north] = survey.bounds;
+    expect(west).toBeGreaterThan(-106);
+    expect(east).toBeLessThan(-104);
+    expect(south).toBeGreaterThan(39);
+    expect(north).toBeLessThan(41);
+
+    // And the resolution is reported in metres whatever the file used.
+    expect(survey.resolutionMeters).toBeGreaterThan(5);
+    expect(survey.resolutionMeters).toBeLessThan(12);
+
+    await openLayers(page);
+    await expect(page.getByText(/Colorado Central/)).toBeVisible();
   });
 
   /*

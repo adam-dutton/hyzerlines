@@ -54,47 +54,32 @@ export interface ImportResult {
 /** Anything wrong with the file itself, phrased for someone who chose it. */
 export class SurveyImportError extends Error {}
 
-/*
- * Projections we can name without a lookup service.
+/**
+ * The projection a GeoTIFF says it is in.
  *
- * proj4 ships definitions for WGS84 and little else, so a projected GeoTIFF
- * arrives as an EPSG code we have to turn into a proj string ourselves. These
- * three families cover the LiDAR a disc golf designer will actually be handed:
- * the US national programme, the UK's, and anything already in the web's own
- * projection.
+ * A projected GeoTIFF carries an EPSG code and, usually, nothing else — the
+ * real USGS products carry `ProjectedCSTypeGeoKey` and no parameters at all —
+ * so the code has to be turned into something proj4 understands.
  *
- * An unknown code is refused rather than guessed. Silently treating unknown
- * metres as UTM zone 1 would place a course in the Pacific, and a survey that
- * lands in the wrong hemisphere is worse than one that declines to load.
+ * This began as a hand-written table of the three families a designer was
+ * expected to meet: UTM, British National Grid, plain lat/long. It lasted until
+ * somebody brought a file in `EPSG:6428`, NAD83(2011) / Colorado Central
+ * (ftUS). US State Plane alone is about 120 zones across several datum
+ * realizations, and every country has a grid of its own; a curated list is a
+ * list that is always missing the one in front of you.
+ *
+ * So the whole registry is compiled in — see `scripts/build-epsg.ts`, and note
+ * that it deliberately omits anything proj4js would get wrong rather than
+ * refuse. Loaded lazily with the rest of the import machinery, because it is a
+ * megabyte that matters to nobody who never imports a survey.
  */
-function projDefinition(epsg: number): string | null {
-  // NAD83 / UTM north zones 1–23 — the USGS 3DEP 1m products.
-  if (epsg >= 26901 && epsg <= 26923) {
-    return `+proj=utm +zone=${epsg - 26900} +datum=NAD83 +units=m +no_defs`;
-  }
-  // WGS84 / UTM north and south.
-  if (epsg >= 32601 && epsg <= 32660) {
-    return `+proj=utm +zone=${epsg - 32600} +datum=WGS84 +units=m +no_defs`;
-  }
-  if (epsg >= 32701 && epsg <= 32760) {
-    return `+proj=utm +zone=${epsg - 32700} +south +datum=WGS84 +units=m +no_defs`;
-  }
-  // OSGB36 / British National Grid — the UK Environment Agency's LiDAR.
-  if (epsg === 27700) {
-    return (
-      '+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 ' +
-      '+ellps=airy +towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489 +units=m +no_defs'
-    );
-  }
-  // Already geographic, or already Web Mercator.
-  if (epsg === 4326 || epsg === 4269) return '+proj=longlat +datum=WGS84 +no_defs';
-  if (epsg === 3857 || epsg === 900913) {
-    return (
-      '+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 ' +
-      '+units=m +nadgrids=@null +no_defs'
-    );
-  }
-  return null;
+async function lookUpProjection(
+  epsg: number,
+): Promise<{ definition: string; name: string } | null> {
+  const { EPSG_DEFINITIONS } = await import('./epsg.generated');
+  const entry = EPSG_DEFINITIONS[String(epsg)];
+  if (!entry) return null;
+  return { definition: entry[0], name: entry[1] };
 }
 
 /**
@@ -156,23 +141,38 @@ export async function importSurvey(
     );
   }
 
-  const definition = projDefinition(epsg);
-  if (!definition) {
+  const projection = await lookUpProjection(epsg);
+  if (!projection) {
     throw new SurveyImportError(
-      `EPSG:${epsg} is not a projection this can read yet. UTM, British National Grid ` +
-        'and plain latitude/longitude are supported — reprojecting to one of those in QGIS ' +
-        'will work.',
+      `EPSG:${epsg} is a projection this cannot reproject accurately, so the file is not ` +
+        'being placed rather than being placed wrongly. Exporting it from QGIS in UTM or ' +
+        'plain latitude/longitude will work.',
     );
   }
 
   const crs = `EPSG:${epsg}`;
-  proj4.defs(crs, definition);
+  proj4.defs(crs, projection.definition);
   const toSource = proj4('EPSG:4326', crs);
 
   onProgress({ phase: 'projecting', ratio: null });
 
   const bbox = image.getBoundingBox() as [number, number, number, number];
   const bounds: Bounds = boundsFromGrid(bbox, (xy) => toSource.inverse(xy) as [number, number]);
+
+  /*
+   * Refuse a reprojection that did not produce numbers.
+   *
+   * proj4js signals failure by returning NaN rather than by throwing, and the
+   * generated table exists partly to keep that from happening — but a bad
+   * bounding box in the file itself can do it too, and NaN bounds would flow
+   * all the way into the document before anything noticed.
+   */
+  if (!bounds.every((n) => Number.isFinite(n))) {
+    throw new SurveyImportError(
+      `That file did not reproject from ${projection.name || crs} — its coordinates may not ` +
+        'match the projection it declares.',
+    );
+  }
 
   const rasters = (await image.readRasters({ interleave: false })) as ArrayLike<
     Float32Array | Int16Array | Uint16Array
@@ -247,7 +247,15 @@ export async function importSurvey(
   }
 
   return {
-    survey: { name: file.name, bounds, resolutionMeters, crs, minZoom, maxZoom },
+    survey: {
+      name: file.name,
+      bounds,
+      resolutionMeters,
+      crs,
+      crsName: projection.name,
+      minZoom,
+      maxZoom,
+    },
     tiles,
   };
 }

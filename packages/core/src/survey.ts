@@ -52,6 +52,19 @@ export const siteSurveySchema = z.object({
   /** The projection it arrived in, e.g. `EPSG:26916`. Shown, not used again. */
   crs: z.string().min(1),
 
+  /**
+   * That projection's published name, e.g. `NAD83 / UTM zone 16N`.
+   *
+   * A code is an identifier; a name is a fact somebody can check against the
+   * file they exported. "NAD83(2011) / Colorado Central (ftUS)" tells a designer
+   * the survey was read as the thing they meant — including that it was in feet
+   * — where `EPSG:6428` tells them only that something was read.
+   *
+   * Optional, because a document written before this existed has a code and no
+   * name, and that is not worth a migration.
+   */
+  crsName: z.string().default(''),
+
   /** Deepest zoom with real detail. Past this the tiles are interpolation. */
   maxZoom: z.number().int().min(0).max(24),
   minZoom: z.number().int().min(0).max(24),

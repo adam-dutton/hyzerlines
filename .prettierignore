@@ -3,3 +3,7 @@ node_modules/
 pnpm-lock.yaml
 LICENSE
 packages/design/dist/
+
+# Generated: a megabyte of EPSG definitions on one line. Reformatting it would
+# make regeneration diffs unreadable, and nobody reads it anyway.
+apps/web/src/survey/epsg.generated.ts

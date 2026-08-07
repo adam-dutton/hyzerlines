@@ -9,7 +9,8 @@
     "build": "pnpm --filter @hyzerlines/design build && tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "epsg": "tsx scripts/build-epsg.ts"
   },
   "dependencies": {
     "@hyzerlines/core": "workspace:*",
@@ -29,7 +30,9 @@
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "@vitejs/plugin-react": "^4.3.4",
+    "epsg-index": "^2.0.0",
     "tailwindcss": "^4.0.0",
+    "tsx": "^4.23.5",
     "typescript": "^5.7.2",
     "vite": "^6.0.5"
   }

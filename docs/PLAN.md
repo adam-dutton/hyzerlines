@@ -48,21 +48,20 @@ current as PRs land.
 | **9**   | Map overlays: one style, hillshade, contours                                       | ✅ done |
 | **10**  | Site surveys: import LiDAR GeoTIFFs, reproject and tile in-browser                 | ✅ done |
 | **11**  | Layouts and routing: named layouts, skip, repeat, reorder                          | next    |
-| **11a** | Expanded palette: relief areas, noted areas, drop zones, invert, circles           |         |
-| **11b** | Terrain 2: 3D tilt, canopy height, elevation profiles, slope shading               |         |
-| **11**  | Parametric flight model, shot editor, disc database                                |         |
-| **12**  | Safety: dispersion envelopes, overlap and proximity rules                          |         |
-| **13**  | Accounts, share links, published course pages (backend begins here)                |         |
-| **14**  | Exports: PDF/PNG maps, tee signs, punch lists                                      |         |
-| **15**  | KML/KMZ interop                                                                    |         |
-| **16**  | Terrain 2: contours, slope analysis, LiDAR, custom DEM upload                      |         |
-| **17**  | Offline/PWA, tile caching                                                          |         |
-| **18**  | Field mode: touch targets, GPS, geotagged photos                                   |         |
-| **19**  | Donations, public gallery, self-host via docker-compose                            |         |
+| **12**  | Expanded palette: relief areas, noted areas, drop zones, invert, circles           |         |
+| **13**  | Terrain 2: 3D tilt, canopy height, elevation profiles, slope shading               |         |
+| **14**  | Parametric flight model, shot editor, disc database                                |         |
+| **15**  | Safety: dispersion envelopes, overlap and proximity rules                          |         |
+| **16**  | Accounts, share links, published course pages (backend begins here)                |         |
+| **17**  | Exports: PDF/PNG maps, tee signs, punch lists                                      |         |
+| **18**  | KML/KMZ interop                                                                    |         |
+| **19**  | Offline/PWA, tile caching                                                          |         |
+| **20**  | Field mode: touch targets, GPS, geotagged photos                                   |         |
+| **21**  | Donations, public gallery, self-host via docker-compose                            |         |
 
-Sharing sits at PR 13 rather than the end because a published, linkable course
-page is the growth loop — it is how a designer shows a parks department and how a
-club shows its players.
+Sharing sits mid-roadmap rather than at the end because a published, linkable
+course page is the growth loop — it is how a designer shows a parks department
+and how a club shows its players.
 
 PRs 5 through 9 are one piece of work split for reviewability: the document
 model the app should have had from the start. It came out of a design session
@@ -1069,6 +1068,35 @@ the survey's real bounds. Diagnosed by instrumenting the page — the import was
 provably correct (right tiles, right zooms, right bounds) and the output was
 still empty, which is not something types or unit tests can tell you.
 
+### The projection table is generated, and proves itself
+
+The importer began with a hand-written table of three projection families — UTM,
+British National Grid, plain latitude/longitude — which lasted exactly until a
+file arrived in **EPSG:6428, NAD83(2011) / Colorado Central (ftUS)**. US State
+Plane alone is about 120 zones across several datum realizations, and every
+country has a grid of its own: a curated list is a list that is always missing
+the one in front of you.
+
+So the whole EPSG registry is compiled in from `epsg-index`, a devDependency
+that never ships. 7357 systems, in a chunk that loads only on import — 132 KB
+gzipped, next to `geotiff`'s 114 KB.
+
+**Two families are deliberately left out**, and for the same reason: proj4js
+does not throw when it cannot do the job. It returns `NaN`, or a plausible
+coordinate in the wrong county. So projections it does not implement, and
+definitions needing a grid-shift file we do not ship, are excluded — and the
+importer says plainly that it cannot read them. A refusal is recoverable; a
+survey silently in the wrong place is not.
+
+**The generator refuses to emit a table it cannot verify.** It checks a real
+USGS tile's corner against the coordinate measured in the original spike, checks
+that Colorado Central puts Denver at a plausible ftUS easting (the linear-unit
+trap), and compares every trimmed definition against its original across a wide
+sample. That last check earned its place immediately: stripping an all-zero
+`+towgs84` looks completely safe and is not — its presence is what tells proj4js
+the datum is known, and removing it silently moved every system built on a
+non-WGS84 ellipsoid.
+
 ### Where the work is testable
 
 Everything that can be wrong quietly is pure and lives in core: tile bounds,
@@ -1093,7 +1121,7 @@ yet.
 **Fetching surveys for the user.** OpenTopography has an API that would remove
 the download step, and it needs a key that is free only for academics. A tiling
 backend that subsets 3DEP for a bounding box would be better than either, and
-waits for the backend that arrives with accounts at PR 13.
+waits for the backend that arrives with accounts and sharing.
 
 ---
 
