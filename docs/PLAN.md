@@ -47,9 +47,10 @@ current as PRs land.
 | **8**   | UI/UX: the chrome rearranged (8a), the insides of the panels (8b)                  | ✅ done |
 | **9**   | Map overlays: one style, hillshade, contours                                       | ✅ done |
 | **10**  | Site surveys: import LiDAR GeoTIFFs, reproject and tile in-browser                 | ✅ done |
+| **10b** | Elevation profiles per hole, and the PDGA elevation term in par                    | ✅ done |
 | **11**  | Layouts and routing: named layouts, skip, repeat, reorder                          | next    |
 | **12**  | Expanded palette: relief areas, noted areas, drop zones, invert, circles           |         |
-| **13**  | Terrain 2: 3D tilt, canopy height, elevation profiles, slope shading               |         |
+| **13**  | Terrain 2: 3D tilt, canopy height, slope shading                                   |         |
 | **14**  | Parametric flight model, shot editor, disc database                                |         |
 | **15**  | Safety: dispersion envelopes, overlap and proximity rules                          |         |
 | **16**  | Accounts, share links, published course pages (backend begins here)                |         |

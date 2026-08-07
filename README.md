@@ -228,6 +228,22 @@ The tiles live in your browser rather than in the `.hyzer` file, so sending
 someone a course sends the design and not forty megabytes of elevation — they
 are told which survey it was designed against and can import the same file.
 
+**Every hole gets an elevation profile.** Select a hole and the panel draws the
+ground its shot is thrown over, sampled along the fairway you actually routed
+rather than the straight line between the ends — with the net rise or fall, the
+climb and descent, and the steepest grade on the hole. The vertical is
+exaggerated, because a 300 ft hole that falls four metres would otherwise be a
+flat line, and the elevation range is printed underneath so the picture is read
+against real numbers.
+
+That profile also feeds par. The PDGA's effective-length formula adds three times
+the rise from tee to target, which is the difference between a par 3 and a par 4
+on the same measured distance — and it is the one term the app has been unable to
+supply until now. **Only an imported survey moves a par.** The global overlay is
+good to roughly 10m vertically and the formula multiplies by three, so a par
+computed from it could be two strokes wrong from measurement error alone; it
+draws the chart and stops there, and the panel says which source you are on.
+
 Whatever you select opens top right. The tools are along the top, centred
 between the two columns, with undo and redo on the end of the rail; the camera
 controls — imagery, north, zoom — stack in the bottom right corner. Everything

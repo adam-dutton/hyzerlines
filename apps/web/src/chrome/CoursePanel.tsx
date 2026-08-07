@@ -9,6 +9,7 @@ import {
 } from '@hyzerlines/core';
 
 import { formatDistance, type UnitSystem } from '../units';
+import { useProfiles } from '../survey/useProfiles';
 import { CourseMenu } from './CourseMenu';
 import { CourseProperties } from './CourseProperties';
 import { useAutoLocation } from './useAutoLocation';
@@ -104,7 +105,10 @@ export function CoursePanel({
   onUnitsChange: (units: UnitSystem) => void;
   onDrawBoundary: () => void;
 }) {
-  const views = viewHoles(course, course.holes);
+  // Same elevations the scorecard and the hole panel read, so the course
+  // total is the sum of the pars actually shown beside each hole.
+  const { elevations } = useProfiles();
+  const views = viewHoles(course, course.holes, elevations);
   const holes = course.holes.length;
 
   /*

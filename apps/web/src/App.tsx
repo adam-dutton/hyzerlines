@@ -19,6 +19,7 @@ import { useShortcuts } from './keyboard/useShortcuts';
 import { getStoredUnits, storeUnits, type UnitSystem } from './units';
 import { CourseProvider, useCourse } from './document/CourseProvider';
 import { useSurvey } from './survey/useSurvey';
+import { ProfileProvider } from './survey/useProfiles';
 import { SurveyLayers } from './survey/SurveyLayers';
 import { downloadCourse, openCourseFile } from './document/fileActions';
 
@@ -43,6 +44,16 @@ function Shell() {
    */
   const survey = useSurvey({ survey: course.siteSurvey, onOp: dispatch });
   const hasSurvey = survey.state.status === 'ready';
+
+  /*
+   * The survey whose tiles are actually here, or nothing.
+   *
+   * `status: 'absent'` also carries a `survey` — the document names one, this
+   * browser does not have it — and that record must not reach the profiles, or
+   * they would sample a survey that is not on disk and silently fall back to
+   * nothing while claiming survey accuracy.
+   */
+  const readySurvey = survey.state.status === 'ready' ? survey.state.survey : null;
 
   const [theme, setTheme] = useState<ThemeName>(resolveInitialTheme);
   const [units, setUnits] = useState<UnitSystem>(getStoredUnits);
@@ -129,79 +140,87 @@ function Shell() {
        */
       data-hydrated={hydrating ? undefined : 'true'}
     >
-      <MapCanvas
-        basemapId={course.basemapId}
-        overlays={course.overlays}
-        units={units}
-        suppressTerrain={hasSurvey}
-        onViewChange={handleViewChange}
-      >
-        <SurveyLayers state={survey.state} overlays={course.overlays} units={units} />
-
-        {!chromeHidden && (
-          <>
-            <Attribution
-              basemapId={course.basemapId}
-              overlays={course.overlays}
-              hasSurvey={hasSurvey}
-            />
-            <MapControls
-              basemapId={course.basemapId}
-              overlays={course.overlays}
-              units={units}
-              survey={{
-                state: survey.state,
-                status: survey.state.status,
-                onImport: (file) => void survey.importFile(file),
-                onRemove: () => void survey.remove(),
-                onDismissError: survey.dismissError,
-              }}
-              onBasemapChange={(basemapId) => dispatch({ type: 'setBasemap', basemapId })}
-              onOverlaysChange={(changes) => dispatch({ type: 'setOverlays', changes })}
-            />
-          </>
-        )}
-
-        {/*
-          The course panel is built here and handed to the editor, because it
-          needs the shell's own state — theme, units, file actions, save
-          status — none of which the editor has any business knowing about.
-        */}
-        <CourseEditor
+      {/*
+        Above the canvas, because the profiles are about the document rather
+        than about the map — nothing in here touches a MapLibre instance. It
+        wraps the canvas so the scorecard, the course totals and the hole panel
+        all read one answer; see the note in `useProfiles`.
+      */}
+      <ProfileProvider course={course} survey={readySurvey}>
+        <MapCanvas
+          basemapId={course.basemapId}
+          overlays={course.overlays}
           units={units}
-          hidden={chromeHidden}
-          coursePanel={({ drawBoundary }) => (
-            <CoursePanel
-              course={course}
-              units={units}
-              onOp={dispatch}
-              saveStatus={saveStatus}
-              theme={theme}
-              onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              onShowShortcuts={() => setShowShortcuts(true)}
-              onOpen={() => void openFile()}
-              onSave={() => downloadCourse(course)}
-              onUnitsChange={changeUnits}
-              onDrawBoundary={drawBoundary}
-            />
+          suppressTerrain={hasSurvey}
+          onViewChange={handleViewChange}
+        >
+          <SurveyLayers state={survey.state} overlays={course.overlays} units={units} />
+
+          {!chromeHidden && (
+            <>
+              <Attribution
+                basemapId={course.basemapId}
+                overlays={course.overlays}
+                hasSurvey={hasSurvey}
+              />
+              <MapControls
+                basemapId={course.basemapId}
+                overlays={course.overlays}
+                units={units}
+                survey={{
+                  state: survey.state,
+                  status: survey.state.status,
+                  onImport: (file) => void survey.importFile(file),
+                  onRemove: () => void survey.remove(),
+                  onDismissError: survey.dismissError,
+                }}
+                onBasemapChange={(basemapId) => dispatch({ type: 'setBasemap', basemapId })}
+                onOverlaysChange={(changes) => dispatch({ type: 'setOverlays', changes })}
+              />
+            </>
           )}
-        />
 
-        {showSearch && !chromeHidden && (
-          <LocationSearch onDismiss={() => setDismissedSearch(true)} />
-        )}
-        <ShortcutsOverlay open={showShortcuts} onOpenChange={setShowShortcuts} />
+          {/*
+            The course panel is built here and handed to the editor, because it
+            needs the shell's own state — theme, units, file actions, save
+            status — none of which the editor has any business knowing about.
+          */}
+          <CourseEditor
+            units={units}
+            hidden={chromeHidden}
+            coursePanel={({ drawBoundary }) => (
+              <CoursePanel
+                course={course}
+                units={units}
+                onOp={dispatch}
+                saveStatus={saveStatus}
+                theme={theme}
+                onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                onShowShortcuts={() => setShowShortcuts(true)}
+                onOpen={() => void openFile()}
+                onSave={() => downloadCourse(course)}
+                onUnitsChange={changeUnits}
+                onDrawBoundary={drawBoundary}
+              />
+            )}
+          />
 
-        {fileError && (
-          <div
-            role="alert"
-            className="pointer-events-auto absolute bottom-4 left-1/2 max-w-md -translate-x-1/2 rounded-lg border border-status-danger/40 bg-surface-overlay px-3.5 py-2.5 text-xs text-status-danger shadow-lg backdrop-blur-md"
-            style={{ zIndex: 'var(--hz-z-toast)' }}
-          >
-            {fileError}
-          </div>
-        )}
-      </MapCanvas>
+          {showSearch && !chromeHidden && (
+            <LocationSearch onDismiss={() => setDismissedSearch(true)} />
+          )}
+          <ShortcutsOverlay open={showShortcuts} onOpenChange={setShowShortcuts} />
+
+          {fileError && (
+            <div
+              role="alert"
+              className="pointer-events-auto absolute bottom-4 left-1/2 max-w-md -translate-x-1/2 rounded-lg border border-status-danger/40 bg-surface-overlay px-3.5 py-2.5 text-xs text-status-danger shadow-lg backdrop-blur-md"
+              style={{ zIndex: 'var(--hz-z-toast)' }}
+            >
+              {fileError}
+            </div>
+          )}
+        </MapCanvas>
+      </ProfileProvider>
     </div>
   );
 }

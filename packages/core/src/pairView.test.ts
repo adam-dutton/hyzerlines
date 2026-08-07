@@ -11,12 +11,16 @@ import { CourseStore } from './store.js';
 import {
   corridorWidthsFor,
   courseFairways,
+  fairwayLine,
   holePairings,
+  pairElevationKey,
+  pairView,
   representativePair,
   setPairFairway,
   setPairPar,
   shapeFairway,
   viewHole,
+  viewHoles,
 } from './pairView.js';
 import { TEE_PAD_M } from './pdga.js';
 
@@ -350,5 +354,128 @@ describe('fairways are automatic', () => {
     // fairway and orphan the first.
     expect(again.features.filter((f) => f.kind === 'fairway')).toHaveLength(1);
     expect(again.pairs).toHaveLength(1);
+  });
+});
+
+/**
+ * The centreline, and the elevation that rides on it.
+ *
+ * `fairwayLine` is the seam between "what the map draws" and "what the
+ * elevation profile samples". If those two ever answered differently, a chart
+ * would describe a straight line over a ridge while the map showed a fairway
+ * routed around it — and the par computed from that chart would be for a shot
+ * nobody throws.
+ */
+describe('fairwayLine', () => {
+  it('is the straight line from tee to target when nothing is shaped', () => {
+    const { course, tee, pinA } = twoPinHole();
+    const line = fairwayLine(course, tee.id, pinA.id)!;
+
+    expect(line[0]).toEqual(AT);
+    expect(line.at(-1)).toEqual(north(90));
+    expect(pathLength(line)).toBeCloseTo(distance(AT, north(90)), 6);
+  });
+
+  it('is the stored line once the designer has bent it', () => {
+    const { course, hole, tee, pinA } = twoPinHole();
+    const bend: [number, number] = [AT[0] + 0.0004, north(45)[1]];
+    const bent = applyOp(
+      course,
+      shapeFairway(course, tee.id, pinA.id, [AT, bend, north(90)], hole.id),
+    ).course;
+
+    const line = fairwayLine(bent, tee.id, pinA.id)!;
+    expect(line).toEqual([AT, bend, north(90)]);
+    // Longer than the straight line, which is the entire reason to route one.
+    expect(pathLength(line)).toBeGreaterThan(distance(AT, north(90)));
+  });
+
+  /*
+   * The property that matters: one answer, not two. Whatever `courseFairways`
+   * decided to draw for a shot is the same ground a profile samples.
+   */
+  it('agrees with what courseFairways draws', () => {
+    const { course, hole, tee, pinA } = twoPinHole();
+    const bent = applyOp(
+      course,
+      shapeFairway(
+        course,
+        tee.id,
+        pinA.id,
+        [AT, [AT[0] + 0.0004, north(45)[1]], north(90)],
+        hole.id,
+      ),
+    ).course;
+
+    for (const fairway of courseFairways(bent)) {
+      expect(fairwayLine(bent, fairway.teeId, fairway.targetId)).toEqual(fairway.line);
+    }
+  });
+
+  it('answers for every pairing, not just the one being drawn', () => {
+    const { course, hole, tee, pinA, pinB } = twoPinHole();
+    // The map draws one shot for this hole; both are real throws with real ground.
+    expect(courseFairways(course)).toHaveLength(1);
+    for (const { teeId, targetId } of holePairings(hole)) {
+      expect(fairwayLine(course, teeId, targetId)).not.toBeNull();
+    }
+    expect(fairwayLine(course, tee.id, pinA.id)).not.toEqual(
+      fairwayLine(course, tee.id, pinB.id),
+    );
+  });
+
+  it('is null when an end is missing', () => {
+    const { course, tee } = twoPinHole();
+    expect(fairwayLine(course, tee.id, 'no-such-target')).toBeNull();
+    expect(fairwayLine(course, 'no-such-tee', tee.id)).toBeNull();
+  });
+});
+
+/**
+ * Elevation reaching par, through the view layer.
+ *
+ * Core cannot read a tile, so the web app hands it a map of gains keyed by
+ * pair. These pin that the key is what it claims to be and that a gain for one
+ * shot cannot leak into another — a hole silently priced with its neighbour's
+ * hill would be very hard to notice and impossible to argue with.
+ */
+describe('elevations in a pair view', () => {
+  it('keys a gain to exactly one shot', () => {
+    const { course, tee, pinA, pinB } = twoPinHole();
+    const elevations = new Map([[pairElevationKey(tee.id, pinA.id), 12]]);
+
+    const uphill = pairView(course, tee.id, pinA.id, undefined, undefined, elevations);
+    const untouched = pairView(course, tee.id, pinB.id, undefined, undefined, elevations);
+
+    expect(uphill.suggestion!.factors.some((f) => /uphill/i.test(f.label))).toBe(true);
+    expect(untouched.suggestion!.factors.some((f) => /uphill|downhill/i.test(f.label))).toBe(
+      false,
+    );
+  });
+
+  it('leaves the par alone when no elevations are supplied at all', () => {
+    const { course, tee, pinA } = twoPinHole();
+    const without = pairView(course, tee.id, pinA.id);
+    const withEmpty = pairView(course, tee.id, pinA.id, undefined, undefined, new Map());
+    expect(withEmpty.suggestion!.effectiveMeters).toBeCloseTo(
+      without.suggestion!.effectiveMeters,
+      6,
+    );
+  });
+
+  it('carries elevation through viewHoles to the scorecard', () => {
+    const { course, hole, tee, pinA } = twoPinHole();
+    // pinA is the representative shot, so this is the one the scorecard reads.
+    const flat = viewHoles(course, course.holes).get(hole.id)!;
+    const climbing = viewHoles(
+      course,
+      course.holes,
+      new Map([[pairElevationKey(tee.id, pinA.id), 12]]),
+    ).get(hole.id)!;
+
+    expect(climbing.suggestion!.effectiveMeters).toBeCloseTo(
+      flat.suggestion!.effectiveMeters + 36,
+      6,
+    );
   });
 });

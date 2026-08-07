@@ -208,7 +208,12 @@ publishes three densities and marks none typical, so an unset value means the
 area is measured and reported without a comparison. See `acreage.ts`.
 
 **Elevation is absent everywhere on purpose.** It is sampled from terrain, not
-typed in, and offering a box for it would invite a number nobody measured.
+typed in, and offering a box for it would invite a number nobody measured. A
+hole's ground profile — and the `Target Elevation - Tee Elevation` term the PDGA
+prices par with — is read from DEM tiles at the moment it is needed and never
+written back. Storing it would mean a `.hyzer` carrying elevations from whatever
+source the author happened to have, silently outliving both the survey they came
+from and any correction to it.
 
 ### Tees and drop zones are points with derived footprints
 
@@ -452,7 +457,7 @@ document model refuses to do anywhere else.
 Played number · distance · effective length · par suggestion · course and layout
 totals · layout skill level · layout playability · tee and drop-zone footprints ·
 tee bearing · fairway centreline and corridor polygon · putting circles · hole
-label position · polygon area and course acreage · elevation
+label position · polygon area and course acreage · elevation and ground profiles
 
 ## Not in the document at all
 

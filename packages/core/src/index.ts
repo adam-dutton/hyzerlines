@@ -8,6 +8,7 @@ export * from './display.js';
 export * from './overlays.js';
 export * from './survey.js';
 export * from './resample.js';
+export * from './profile.js';
 export * from './holes.js';
 export * from './membership.js';
 export * from './move.js';

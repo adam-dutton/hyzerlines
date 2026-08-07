@@ -194,12 +194,31 @@ export function skillLevelOfTee(tee: Feature | undefined): SkillLevel | null {
  * appropriate pars for all holes." That is why this is a suggestion with a
  * visible override and its reasoning on screen.
  */
+/**
+ * Below this, an elevation difference is not worth adjusting par for.
+ *
+ * Half a metre of rise is 1.5m of effective length on a hole measured in
+ * hundreds — inside the noise of any elevation source, and inside the noise of
+ * where somebody dropped the basket pin. Applying it would make par jitter as
+ * a tee is nudged, which reads as the tool being unsure of itself.
+ */
+export const ELEVATION_FLOOR_M = 0.5;
+
 export function suggestParForPair(
   featureById: ReadonlyMap<string, Feature>,
   teeId: string,
   targetId: string,
   fairwayId: string | null,
   fallbackSkill: SkillLevel,
+  /**
+   * Target elevation minus tee elevation, in metres, or null when unknown.
+   *
+   * The PDGA's elevation term, supplied only when it can be trusted — see
+   * `useProfiles` in the web app, which withholds it unless an imported LiDAR
+   * survey covers the hole. **Null is not zero**: zero asserts the hole is
+   * flat, null says nobody measured, and only one of those should move a par.
+   */
+  elevationGain: number | null = null,
 ): ParSuggestion | null {
   const measurement = measurePair(featureById, teeId, targetId, fairwayId);
   if (measurement.effective === null) return null;
@@ -216,12 +235,29 @@ export function suggestParForPair(
   }
 
   /*
-   * The PDGA's dogleg term needs the distance to the corner, the water term
-   * needs the detour a carry forces, and elevation waits on terrain. Those
-   * inputs are omitted rather than estimated; the formula is already shaped to
-   * take them.
+   * The elevation term is real now, when there is elevation worth trusting.
+   *
+   * The dogleg term still needs the distance to the corner and the water term
+   * the detour a carry forces, neither of which is in the document model. Those
+   * stay omitted rather than estimated.
    */
-  const effective = effectiveLength({ measured: measurement.effective }, skillLevel);
+  const usesElevation = elevationGain !== null && Math.abs(elevationGain) >= ELEVATION_FLOOR_M;
+
+  if (usesElevation) {
+    const rise = Math.round(Math.abs(elevationGain));
+    factors.push({
+      label:
+        elevationGain > 0
+          ? `Uphill ${rise}m — the PDGA adds three times the rise`
+          : `Downhill ${rise}m — the PDGA subtracts three times the drop`,
+      effect: elevationGain > 0 ? 'lengthens' : 'shortens',
+    });
+  }
+
+  const effective = effectiveLength(
+    { measured: measurement.effective, ...(usesElevation ? { elevationGain } : {}) },
+    skillLevel,
+  );
 
   factors.unshift({
     label: `PDGA par table, ${SKILL_LEVEL_INFO[skillLevel].label} level`,

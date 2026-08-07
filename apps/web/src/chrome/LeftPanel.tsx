@@ -12,6 +12,7 @@ import {
 } from '@hyzerlines/core';
 
 import { formatDistance, type UnitSystem } from '../units';
+import { useProfiles } from '../survey/useProfiles';
 import { FindingsList } from './FindingsList';
 
 /**
@@ -149,7 +150,13 @@ export function LeftPanel({
     [course.holes],
   );
 
-  const views = useMemo(() => viewHoles(course, holes), [course, holes]);
+  // Elevation reaches the scorecard the same way it reaches the hole panel, so
+  // a par that moved because of a hill moves in both places or in neither.
+  const { elevations } = useProfiles();
+  const views = useMemo(
+    () => viewHoles(course, holes, elevations),
+    [course, holes, elevations],
+  );
 
   const [tab, setTab] = useState('holes');
   const tabs = useMemo<TabDefinition[]>(

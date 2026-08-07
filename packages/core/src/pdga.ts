@@ -214,8 +214,12 @@ export interface EffectiveLengthInput {
  *     + (Extra Length forced by Water Carries)
  *
  * Every term is optional except the measured length, so a hole contributes only
- * what is actually known about it. Elevation stays zero until terrain data
- * arrives; the formula is already shaped to take it.
+ * what is actually known about it.
+ *
+ * Elevation arrives now — from a ground profile sampled along the shot, and only
+ * when an imported survey supplied it; see `profile.ts` and the note on
+ * `suggestParForPair`. The dogleg and water terms still wait on inputs the
+ * document model does not carry.
  */
 export function effectiveLength(input: EffectiveLengthInput, skill: SkillLevel): number {
   const { measured, elevationGain = 0, doglegLength, waterCarryExtra = 0 } = input;

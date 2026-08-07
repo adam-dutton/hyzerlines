@@ -32,8 +32,15 @@ import type { UnitSystem } from '../units';
  * app's whole premise is that its numbers are honest.
  */
 
-/** Zoom past which the DEM has nothing more to say. Tiles stop here. */
-const MAX_DEM_ZOOM = 13;
+/**
+ * Zoom past which the DEM has nothing more to say. Tiles stop here.
+ *
+ * Exported because the elevation profile samples at this level too — it wants
+ * the finest posting that exists rather than whatever the camera is showing,
+ * and asking deeper would return an upsampled copy of the same numbers dressed
+ * up as more detail.
+ */
+export const MAX_DEM_ZOOM = 13;
 
 const DEM_TILES = 'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png';
 
