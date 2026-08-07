@@ -20,11 +20,38 @@ import { createLayout, createPlay, layoutSchema, type Layout } from './layouts.j
 /** Bumped whenever a change requires migrating existing documents. */
 export const DOCUMENT_VERSION = 2;
 
+/**
+ * How long a course description may be.
+ *
+ * Roughly two sentences. Exported so the field that enforces it and the input
+ * that counts against it cannot disagree — a limit the interface does not know
+ * about is a limit the user discovers by having their typing rejected.
+ */
+export const DESCRIPTION_MAX = 280;
+
 export const courseSchema = z.object({
   /** Format version of this document, for migration on load. */
   version: z.literal(DOCUMENT_VERSION),
   id: z.string().min(1),
   name: z.string(),
+  /**
+   * Where the course is, in words.
+   *
+   * Seeded once from the map's own position and editable to anything after —
+   * a park's name, a street address, "the back forty". The coordinates are
+   * already in `view`, so this exists for the case coordinates are useless
+   * for: telling a landowner, a parks department or your future self which
+   * piece of ground this is.
+   */
+  location: z.string().default(''),
+  /**
+   * A sentence or two about the course.
+   *
+   * Capped, and deliberately short. A description that can run to a page
+   * becomes the place everything goes, and there is already a notes field for
+   * that — this is the line that would sit under the name on a scorecard.
+   */
+  description: z.string().max(DESCRIPTION_MAX).default(''),
   notes: z.string().default(''),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),

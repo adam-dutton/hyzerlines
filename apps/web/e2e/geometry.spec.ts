@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-import { clickMap, course, openEditor, place, project } from './fixtures';
+import { clickFeature, course, openEditor, place, project } from './fixtures';
 
 /**
  * Derived geometry, vertex editing, hole assignment and the pair picker.
@@ -324,8 +324,11 @@ test.describe('assigning features to holes', () => {
      */
     await page.keyboard.press('Escape');
     await place(page, 'Target', 950, 500);
+    const looseId = (await course(page)).features.at(-1)!.id;
 
     // The loose basket shows up as a finding, and as something to claim.
+    // Note this flies the camera to the hole, so canvas pixels from before it
+    // no longer point at what they did.
     await page.getByRole('button', { name: 'Hole 1' }).first().click();
     const claim = page.getByRole('combobox', { name: 'Add a basket' });
     await expect(claim).toBeVisible();
@@ -347,7 +350,7 @@ test.describe('assigning features to holes', () => {
      * and picking the wrong one silently unassigns the tee instead, which is a
      * test that fails for a reason unrelated to what it is checking.
      */
-    await clickMap(page, 950, 500);
+    await clickFeature(page, looseId);
     await expect(page.getByRole('textbox', { name: 'Feature name' })).toBeVisible();
 
     const holePicker = page.getByRole('combobox', { name: 'Hole this belongs to' });

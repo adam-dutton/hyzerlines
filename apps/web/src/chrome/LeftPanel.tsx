@@ -165,9 +165,9 @@ export function LeftPanel({
       /*
        * Bounded to the viewport and scrolling internally, so a 27-hole course
        * cannot push the findings off the bottom of the screen. The gap at the
-       * bottom clears the tool rail.
+       * bottom clears the attribution line.
        */
-      className="pointer-events-none absolute bottom-28 left-4 top-4 flex w-72 flex-col gap-2 overflow-hidden"
+      className="pointer-events-none absolute bottom-10 left-4 top-4 flex w-72 flex-col gap-2 overflow-hidden"
       style={{ zIndex: 'var(--hz-z-chrome)' }}
     >
       {header}
@@ -176,10 +176,16 @@ export function LeftPanel({
         as="section"
         elevation="raised"
         padding="none"
-        // `flex-1` so the list takes whatever the course panel above and the
-        // findings below do not, rather than sizing to its own content and
-        // pushing the findings off the bottom of a 27-hole course.
-        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        /*
+         * Sized to its content, not to the column.
+         *
+         * It used to take every pixel the course panel and findings did not,
+         * which left a one-hole course with a card of empty space below its
+         * single row. `min-h-0` without `flex-1` lets it shrink when a 27-hole
+         * course needs more room than there is — the list scrolls inside it —
+         * while never growing past what it actually holds.
+         */
+        className="flex min-h-0 flex-col overflow-hidden"
         aria-label="Holes and layouts"
       >
         <Tabs tabs={tabs} value={tab} onChange={setTab} label="Holes and layouts">

@@ -685,6 +685,194 @@ means the layouts PR does not also have to relitigate this panel's shape.
 
 ---
 
+## PR 8b — the insides of the panels
+
+The other half. PR 8a moved the panels; this rewrites what is in them.
+
+### Everything in the course panel folds
+
+The panel was a stack of six sections that only ever grew, and it had reached
+the point where it filled its column and squeezed the hole list out — which is
+why 8a had to cap it at a fraction of the column and let it scroll. That cap is
+gone. Sections fold now, and a folded section still says what it is holding:
+the acreage, the first line of the notes. **A collapsed section that says only
+its own name makes you open it to find out whether there is anything in there**,
+which is worse than leaving it open.
+
+Three sections became one. Skill level, site and features were three headings
+describing one thing — what the app has read off the drawing, none of it typed
+in — so they are **Analysis**. "Show on map" became **Settings**, because the
+drawing aids were the first thing to go in it and will not be the last, and a
+section named after its current contents has to be renamed when anything else
+arrives. **Totals is gone**: `9 · Par 28 · 2545 ft` is the course header's
+subheading now, beside the name it describes.
+
+**Notes is a textarea.** It is the one genuinely open-ended field in there and
+it had a one-line input.
+
+### Location and description
+
+Two new fields on the course, both additive with defaults, so no migration.
+
+`location` is **seeded once from the map and then left alone**. The document
+already knows exactly where the course is — `view.center` is two numbers good to
+a metre — but a name is the only form of "where" that is any use to a parks
+department or to yourself in six months. It fills in on the first drawn feature,
+via the same keyless Photon service the location search already uses, and never
+writes again: anything typed afterwards stands, including clearing it back to
+empty.
+
+`description` is capped at 280 characters and **truncates rather than refusing**.
+The op arrives a keystroke at a time; dropping the whole edit on the character
+that goes over reads as the field having died, and letting it through would
+produce a document the schema then refuses to parse back.
+
+### Units left the document's orbit
+
+They were in the course menu after 8a, which was a holding position. Feet or
+meters is a fact about the reader, not about the land — a US club and a European
+one should be able to open one file and each see it in what they think in — so
+the control is in Settings next to the drawing aids, and stored per browser while
+the aids beside it are in the document. It is a **picker**, not a switch:
+everything else in that section is a thing the map either draws or does not, and
+"Feet and acres: off" does not name what you get instead.
+
+### The name is the heading, everywhere
+
+Every panel opened with a Name row underneath a title that was the same name
+read back: one value, twice, three pixels apart. The title is the input now, as
+the course panel's already was. An unnamed feature shows its kind as the
+placeholder — and then the subtitle underneath is suppressed, because it would
+be putting "Tee pad" above "Tee pad".
+
+**A selected feature says which hole it belongs to, and gets you back.**
+Selecting a tee inside a hole used to be a one-way door: the panel swapped and
+the hole vanished from the interface with nothing to click. There is a
+breadcrumb now.
+
+### The four inspectors, reordered
+
+One shape for all of them: **what it belongs to, what was measured, what was
+typed in, delete.** Belongs-to used to sit below whatever kind-specific fields
+happened to exist, so where it appeared depended on how many properties a tee
+had.
+
+- **Hole** — number, par and the measurements par came from, in one block with
+  no headings between them. That is the answer to "what is this hole"; the rest
+  of the panel is how it is assembled. "Shot" is now **Features**, which is what
+  it becomes when a hole can hold several tees and pins.
+- **Tee** — belongs-to, skill color, surface, status, then a **Layout** section:
+  width and length side by side under one heading because that is how a pad is
+  quoted, and facing under another because size and direction are different
+  questions.
+- **Target** and **fairway** — belongs-to first, measurements next, every select
+  the same width as every text field.
+
+**Every control in an inspector is one width.** The panels had grown a width per
+field, so a column of controls stepped in and out down its right-hand edge.
+
+**Units moved inside the fields.** A unit floating outside the box reads as a
+separate thing on the row, drifts out of alignment the moment two fields sit
+side by side, and leaves the field claiming to be a bare number. `12 ft` is one
+value. The generic number field learned about `unit: 'degrees'` too — it had
+been quietly showing bearings with a metre suffix — but degrees get the sign
+_inside_ the value rather than in the suffix slot: feet are a unit **of** a
+value, degrees are part of how the value is written, and `240 °` is not how
+anybody writes a bearing. Which means an angle cannot be `type="number"` and
+cannot reformat while you are typing in it, so `DegreeField` holds a plain draft
+while focused and formats on blur.
+
+### Two rearrangements that changed behaviour
+
+**"Not part of a hole" is now an option in the belongs-to picker**, not a
+checkbox beside it. `standalone` is still a real property — `rules.ts` reads it
+to stop reporting a practice basket as unassigned forever — but as a separate
+checkbox it could contradict the picker next to it. As the third option in that
+picker it cannot. "Not assigned" and "not part of a hole" sound alike and are
+different claims: one is waiting to be given to a hole, the other never will be.
+
+**"Align to fairway" is the absence of a stored bearing, not a flag.**
+`footprintOf` already prefers a stored `bearing` and falls back to the fairway's,
+so the behaviour existed — what was missing was any way to see or set it. A
+second boolean saying which mode you are in could disagree with the geometry;
+this cannot, because it is the geometry. Unticking writes the angle the pad was
+already facing, so the field opens on a real number: you are taking over a
+value, not inventing one.
+
+### The corrections round
+
+Everything above was drawn, looked at, and then corrected. What changed:
+
+**Selection is a colour change and nothing else.** It used to also thicken the
+stroke and add a casing, which moves every edge of the thing you just clicked —
+so the shape appears to grow at the moment you are trying to judge where it
+sits. Geometry stays put; it turns blue. `derived-corridor` joined
+`INTERACTIVE_LAYERS` last, so **clicking a corridor selects its hole** (via a
+`selectAs` property on the corridor's GeoJSON) while a tee drawn on top of it
+still wins the click. The corridor also went from 0.5 to a flat 0.75 opacity —
+at 0.5 over satellite imagery it was more or less invisible over grass.
+
+**All the checkboxes became switches.** None of them wait for a Save — the
+corridor leaves the map as the thumb slides — and a checkbox is the control that
+promises one. The new `Switch` renders as `role="switch"`, which is why the
+browser tests grew a `setSwitch` fixture: Playwright's `check`/`uncheck` refuse
+anything that is not an input.
+
+**The accordions animate, and only one opens at a time.** `AccordionGroup`, for
+the reason the sections fold in the first place: they share a bounded column
+with the hole list, and two open sections is enough to start squeezing it.
+
+**Analysis lost its sub-headings.** Three titled groups of one or two rows each,
+inside a section that itself folds — a heading over a single row says the same
+word twice in two type sizes. The heading is the row's label now: `Plays as`
+became `Skill level`, `Drawn` became `Features drawn`.
+
+**A missing site is an action, not an absence.** With no boundary the site row
+used to disappear entirely, which was right about not printing "0 acres" — that
+reads as a measurement rather than the absence of one — and wrong about
+everything else: acreage is one of the two numbers the section's preview
+promises, and a row that is not there leaves no trace of what is missing or how
+to get it. It now offers **Draw a property boundary**, which arms the tool. That
+made `coursePanel` a render prop: tool state belongs in the editor next to the
+map, so the editor hands the panel the actions it needs rather than the shell
+reaching in for them.
+
+**The course description grows downwards.** As a single-line input it truncated
+at the panel's width, so a sentence became unreadable the moment you left the
+field — the field was hiding its own contents. `TextArea` sizes itself with a
+grid cell and a hidden pseudo-element carrying the same string: no ref, no
+resize observer, no frame where the box is the wrong height.
+
+**Disabled looks disabled.** A greyed value alone reads as low contrast rather
+than as locked, which matters now that "Align to fairway" disables the facing
+field beside it rather than leaving it editable and ignored. `TextField`'s
+disabled state is dashed and dimmed.
+
+**The tool rail moved to top centre**, level with the two panel columns it sits
+between, and the holes panel now hugs its content instead of taking every pixel
+the course panel left — a one-hole course had a card of empty space under its
+single row.
+
+**Two ways to find the course again.** Selecting a hole in the list frames it,
+so an eighteen-hole list is navigation rather than a list of names; and
+`courseIsAdrift` watches for the course being panned off the edge or zoomed down
+to a speck, which puts a **Recenter on course** button under the rail at exactly
+the moment it is useful and nowhere the rest of the time.
+
+That last one broke a browser test in a way worth recording: `geometry.spec.ts`
+placed a basket at a canvas pixel, selected a hole twenty lines later, and
+clicked that same pixel — which the camera had since flown away from. Fixed
+detection is `clickFeature`, which projects the feature's own position at the
+moment of the click.
+
+### Deliberately not in this PR
+
+**The Features section on a hole is still one shot.** A hole with three tees and
+three pins is nine shots and the panel still picks one to describe. Making that
+a real list is the multi-tee work, and it wants layouts first.
+
+---
+
 ## Licensing
 
 **AGPL-3.0-or-later.** The project is donation-funded and publicly hosted, and

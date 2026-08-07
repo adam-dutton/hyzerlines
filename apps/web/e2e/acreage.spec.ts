@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-import { clickMap, course, dragCanvas, openEditor, place, rail } from './fixtures';
+import { clickMap, course, dragCanvas, openEditor, openSection, place, rail } from './fixtures';
 
 /**
  * Boundaries and acreage, through the real UI.
@@ -37,6 +37,24 @@ test.describe('acreage', () => {
     await expect(page.getByText(/[\d.,]+ acres/).first()).toBeVisible();
   });
 
+  /*
+   * With no boundary the site row used to vanish, which was right about not
+   * printing "0 acres" and wrong about everything else: acreage is one of the
+   * two headline numbers in Analysis, and a row that is not there leaves no
+   * trace of what is missing or how to get it.
+   */
+  test('with no boundary, Analysis offers to draw one', async ({ page }) => {
+    await openEditor(page, { zoom: 15 });
+    await openSection(page, 'Analysis');
+
+    await page.getByRole('button', { name: 'Draw a property boundary' }).click();
+
+    // The action arms the tool, so the next click on the map starts drawing.
+    await expect(
+      rail(page).getByRole('button', { name: 'Property boundary', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true');
+  });
+
   test('the chart comparison waits for a foliage density', async ({ page }) => {
     await openEditor(page, { zoom: 15 });
 
@@ -61,6 +79,7 @@ test.describe('acreage', () => {
      * quietly picking a column.
      */
     await page.keyboard.press('Escape');
+    await openSection(page, 'Analysis');
     await expect(page.getByText(/Set the boundary’s foliage density/)).toBeVisible();
     await expect(page.getByText(/The PDGA chart gives/)).toBeHidden();
 

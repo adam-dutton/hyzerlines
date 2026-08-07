@@ -30,9 +30,11 @@ test.describe('drawing', () => {
 
     // Selecting what was just drawn is the behaviour under test: the next thing
     // you want is almost always to name it.
-    const inspector = page.getByText('Target', { exact: true }).first();
-    await expect(inspector).toBeVisible();
-    await expect(page.getByRole('textbox', { name: 'Feature name' })).toBeVisible();
+    // The panel's heading IS the name field, so an unnamed feature shows its
+    // kind as the placeholder rather than as separate read-back text.
+    const name = page.getByRole('textbox', { name: 'Feature name' });
+    await expect(name).toBeVisible();
+    await expect(name).toHaveAttribute('placeholder', 'Target');
   });
 
   test('returns to the select tool after placing a point', async ({ page }) => {
@@ -144,7 +146,7 @@ test.describe('drawing', () => {
 
     const name = page.getByRole('textbox', { name: 'Feature name' });
     await name.fill('Hole 7 pin');
-    await expect(page.getByText('Hole 7 pin')).toBeVisible();
+    await expect(name).toHaveValue('Hole 7 pin');
 
     // Focus the canvas first: undo inside a text field is the browser's own.
     // Middle of the viewport, clear of the docked panels on either side.

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-import { openEditor, place, waitForSave } from './fixtures';
+import { clickMap, openEditor, place, waitForSave } from './fixtures';
 
 /**
  * Holes, par and design checks, through the real UI.
@@ -35,6 +35,28 @@ test.describe('holes', () => {
         .first(),
     ).toBeVisible();
     await expect(page.getByText(/· Par \d/)).toBeVisible();
+  });
+
+  /*
+   * The corridor is the biggest thing a hole draws and it was inert — clicking
+   * the shape that *is* the hole did nothing, while the number floating in the
+   * middle of it was the only target. It carries a `selectAs` pointing at the
+   * hole, so a click on it lands where the eye already is.
+   *
+   * Browser-only: it is a question about hit-testing order, and the corridor is
+   * the last interactive layer precisely so that a tee on top of it still wins.
+   */
+  test('clicking a fairway corridor selects its hole', async ({ page }) => {
+    await openEditor(page, { zoom: 16 });
+    await place(page, 'Tee pad', 400, 500);
+    await place(page, 'Target', 800, 300);
+    await page.getByRole('button', { name: 'Add hole' }).click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('textbox', { name: 'Hole name' })).toBeHidden();
+
+    // A third of the way along the shot, off the line itself.
+    await clickMap(page, 545, 425);
+    await expect(page.getByRole('textbox', { name: 'Hole name' })).toBeVisible();
   });
 
   test('par can be overridden, and the override persists across a reload', async ({ page }) => {
@@ -126,7 +148,7 @@ test.describe('holes', () => {
 
     // Select the tee to reach its properties, then colour it Gold.
     await page.getByRole('button', { name: 'Select Tee pad' }).click();
-    const colour = page.getByRole('combobox', { name: 'Colour' });
+    const colour = page.getByRole('combobox', { name: 'Skill color' });
     await colour.selectOption('gold');
     await expect(colour).toHaveValue('gold');
 

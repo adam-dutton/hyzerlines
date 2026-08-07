@@ -1,6 +1,13 @@
 import { test, expect, type Page } from '@playwright/test';
 
-import { openEditor, place, waitForSave } from './fixtures';
+import {
+  openEditor,
+  openSection,
+  place,
+  setSwitch,
+  switchControl,
+  waitForSave,
+} from './fixtures';
 
 /**
  * The switches that decide what the map draws.
@@ -38,11 +45,10 @@ async function courseWithAHole(page: Page): Promise<void> {
   await place(page, 'Tee pad', 420, 480);
   await place(page, 'Target', 820, 260);
   await page.getByRole('button', { name: 'Add hole' }).click();
-  // Back to the course panel, which is where the course-wide switches are.
+  // Back to the course panel, then into the section the switches fold into.
   await page.keyboard.press('Escape');
+  await openSection(page, 'Settings');
 }
-
-const check = (page: Page, name: string) => page.getByRole('checkbox', { name, exact: true });
 
 test.describe('drawing aids', () => {
   test('the course switches turn fairways off, in halves and altogether', async ({ page }) => {
@@ -53,7 +59,7 @@ test.describe('drawing aids', () => {
 
     // One half at a time: the corridor is how much room the shot has, the line
     // is where it goes, and they are worth seeing separately.
-    await check(page, 'Corridors').uncheck();
+    await setSwitch(page, 'Corridors', false);
     await expectDrawn(page, 'derived-corridor').toBe(0);
     await expectDrawn(page, 'derived-centreline').toBeGreaterThan(0);
 
@@ -62,15 +68,15 @@ test.describe('drawing aids', () => {
      * fairways off, both halves go and neither child is reachable — otherwise
      * "off" would be a state you could half-escape from.
      */
-    await check(page, 'Corridors').check();
-    await check(page, 'Fairways').uncheck();
+    await setSwitch(page, 'Corridors', true);
+    await setSwitch(page, 'Fairways', false);
     await expectDrawn(page, 'derived-corridor').toBe(0);
     await expectDrawn(page, 'derived-centreline').toBe(0);
-    await expect(check(page, 'Lines')).toBeDisabled();
-    await expect(check(page, 'Corridors')).toBeDisabled();
+    await expect(switchControl(page, 'Lines')).toBeDisabled();
+    await expect(switchControl(page, 'Corridors')).toBeDisabled();
 
     // And back, with the children remembering where they were.
-    await check(page, 'Fairways').check();
+    await setSwitch(page, 'Fairways', true);
     await expectDrawn(page, 'derived-corridor').toBeGreaterThan(0);
   });
 
@@ -79,10 +85,10 @@ test.describe('drawing aids', () => {
 
     await expectDrawn(page, 'derived-circle').toBe(3);
 
-    await check(page, 'Circle 2').uncheck();
+    await setSwitch(page, 'Circle 2', false);
     await expectDrawn(page, 'derived-circle').toBe(2);
 
-    await check(page, 'Putting circles').uncheck();
+    await setSwitch(page, 'Putting circles', false);
     await expectDrawn(page, 'derived-circle').toBe(0);
   });
 
@@ -97,10 +103,10 @@ test.describe('drawing aids', () => {
       .getByRole('button', { name: /Hole 1/ })
       .first()
       .click();
-    await expect(check(page, 'Show fairway')).toBeChecked();
+    await expect(switchControl(page, 'Show fairway')).toBeChecked();
     await expectDrawn(page, 'edit-midpoint').toBeGreaterThan(0);
 
-    await check(page, 'Show fairway').uncheck();
+    await setSwitch(page, 'Show fairway', false);
     await expectDrawn(page, 'derived-corridor').toBe(0);
     await expectDrawn(page, 'derived-centreline').toBe(0);
     await expectDrawn(page, 'edit-midpoint').toBe(0);
@@ -112,13 +118,15 @@ test.describe('drawing aids', () => {
 
   test('the switches survive a reload', async ({ page }) => {
     await courseWithAHole(page);
-    await check(page, 'Putting circles').uncheck();
+    await setSwitch(page, 'Putting circles', false);
 
     await waitForSave(page);
     await page.reload();
     await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
     await page.waitForTimeout(500);
 
+    // Read off the map, not off the panel: what survived a reload is the
+    // document's business, and the section it is set from starts closed again.
     await expectDrawn(page, 'derived-circle').toBe(0);
   });
 });

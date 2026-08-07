@@ -29,6 +29,7 @@ import { useNavigation } from './map/useNavigation';
 import { frameFeatures } from './map/frame';
 import type { Tool } from './map/tools';
 import { ToolRail } from './chrome/ToolRail';
+import { RecenterButton } from './chrome/RecenterButton';
 import { RightPanel } from './chrome/RightPanel';
 import type { SelectedPair } from './chrome/HoleProperties';
 import { LeftPanel } from './chrome/LeftPanel';
@@ -51,8 +52,16 @@ export function CourseEditor({
 }: {
   units: UnitSystem;
   hidden: boolean;
-  /** Built by the shell — see the note where it is passed in. */
-  coursePanel: ReactNode;
+  /**
+   * Built by the shell — see the note where it is passed in.
+   *
+   * A function rather than a node because the panel has one control that
+   * reaches back into the editor: the prompt to draw a property boundary,
+   * which has to arm a tool. Tool state belongs here, next to the map that
+   * uses it, so the editor hands the panel the actions it needs rather than
+   * the shell reaching in for them.
+   */
+  coursePanel: (api: { drawBoundary: () => void }) => ReactNode;
 }) {
   const { map } = useMap();
   const { course, dispatch, documentEpoch, undo, redo, canUndo, canRedo } = useCourse();
@@ -183,6 +192,43 @@ export function CourseEditor({
     // the last hole's tee, which would almost never be one of its own.
     setPairChoice(null);
   }, []);
+
+  /** Everything a hole is made of, for framing it. */
+  const holeFeatures = useCallback(
+    (id: string) => {
+      const hole = course.holes.find((h) => h.id === id);
+      if (!hole) return [];
+      const ids = new Set<string>([...hole.teeIds, ...hole.targetIds]);
+      for (const pair of course.pairs) {
+        if (pair.fairwayId && ids.has(pair.teeId) && ids.has(pair.targetId)) {
+          ids.add(pair.fairwayId);
+        }
+      }
+      return course.features.filter((f) => ids.has(f.id));
+    },
+    [course.features, course.holes, course.pairs],
+  );
+
+  /**
+   * Selecting a hole from the list also flies to it.
+   *
+   * The list is navigation as much as it is a scorecard — it is how you move
+   * around a course once there are eighteen of them, and picking hole 12 out
+   * of it and then having to find hole 12 on the map is the list doing half
+   * its job.
+   *
+   * Deliberately not wired to `selectHole` itself. Clicking a hole *on the
+   * map* also selects it, and moving the camera out from under a click is
+   * disorienting in a way that clicking a list row is not — you can already
+   * see what you clicked.
+   */
+  const selectHoleFromList = useCallback(
+    (id: string | null) => {
+      selectHole(id);
+      if (id && map) frameFeatures(map, holeFeatures(id), { duration: 400 });
+    },
+    [holeFeatures, map, selectHole],
+  );
 
   /**
    * Clicking on the map: the hole first, the feature on the way in.
@@ -531,6 +577,8 @@ export function CourseEditor({
 
       {!hidden && (
         <>
+          <RecenterButton features={course.features} onRecenter={() => frameCourse()} />
+
           <ToolRail
             tool={nav.effective}
             invertZoom={nav.invertZoom}
@@ -546,12 +594,12 @@ export function CourseEditor({
             units={units}
             findings={findings}
             selectedHoleId={selectedHoleId}
-            onSelectHole={selectHole}
+            onSelectHole={selectHoleFromList}
             onOp={handleOp}
             onAddHole={addHole}
             onRevealFinding={reveal}
             onDismissRule={dismissRule}
-            header={coursePanel}
+            header={coursePanel({ drawBoundary: () => setTool('boundary') })}
           />
 
           <RightPanel
@@ -564,6 +612,7 @@ export function CourseEditor({
             onDeleteFeature={deleteSelected}
             onDeleteHole={deleteSelectedHole}
             onSelectFeature={selectFeature}
+            onSelectHole={selectHole}
             onSelectPair={setPairChoice}
             onClearSelection={() => {
               setSelectedId(null);

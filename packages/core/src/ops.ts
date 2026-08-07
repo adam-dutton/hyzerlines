@@ -1,4 +1,4 @@
-import type { Course } from './schema.js';
+import { DESCRIPTION_MAX, type Course } from './schema.js';
 import type { Display } from './display.js';
 import type { View } from './geo.js';
 import type { Feature, Geometry } from './features.js';
@@ -22,6 +22,8 @@ export type Op =
   | { type: 'setView'; view: View }
   | { type: 'setBasemap'; basemapId: string }
   | { type: 'setNotes'; notes: string }
+  | { type: 'setLocation'; location: string }
+  | { type: 'setDescription'; description: string }
   | { type: 'addFeature'; feature: Feature }
   | { type: 'removeFeature'; id: string }
   /**
@@ -152,6 +154,23 @@ export function applyOp(course: Course, op: Op): ApplyResult {
       return result(
         { ...course, notes: op.notes },
         { type: 'setNotes', notes: course.notes },
+        undoable,
+      );
+
+    case 'setLocation':
+      return result(
+        { ...course, location: op.location },
+        { type: 'setLocation', location: course.location },
+        undoable,
+      );
+
+    case 'setDescription':
+      return result(
+        // Truncated rather than refused: this arrives a keystroke at a time,
+        // and dropping the whole edit on the character that goes over reads as
+        // the field having died.
+        { ...course, description: op.description.slice(0, DESCRIPTION_MAX) },
+        { type: 'setDescription', description: course.description },
         undoable,
       );
 
@@ -451,7 +470,12 @@ export function canCoalesce(previous: Op, next: Op, msSincePrevious: number): bo
   if (previous.type !== next.type) return false;
 
   switch (next.type) {
+    // Free text on the course itself. A run of typing is one edit — undo after
+    // naming a course should clear the name, not walk back a letter at a time.
     case 'setName':
+    case 'setNotes':
+    case 'setLocation':
+    case 'setDescription':
       return true;
     // Same field on the same feature only. Merging edits to two different
     // features, or two different fields, would make undo skip whole changes.

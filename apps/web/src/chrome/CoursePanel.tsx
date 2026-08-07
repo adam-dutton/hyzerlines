@@ -1,9 +1,17 @@
-import { Panel, TextField, type ThemeName } from '@hyzerlines/design';
-import { totalLength, totalPar, viewHoles, type Course, type Op } from '@hyzerlines/core';
+import { Panel, TextArea, TextField, type ThemeName } from '@hyzerlines/design';
+import {
+  DESCRIPTION_MAX,
+  totalLength,
+  totalPar,
+  viewHoles,
+  type Course,
+  type Op,
+} from '@hyzerlines/core';
 
 import { formatDistance, type UnitSystem } from '../units';
 import { CourseMenu } from './CourseMenu';
 import { CourseProperties } from './CourseProperties';
+import { useAutoLocation } from './useAutoLocation';
 import type { SaveStatus } from '../document/CourseProvider';
 
 /**
@@ -82,6 +90,7 @@ export function CoursePanel({
   onOpen,
   onSave,
   onUnitsChange,
+  onDrawBoundary,
 }: {
   course: Course;
   units: UnitSystem;
@@ -93,6 +102,7 @@ export function CoursePanel({
   onOpen: () => void;
   onSave: () => void;
   onUnitsChange: (units: UnitSystem) => void;
+  onDrawBoundary: () => void;
 }) {
   const views = viewHoles(course, course.holes);
   const holes = course.holes.length;
@@ -110,6 +120,12 @@ export function CoursePanel({
       ? 'No holes yet'
       : `${holes} ${holes === 1 ? 'hole' : 'holes'} · Par ${totalPar(views.values())} · ${formatDistance(totalLength(views.values()), units)}`;
 
+  useAutoLocation({
+    location: course.location,
+    hasFeatures: course.features.length > 0,
+    onResolved: (location) => onOp({ type: 'setLocation', location }),
+  });
+
   return (
     <Panel
       as="section"
@@ -124,42 +140,88 @@ export function CoursePanel({
        * nothing, which is not a subtle failure: the Add hole button ends up
        * clipped out of reach behind the findings card.
        */
-      className="flex max-h-[45%] min-h-0 flex-col overflow-hidden"
+      className="flex max-h-[70%] min-h-0 flex-col overflow-hidden"
       aria-label="Course"
     >
-      <header className="flex shrink-0 items-start gap-1.5 border-b border-border-subtle px-2.5 py-2">
-        <span className="mt-1 text-text-primary">
-          <Mark />
-        </span>
-        <div className="min-w-0 flex-1">
+      <header className="shrink-0 border-b border-border-subtle px-2.5 py-2">
+        <div className="flex items-start gap-1.5">
+          <span className="mt-1 text-text-primary">
+            <Mark />
+          </span>
+          <div className="min-w-0 flex-1">
+            <TextField
+              label="Course name"
+              variant="bare"
+              size="sm"
+              value={course.name}
+              placeholder="Untitled course"
+              onChange={(e) => onOp({ type: 'setName', name: e.target.value })}
+              spellCheck={false}
+              className="w-full font-medium"
+            />
+            <p className="truncate px-1 font-mono text-2xs tabular-nums text-text-muted">
+              {stats}
+            </p>
+          </div>
+          <SaveIndicator status={saveStatus} />
+          <CourseMenu
+            theme={theme}
+            onToggleTheme={onToggleTheme}
+            onShowShortcuts={onShowShortcuts}
+            onOpen={onOpen}
+            onSave={onSave}
+          />
+        </div>
+
+        {/*
+          Location and description, both bare like the name above them.
+
+          A form row apiece would double the height of the header for two
+          fields that are usually filled once and then only read. As bare
+          inputs they read as the subtitle they are, and the placeholders do
+          the work a label would — which is the same trade the course name
+          already makes.
+        */}
+        <div className="mt-0.5 pl-6">
           <TextField
-            label="Course name"
+            label="Course location"
             variant="bare"
             size="sm"
-            value={course.name}
-            placeholder="Untitled course"
-            onChange={(e) => onOp({ type: 'setName', name: e.target.value })}
-            spellCheck={false}
-            className="w-full font-medium"
+            value={course.location}
+            placeholder="Add a location"
+            onChange={(e) => onOp({ type: 'setLocation', location: e.target.value })}
+            className="w-full text-2xs text-text-secondary"
           />
-          <p className="truncate px-1 font-mono text-2xs tabular-nums text-text-muted">
-            {stats}
-          </p>
+          {/*
+            The description is the one that wraps.
+
+            As a single-line input it truncated at the panel's width, so a
+            sentence you had just typed became unreadable the moment you left
+            the field — the field was hiding its own contents. It grows
+            downwards instead; there is room below it, and the 280-character
+            cap keeps "grows" from meaning "takes the column". See `TextArea`.
+          */}
+          <TextArea
+            label="Course description"
+            variant="bare"
+            size="sm"
+            value={course.description}
+            maxLength={DESCRIPTION_MAX}
+            placeholder="Add a description"
+            onChange={(e) => onOp({ type: 'setDescription', description: e.target.value })}
+            className="w-full text-2xs leading-4 text-text-secondary"
+          />
         </div>
-        <SaveIndicator status={saveStatus} />
-        <CourseMenu
-          theme={theme}
-          onToggleTheme={onToggleTheme}
-          onShowShortcuts={onShowShortcuts}
-          onOpen={onOpen}
-          onSave={onSave}
-          units={units}
-          onUnitsChange={onUnitsChange}
-        />
       </header>
 
       <div className="min-h-0 overflow-y-auto">
-        <CourseProperties course={course} units={units} onOp={onOp} />
+        <CourseProperties
+          course={course}
+          units={units}
+          onOp={onOp}
+          onUnitsChange={onUnitsChange}
+          onDrawBoundary={onDrawBoundary}
+        />
       </div>
     </Panel>
   );
