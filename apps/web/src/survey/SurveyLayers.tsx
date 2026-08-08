@@ -4,6 +4,7 @@ import type { Overlays } from '@hyzerlines/core';
 import { useMap } from '../map/MapContext';
 import {
   applySurveyLayers,
+  applySurveyStyling,
   applySurveyVisibility,
   removeSurveyLayers,
 } from '../map/surveyLayers';
@@ -17,10 +18,13 @@ import type { UnitSystem } from '../units';
  * the map — see the note there — and because these effects have to run inside
  * `MapCanvas`, which is what provides `MapContext`.
  *
- * Two effects rather than one, and the split is load-bearing: installing tears
- * down and rebuilds the contour source, which throws away every isoline already
+ * Three effects, and the split is load-bearing: installing tears down and
+ * rebuilds the contour source, which throws away every isoline already
  * computed. Flipping a switch must not do that, so visibility is its own effect
- * with `overlays` as a dependency and installation is not.
+ * and appearance is another, and installation depends on neither.
+ *
+ * Softness is the exception that has to reinstall — it sets how deep a DEM the
+ * shading reads, and a source's `maxzoom` is fixed at construction.
  */
 export function SurveyLayers({
   state,
@@ -50,10 +54,14 @@ export function SurveyLayers({
      * Listing it here would rebuild the contour source on every switch.
      */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, ready, units]);
+  }, [map, ready, units, overlays.hillshadeSoftness]);
 
   useEffect(() => {
     if (map && ready) applySurveyVisibility(map, overlays);
+  }, [map, ready, overlays]);
+
+  useEffect(() => {
+    if (map && ready) applySurveyStyling(map, overlays);
   }, [map, ready, overlays]);
 
   return null;

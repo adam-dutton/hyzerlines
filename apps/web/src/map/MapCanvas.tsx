@@ -8,6 +8,8 @@ import { MapContext, type MapViewState } from './MapContext';
 import {
   applyBasemap,
   applyContourUnits,
+  applyDemSoftness,
+  applyOverlayStyling,
   applyOverlays,
   buildStyle,
   styleReady,
@@ -175,11 +177,20 @@ export function MapCanvas({
       if (!styleReady(map)) return false;
       const desired = desiredRef.current;
       applyBasemap(map, desired.basemapId);
-      applyOverlays(
-        map,
-        desired.suppressTerrain ? { hillshade: false, contours: false } : desired.overlays,
-      );
-      applyContourUnits(map, desired.units);
+      /*
+       * Suppression turns the global overlays off without touching the rest of
+       * the settings: an imported survey draws its own hillshade and contours
+       * from the same opacity and softness, so those must survive the switch
+       * or the shading would jump when a survey arrived.
+       */
+      const effective = desired.suppressTerrain
+        ? { ...desired.overlays, hillshade: false, contours: false }
+        : desired.overlays;
+
+      applyOverlays(map, effective);
+      applyOverlayStyling(map, effective);
+      applyDemSoftness(map, effective);
+      applyContourUnits(map, desired.units, effective.contourSmoothing);
       return true;
     };
 

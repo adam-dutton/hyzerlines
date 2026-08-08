@@ -411,6 +411,17 @@ course should be a network request they did not ask for.
 Additive with defaults, so no version bump — a document written before this
 existed parses with both off, which is what it was showing.
 
+**The adjustments live here too.** `hillshadeOpacity`, `hillshadeSoftness`,
+`contourOpacity` and `contourSmoothing` are in the document for the same reason
+the switches are: a course sent to a reviewer with the shading turned down was
+sent that way on purpose. Each defaults to the appearance that existed before it
+was adjustable, so an older document opens unchanged.
+
+`OverlaySwitch` and `OverlayAmount` are derived from the schema rather than
+listed, so a new field lands in one set or the other automatically and every
+consumer that has to handle it fails to compile until it does — the same
+discipline that keeps an overlay from existing with no control for it.
+
 **What the numbers are worth is part of the model.** The elevation source is
 roughly 10m over the US and 30m elsewhere. That will show a ridge, a bowl and a
 fall line; it will not show a two-metre mound behind a green, and a contour drawn

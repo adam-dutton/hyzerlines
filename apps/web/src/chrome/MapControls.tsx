@@ -1,5 +1,5 @@
-import { IconButton, Panel, Popover, Switch, cn } from '@hyzerlines/design';
-import type { Overlays } from '@hyzerlines/core';
+import { IconButton, Panel, Popover, Slider, Switch, cn } from '@hyzerlines/design';
+import type { OverlayAmount, Overlays, OverlaySwitch } from '@hyzerlines/core';
 
 import { useMap } from '../map/MapContext';
 import { basemaps } from '../map/basemaps';
@@ -55,6 +55,71 @@ function GroupTitle({ children }: { children: string }) {
     </p>
   );
 }
+
+/**
+ * What each overlay can be adjusted by.
+ *
+ * Keyed by the switch it sits under, so a control can only exist for something
+ * that can be turned on — and adding a field to `Overlays` without deciding
+ * where it belongs is a compile error rather than a setting only a file can
+ * reach, which is the same discipline `OVERLAY_DEFINITIONS` enforces.
+ *
+ * ## Why softness is a count of steps rather than a blur radius
+ *
+ * MapLibre has no blur for a hillshade, and a screen-space blur is not the
+ * remedy anyway: 1m LiDAR shading looks like gravel because it is resolving
+ * tree crowns, and the answer is to read the terrain at a coarser step. Each
+ * step halves the grid, so there are three settings and not a continuum —
+ * offering tenths of a step would be a control that mostly does nothing.
+ */
+const SLIDERS: Record<
+  OverlaySwitch,
+  readonly {
+    field: OverlayAmount;
+    label: string;
+    min: number;
+    max: number;
+    step: number;
+    format: (value: number) => string;
+  }[]
+> = {
+  hillshade: [
+    {
+      field: 'hillshadeOpacity',
+      label: 'Opacity',
+      min: 0,
+      max: 1,
+      step: 0.05,
+      format: (v) => `${Math.round(v * 100)}%`,
+    },
+    {
+      field: 'hillshadeSoftness',
+      label: 'Softness',
+      min: 0,
+      max: 2,
+      step: 1,
+      format: (v) => (v === 0 ? 'Sharp' : v === 1 ? 'Soft' : 'Softest'),
+    },
+  ],
+  contours: [
+    {
+      field: 'contourOpacity',
+      label: 'Opacity',
+      min: 0,
+      max: 1,
+      step: 0.05,
+      format: (v) => `${Math.round(v * 100)}%`,
+    },
+    {
+      field: 'contourSmoothing',
+      label: 'Smoothing',
+      min: 0,
+      max: 2,
+      step: 1,
+      format: (v) => (v === 0 ? 'Off' : v === 1 ? 'Some' : 'More'),
+    },
+  ],
+};
 
 export function MapControls({
   basemapId,
@@ -159,21 +224,54 @@ export function MapControls({
           <div className="border-t border-border-subtle pb-2">
             <GroupTitle>Terrain</GroupTitle>
             {OVERLAY_DEFINITIONS.map((overlay) => (
-              <div
-                key={overlay.id}
-                className="flex items-center justify-between gap-3 px-3 py-1"
-              >
-                <span className="min-w-0">
-                  <span className="block text-xs text-text-secondary">{overlay.label}</span>
-                  <span className="block truncate text-2xs text-text-muted">
-                    {overlay.hint}
+              <div key={overlay.id}>
+                <div className="flex items-center justify-between gap-3 px-3 py-1">
+                  <span className="min-w-0">
+                    <span className="block text-xs text-text-secondary">{overlay.label}</span>
+                    <span className="block truncate text-2xs text-text-muted">
+                      {overlay.hint}
+                    </span>
                   </span>
-                </span>
-                <Switch
-                  label={overlay.label}
-                  checked={overlays[overlay.id]}
-                  onChange={(on) => onOverlaysChange({ [overlay.id]: on })}
-                />
+                  <Switch
+                    label={overlay.label}
+                    checked={overlays[overlay.id]}
+                    onChange={(on) => onOverlaysChange({ [overlay.id]: on })}
+                  />
+                </div>
+
+                {/*
+                  The adjustments belong to the switch above them, and stay put
+                  when it is off — disabled rather than hidden, so the group
+                  keeps its shape and you can see what turning it back on would
+                  restore. The same rule the inspector's indented toggles follow.
+                */}
+                <div className="pl-6 pr-3">
+                  {SLIDERS[overlay.id].map((slider) => (
+                    <div
+                      key={slider.field}
+                      className="flex items-center justify-between gap-2 py-0.5"
+                    >
+                      <span
+                        className={cn(
+                          'text-2xs',
+                          overlays[overlay.id] ? 'text-text-muted' : 'text-text-disabled',
+                        )}
+                      >
+                        {slider.label}
+                      </span>
+                      <Slider
+                        label={`${overlay.label} ${slider.label.toLowerCase()}`}
+                        value={overlays[slider.field]}
+                        min={slider.min}
+                        max={slider.max}
+                        step={slider.step}
+                        disabled={!overlays[overlay.id]}
+                        format={slider.format}
+                        onChange={(value) => onOverlaysChange({ [slider.field]: value })}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
             {/*

@@ -400,3 +400,62 @@ test.describe('survey vertical units', () => {
     }
   });
 });
+
+/**
+ * The adjustments, over an imported survey.
+ *
+ * A separate code path from the global overlays — its own sources, its own
+ * contour protocol, its own hillshade layer — and the whole point of the
+ * settings living in one place is that both obey them. If they diverged,
+ * importing a survey would silently restyle the terrain, which looks like the
+ * data changed rather than the source.
+ */
+test.describe('survey overlay adjustments', () => {
+  test('the survey hillshade and contours follow the same settings', async ({ page }) => {
+    await openEditor(page, { center: [-93.1, 44.9], zoom: 16 });
+    await openLayers(page);
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'survey-1m.tif',
+      mimeType: 'image/tiff',
+      buffer: await fakeSurveyGeoTiff(),
+    });
+    await expect
+      .poll(async () => (await course(page)).siteSurvey !== null, { timeout: 20_000 })
+      .toBe(true);
+
+    await openLayers(page);
+    await setSwitch(page, 'Hillshade', true);
+    await setSwitch(page, 'Contours', true);
+
+    await page.getByRole('slider', { name: 'Hillshade opacity' }).fill('0.4');
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          window.hyzerlinesMap!.getLayer('survey-hillshade')
+            ? window.hyzerlinesMap!.getPaintProperty(
+                'survey-hillshade',
+                'hillshade-shadow-color',
+              )
+            : null,
+        ),
+      )
+      .toBe('rgba(0, 0, 0, 0.4)');
+
+    /*
+     * The survey's contour url is stable apart from this, which is exactly why
+     * the smoothing has to appear in it: MapLibre keeps a source's traced tiles
+     * unless the url changes, so a setting that must retrace has nowhere else
+     * to be seen.
+     */
+    await page.getByRole('slider', { name: 'Contours smoothing' }).fill('2');
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window.hyzerlinesMap!.getSource('survey-contours') as { tiles?: string[] })
+              ?.tiles?.[0],
+        ),
+      )
+      .toContain('s=2');
+  });
+});

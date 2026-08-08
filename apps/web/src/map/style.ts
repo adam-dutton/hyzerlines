@@ -11,6 +11,7 @@ import {
   HILLSHADE_LAYER,
   contourTilesUrl,
   demSourceSpec,
+  shadowColor,
   terrainLayers,
 } from './terrain';
 import type { UnitSystem } from '../units';
@@ -56,8 +57,12 @@ export function buildStyle(
   const active = basemapById(basemapId);
 
   const sources: StyleSpecification['sources'] = {
-    [DEM_SOURCE]: demSourceSpec(),
-    [CONTOUR_SOURCE]: { type: 'vector', tiles: [contourTilesUrl(units)], maxzoom: 14 },
+    [DEM_SOURCE]: demSourceSpec(overlays.hillshadeSoftness),
+    [CONTOUR_SOURCE]: {
+      type: 'vector',
+      tiles: [contourTilesUrl(units, overlays.contourSmoothing)],
+      maxzoom: 14,
+    },
   };
   for (const basemap of basemaps) {
     sources[basemap.id] = {
@@ -87,10 +92,18 @@ export function buildStyle(
 }
 
 /** Layers governed by each overlay switch. */
-const OVERLAY_LAYERS: Record<keyof Overlays, readonly string[]> = {
+/**
+ * The switches, and what each one shows.
+ *
+ * Keyed by the two boolean fields rather than by `keyof Overlays`, which now
+ * also carries opacities and softness — those are not things that can be shown
+ * or hidden, and typing this against the whole record would have demanded a
+ * layer list for a number.
+ */
+const OVERLAY_LAYERS = {
   hillshade: [HILLSHADE_LAYER],
   contours: [CONTOUR_LINE_LAYER, CONTOUR_LABEL_LAYER],
-};
+} satisfies Record<string, readonly string[]>;
 
 function setVisible(map: maplibregl.Map, layerId: string, visible: boolean): void {
   // Guarded because these run from effects that can fire before the style JSON
@@ -124,9 +137,94 @@ export function applyBasemap(map: maplibregl.Map, basemapId: string): void {
 
 export function applyOverlays(map: maplibregl.Map, overlays: Overlays): void {
   for (const [key, layers] of Object.entries(OVERLAY_LAYERS)) {
-    const on = overlays[key as keyof Overlays];
+    const on = overlays[key as keyof typeof OVERLAY_LAYERS];
     for (const layer of layers) setVisible(map, layer, on);
   }
+}
+
+/**
+ * The overlays' appearance, as live paint properties.
+ *
+ * Separate from `applyOverlays` because these are cheap in a way visibility is
+ * not interesting about: `setPaintProperty` re-renders the frame and touches
+ * nothing else, so a slider can drive it directly at pointer rate. Softness is
+ * the exception and has its own function below, because it changes what is
+ * fetched rather than how it is drawn.
+ *
+ * The survey's layers take the same treatment from `applySurveyStyling`; both
+ * read the same fields, so an imported survey and the global model shade
+ * identically and switching between them looks like a change of data rather
+ * than a change of settings.
+ */
+export function applyOverlayStyling(map: maplibregl.Map, overlays: Overlays): void {
+  setHillshadeOpacity(map, HILLSHADE_LAYER, overlays.hillshadeOpacity);
+  setContourOpacity(map, CONTOUR_LINE_LAYER, CONTOUR_LABEL_LAYER, overlays.contourOpacity);
+}
+
+/** Shared with the survey's hillshade, so the two never drift apart. */
+export function setHillshadeOpacity(
+  map: maplibregl.Map,
+  layerId: string,
+  opacity: number,
+): void {
+  if (!map.getLayer(layerId)) return;
+  map.setPaintProperty(layerId, 'hillshade-shadow-color', shadowColor(opacity));
+}
+
+export function setContourOpacity(
+  map: maplibregl.Map,
+  lineId: string,
+  labelId: string,
+  opacity: number,
+): void {
+  if (map.getLayer(lineId)) {
+    map.setPaintProperty(lineId, 'line-opacity', [
+      'case',
+      ['>', ['get', 'level'], 0],
+      0.7 * opacity,
+      0.45 * opacity,
+    ]);
+  }
+  /*
+   * The labels follow the lines, at full strength rather than scaled.
+   *
+   * A contour's number is the only part of it carrying a value, and turning the
+   * lines down is usually done to stop them competing with the imagery — not to
+   * stop being able to read the heights. They go when the layer goes.
+   */
+  if (map.getLayer(labelId)) {
+    map.setPaintProperty(labelId, 'text-opacity', opacity === 0 ? 0 : 1);
+  }
+}
+
+/**
+ * Re-point the DEM when the softness changes what depth to read.
+ *
+ * A `raster-dem` source's `maxzoom` is fixed at construction, so this is a
+ * remove-and-re-add — the same reason `applySurveyLayers` tears itself down. It
+ * is the expensive one of these, which is why it compares first: dropping the
+ * source throws away every decoded elevation tile, and doing that to arrive at
+ * the same depth would be a stutter for nothing.
+ */
+export function applyDemSoftness(map: maplibregl.Map, overlays: Overlays): void {
+  const spec = demSourceSpec(overlays.hillshadeSoftness);
+  const existing = map.getSource(DEM_SOURCE) as { maxzoom?: number } | undefined;
+  if (!existing || existing.maxzoom === spec.maxzoom) return;
+
+  /*
+   * The layer has to go first and come back in the same place. MapLibre refuses
+   * to remove a source anything still references, and re-adding a layer without
+   * `beforeId` would append it over the course.
+   */
+  const layer = map.getLayer(HILLSHADE_LAYER) ? map.getStyle().layers : null;
+  const index = layer?.findIndex((l) => l.id === HILLSHADE_LAYER) ?? -1;
+  const before = index >= 0 ? layer?.[index + 1]?.id : undefined;
+  const spec_ = index >= 0 ? layer?.[index] : undefined;
+
+  if (map.getLayer(HILLSHADE_LAYER)) map.removeLayer(HILLSHADE_LAYER);
+  map.removeSource(DEM_SOURCE);
+  map.addSource(DEM_SOURCE, spec);
+  if (spec_) map.addLayer(spec_, before);
 }
 
 /**
@@ -143,12 +241,15 @@ export function applyOverlays(map: maplibregl.Map, overlays: Overlays): void {
  * contour tile already computed, and recomputing them to arrive at identical
  * lines is a stutter for nothing.
  */
-export function applyContourUnits(map: maplibregl.Map, units: UnitSystem): void {
+export function applyContourUnits(map: maplibregl.Map, units: UnitSystem, smoothing = 0): void {
   const source = map.getSource(CONTOUR_SOURCE) as
     { tiles?: string[]; setTiles?: (tiles: string[]) => void } | undefined;
   if (!source?.setTiles) return;
 
-  const url = contourTilesUrl(units);
+  // Smoothing rides in the same url for the same reason the interval does —
+  // it is an argument to the isoline generator, and changing it is what
+  // invalidates the tiles already traced.
+  const url = contourTilesUrl(units, smoothing);
   if (source.tiles?.[0] === url) return;
   source.setTiles([url]);
 }

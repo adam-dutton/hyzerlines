@@ -3,13 +3,14 @@ import type { Overlays, SiteSurvey } from '@hyzerlines/core';
 
 import { SURVEY_TILES_URL, registerSurveyProtocol } from '../survey/protocol';
 import {
-  SURVEY_CONTOUR_TILES_URL,
+  surveyContourTilesUrl,
   prepareSurveyContours,
   registerSurveyContourProtocol,
   setSurveyContourUnits,
 } from '../survey/contourProtocol';
 import { COURSE_BOTTOM_LAYER } from './featureLayers';
 import { contourLayerSpecs, hillshadeLayerSpec } from './terrain';
+import { setContourOpacity, setHillshadeOpacity } from './style';
 import type { UnitSystem } from '../units';
 
 /**
@@ -85,13 +86,19 @@ export function applySurveyLayers(
     tiles: [SURVEY_TILES_URL],
     encoding: 'terrarium',
     tileSize: 256,
-    maxzoom: survey.maxZoom,
+    /*
+     * Softening reads the survey a level or two shallower, which on 1m LiDAR is
+     * the difference between shading the ground and shading the tree canopy.
+     * The tiles exist either way — this only stops asking for the deep ones —
+     * so it costs nothing and is instantly reversible.
+     */
+    maxzoom: Math.max(survey.minZoom, survey.maxZoom - Math.round(overlays.hillshadeSoftness)),
     bounds: survey.bounds,
   });
 
   map.addSource(SURVEY_CONTOUR_SOURCE, {
     type: 'vector',
-    tiles: [SURVEY_CONTOUR_TILES_URL],
+    tiles: [surveyContourTilesUrl(overlays.contourSmoothing)],
     maxzoom: survey.maxZoom,
     bounds: survey.bounds,
   });
@@ -107,12 +114,18 @@ export function applySurveyLayers(
   const beforeId = map.getLayer(COURSE_BOTTOM_LAYER) ? COURSE_BOTTOM_LAYER : undefined;
 
   const layers = [
-    hillshadeLayerSpec(SURVEY_HILLSHADE_LAYER, SURVEY_DEM_SOURCE, overlays.hillshade),
+    hillshadeLayerSpec(
+      SURVEY_HILLSHADE_LAYER,
+      SURVEY_DEM_SOURCE,
+      overlays.hillshade,
+      overlays.hillshadeOpacity,
+    ),
     ...contourLayerSpecs(
       SURVEY_CONTOUR_LINE_LAYER,
       SURVEY_CONTOUR_LABEL_LAYER,
       SURVEY_CONTOUR_SOURCE,
       overlays.contours,
+      overlays.contourOpacity,
     ),
   ];
 
@@ -134,4 +147,33 @@ export function applySurveyVisibility(map: maplibregl.Map, overlays: Overlays): 
       map.setLayoutProperty(layer, 'visibility', on ? 'visible' : 'none');
     }
   }
+}
+
+/**
+ * The survey's appearance, live.
+ *
+ * Reads the same fields the global overlays do and drives them through the same
+ * helpers, so an imported survey and the 10m model shade identically — moving
+ * between them should look like a change of data, never a change of settings.
+ *
+ * Softness is absent on purpose: it changes the source's depth, which cannot be
+ * edited in place, so `SurveyLayers` rebuilds for it instead.
+ */
+export function applySurveyStyling(map: maplibregl.Map, overlays: Overlays): void {
+  setHillshadeOpacity(map, SURVEY_HILLSHADE_LAYER, overlays.hillshadeOpacity);
+  setContourOpacity(
+    map,
+    SURVEY_CONTOUR_LINE_LAYER,
+    SURVEY_CONTOUR_LABEL_LAYER,
+    overlays.contourOpacity,
+  );
+
+  const source = map.getSource(SURVEY_CONTOUR_SOURCE) as
+    { tiles?: string[]; setTiles?: (tiles: string[]) => void } | undefined;
+  if (!source?.setTiles) return;
+
+  // Compared before writing: re-pointing throws away every isoline already
+  // traced, and retracing them to arrive at identical lines is a stutter.
+  const url = surveyContourTilesUrl(overlays.contourSmoothing);
+  if (source.tiles?.[0] !== url) source.setTiles([url]);
 }

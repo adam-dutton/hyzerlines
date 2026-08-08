@@ -209,6 +209,15 @@ how far, not enough for spot heights, and the panel says so where the switch is.
 Contours are quoted in whatever units you have set, and are computed in your
 browser rather than fetched.
 
+Both have their own adjustments, under the switch that turns them on. The
+hillshade takes an **opacity** and a **softness** — the second reads the terrain
+a step or two coarser, which is the useful thing over 1m LiDAR where the shading
+otherwise resolves tree crowns and looks like gravel. The contours take an
+opacity and a **smoothing**, which interpolates the elevation grid before
+tracing so the lines curve instead of showing the facets of the grid they were
+drawn on. None of it invents elevation: smoothing interpolates between measured
+samples and no contour moves to a height the data does not support.
+
 **For real detail, import a site survey.** Nobody hosts 1m elevation for the
 whole world — it is petabytes — but LiDAR at 1m is published free for most of
 the United States ([The National Map](https://apps.nationalmap.gov/downloader/))

@@ -71,8 +71,15 @@ test.describe('terrain overlays', () => {
       expect(await layerVisible(page, layer), `${layer} should start hidden`).toBe(false);
     }
 
+    /*
+     * The switches, not the whole record — it also carries opacities and
+     * softness now, and this test is about what is *shown*. Asserting the
+     * object wholesale made adding an adjustment fail a test about visibility,
+     * which is the assertion being too broad rather than the change being wrong.
+     */
     const { overlays } = await course(page);
-    expect(overlays).toEqual({ hillshade: false, contours: false });
+    expect(overlays.hillshade).toBe(false);
+    expect(overlays.contours).toBe(false);
   });
 
   test('hillshade turns on from the layers panel', async ({ page }) => {
@@ -195,5 +202,152 @@ test.describe('one style, switched rather than swapped', () => {
 
     await chooseBasemap(page, 'Street');
     await expect.poll(() => requested.has('osm'), { timeout: 10_000 }).toBe(true);
+  });
+});
+
+/**
+ * The overlay adjustments.
+ *
+ * The panel is the easy half. What only a browser can answer is whether moving
+ * a slider reaches the *map* — MapLibre validates paint properties at runtime
+ * and rejects a bad one silently, a raster-dem source's `maxzoom` cannot be
+ * edited in place at all, and a contour source keeps its cached tiles unless
+ * its url changes. Each of those is a way for a control to look connected and
+ * do nothing.
+ */
+
+/** A layer's paint property, read back off the live map. */
+const paint = (page: Page, layer: string, property: string): Promise<unknown> =>
+  page.evaluate(
+    ([id, prop]) =>
+      window.hyzerlinesMap!.getLayer(id!)
+        ? window.hyzerlinesMap!.getPaintProperty(id!, prop!)
+        : null,
+    [layer, property],
+  );
+
+const sourceMaxZoom = (page: Page, id: string): Promise<number | undefined> =>
+  page.evaluate(
+    (source) => (window.hyzerlinesMap!.getSource(source) as { maxzoom?: number })?.maxzoom,
+    id,
+  );
+
+const sourceTiles = (page: Page, id: string): Promise<string | undefined> =>
+  page.evaluate(
+    (source) => (window.hyzerlinesMap!.getSource(source) as { tiles?: string[] })?.tiles?.[0],
+    id,
+  );
+
+/** Move one of the terrain sliders. */
+async function setSlider(page: Page, name: string, value: string): Promise<void> {
+  await openLayers(page);
+  await page.getByRole('slider', { name }).fill(value);
+}
+
+test.describe('overlay adjustments', () => {
+  /*
+   * MapLibre has no `hillshade-opacity`, so this rides on the shadow's alpha —
+   * which is exact, because Igor shading with transparent highlights puts down
+   * no other ink. If that ever stopped being true the control would silently
+   * become a no-op, so the assertion is on the property the map actually holds.
+   */
+  test('hillshade opacity reaches the layer', async ({ page }) => {
+    await openEditor(page, { center: [-93.1, 44.9], zoom: 14 });
+    await openLayers(page);
+    await setSwitch(page, 'Hillshade', true);
+
+    expect(await paint(page, 'terrain-hillshade', 'hillshade-shadow-color')).toBe(
+      'rgba(0, 0, 0, 1)',
+    );
+
+    await setSlider(page, 'Hillshade opacity', '0.4');
+    await expect
+      .poll(() => paint(page, 'terrain-hillshade', 'hillshade-shadow-color'))
+      .toBe('rgba(0, 0, 0, 0.4)');
+  });
+
+  /*
+   * Softness is the one that cannot be a paint property: it changes how deep a
+   * DEM the shading reads, and `maxzoom` is fixed when a source is built. So
+   * the source is removed and re-added, and this checks the rebuild happened
+   * *and* left the layer behind it.
+   */
+  test('hillshade softness re-points the elevation source', async ({ page }) => {
+    await openEditor(page, { center: [-93.1, 44.9], zoom: 14 });
+    await openLayers(page);
+    await setSwitch(page, 'Hillshade', true);
+
+    expect(await sourceMaxZoom(page, 'terrain-dem')).toBe(13);
+
+    await setSlider(page, 'Hillshade softness', '2');
+    await expect.poll(() => sourceMaxZoom(page, 'terrain-dem')).toBe(11);
+
+    // The layer survived the source being swapped underneath it.
+    await expect.poll(() => layerVisible(page, 'terrain-hillshade')).toBe(true);
+  });
+
+  test('contour opacity scales the lines but keeps the index contours heavier', async ({
+    page,
+  }) => {
+    await openEditor(page, { center: [-93.1, 44.9], zoom: 14 });
+    await openLayers(page);
+    await setSwitch(page, 'Contours', true);
+
+    await setSlider(page, 'Contours opacity', '0.5');
+
+    await expect
+      .poll(async () => {
+        const value = (await paint(page, 'terrain-contour-line', 'line-opacity')) as unknown[];
+        return Array.isArray(value) ? value.slice(-2) : null;
+      })
+      .toEqual([0.35, 0.225]);
+  });
+
+  /*
+   * Smoothing is an argument to the isoline generator, encoded into the tile
+   * url — which is also what invalidates the lines already traced. A control
+   * that changed the setting without changing the url would leave the old
+   * contours on screen indefinitely.
+   */
+  test('contour smoothing re-points the contour source', async ({ page }) => {
+    await openEditor(page, { center: [-93.1, 44.9], zoom: 14 });
+    await openLayers(page);
+    await setSwitch(page, 'Contours', true);
+
+    const before = await sourceTiles(page, 'terrain-contours');
+    expect(before).toContain('subsampleBelow=256');
+
+    await setSlider(page, 'Contours smoothing', '2');
+    await expect
+      .poll(() => sourceTiles(page, 'terrain-contours'))
+      .toContain('subsampleBelow=1024');
+  });
+
+  /* And the settings travel with the course, like the switches they sit under. */
+  test('the adjustments are part of the document and survive a reload', async ({ page }) => {
+    await openEditor(page, { center: [-93.1, 44.9], zoom: 14 });
+    await openLayers(page);
+    await setSwitch(page, 'Hillshade', true);
+    await setSlider(page, 'Hillshade opacity', '0.3');
+    await waitForSave(page);
+
+    await page.reload();
+    await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
+
+    await expect
+      .poll(() => paint(page, 'terrain-hillshade', 'hillshade-shadow-color'), {
+        timeout: 10_000,
+      })
+      .toBe('rgba(0, 0, 0, 0.3)');
+  });
+
+  /* A slider under a switch that is off is inert, and reads as inert. */
+  test('the adjustments are disabled while their overlay is off', async ({ page }) => {
+    await openEditor(page, { center: [-93.1, 44.9], zoom: 14 });
+    await openLayers(page);
+    await expect(page.getByRole('slider', { name: 'Hillshade opacity' })).toBeDisabled();
+
+    await setSwitch(page, 'Hillshade', true);
+    await expect(page.getByRole('slider', { name: 'Hillshade opacity' })).toBeEnabled();
   });
 });

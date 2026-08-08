@@ -2,7 +2,7 @@ import maplibregl from 'maplibre-gl';
 import mlcontour from 'maplibre-contour';
 import type { LayerSpecification, RasterDEMSourceSpecification } from 'maplibre-gl';
 import { feature as featureColors } from '@hyzerlines/design';
-import type { Overlays } from '@hyzerlines/core';
+import type { Overlays, OverlaySwitch } from '@hyzerlines/core';
 
 import type { UnitSystem } from '../units';
 
@@ -79,14 +79,16 @@ export const demSource = new mlcontour.DemSource({
 
 demSource.setupMaplibre(maplibregl);
 
-export function demSourceSpec(): RasterDEMSourceSpecification {
+export function demSourceSpec(softness = 0): RasterDEMSourceSpecification {
   return {
     type: 'raster-dem',
     // The shared protocol, not the S3 url. See the note on `demSource`.
     tiles: [demSource.sharedDemProtocolUrl],
     encoding: 'terrarium',
     tileSize: 256,
-    maxzoom: MAX_DEM_ZOOM,
+    // Softening stops the source fetching past a coarser level and lets
+    // MapLibre interpolate up. See `demZoomFor`.
+    maxzoom: demZoomFor(softness),
     attribution: TERRAIN_ATTRIBUTION,
   };
 }
@@ -103,7 +105,7 @@ export function demSourceSpec(): RasterDEMSourceSpecification {
  * the technique; "which way the land falls" is why you would turn it on.
  */
 export const OVERLAY_DEFINITIONS: {
-  readonly id: keyof Overlays;
+  readonly id: OverlaySwitch;
   readonly label: string;
   readonly hint: string;
 }[] = [
@@ -168,9 +170,21 @@ export function contourThresholds(units: UnitSystem): {
  * it — `applyContourUnits` swaps the url on the live source rather than
  * rebuilding the style around it.
  */
-export function contourTilesUrl(units: UnitSystem): string {
+export function contourTilesUrl(units: UnitSystem, smoothing = 0): string {
   return demSource.contourProtocolUrl({
     ...contourThresholds(units),
+    /*
+     * Encoded into the url like everything else `maplibre-contour` is
+     * configured with, which is also how changing it invalidates the tiles
+     * already computed.
+     *
+     * It arrives back through the library's own decoder as a string, since only
+     * `extent`, `multiplier`, `overzoom` and `buffer` are coerced to numbers
+     * there. That is harmless — it is compared with `<` and `>=`, which convert
+     * a numeric string before comparing — but it is why this must stay a plain
+     * integer with nothing clever in it.
+     */
+    subsampleBelow: subsampleFor(smoothing),
     // Overzoom one level: a z14 contour tile is generated from the z13 DEM,
     // which is the deepest that exists. Without this the lines simply stop.
     overzoom: 1,
@@ -182,6 +196,33 @@ export function contourTilesUrl(units: UnitSystem): string {
 
 /** Visibility as MapLibre spells it. */
 const shown = (on: boolean) => (on ? ('visible' as const) : ('none' as const));
+
+/** The shadow ink at a given strength. See the note in `hillshadeLayerSpec`. */
+export const shadowColor = (opacity: number): string =>
+  `rgba(0, 0, 0, ${Math.max(0, Math.min(1, opacity))})`;
+
+/**
+ * How deep a DEM to read the shading from, given a softness setting.
+ *
+ * Each level drops one zoom, so the source stops fetching at a coarser step and
+ * MapLibre interpolates back up — a low-pass filter on the ground rather than
+ * on the picture of it. See `hillshadeSoftness` in core.
+ */
+export const demZoomFor = (softness: number): number =>
+  Math.max(0, MAX_DEM_ZOOM - Math.round(softness));
+
+/**
+ * `subsampleBelow`, per smoothing level.
+ *
+ * `maplibre-contour` upsamples its height grid until it is at least this wide
+ * before tracing isolines. The combined 3×3 neighbourhood is 256 across, so
+ * anything at or below that leaves the grid alone; 512 interpolates once and
+ * 1024 twice, each halving the facet length of the drawn line.
+ */
+const CONTOUR_SUBSAMPLE = [256, 512, 1024] as const;
+
+export const subsampleFor = (smoothing: number): number =>
+  CONTOUR_SUBSAMPLE[Math.max(0, Math.min(2, Math.round(smoothing)))] ?? 256;
 
 /**
  * One hillshade layer, over whichever DEM it is given.
@@ -195,6 +236,7 @@ export function hillshadeLayerSpec(
   id: string,
   source: string,
   visible: boolean,
+  opacity = 1,
 ): LayerSpecification {
   return {
     id,
@@ -213,7 +255,15 @@ export function hillshadeLayerSpec(
        */
       'hillshade-method': 'igor',
       'hillshade-exaggeration': 0.5,
-      'hillshade-shadow-color': '#000000',
+      /*
+       * Opacity lives in the shadow's alpha, because there is nowhere else.
+       *
+       * MapLibre has no `hillshade-opacity`. With Igor shading and both the
+       * highlight and accent fully transparent, the shadow is the only ink the
+       * layer puts down — so its alpha *is* the layer's opacity rather than an
+       * approximation of one.
+       */
+      'hillshade-shadow-color': shadowColor(opacity),
       // Fully transparent highlights: over imagery, a white-lit slope washes
       // out the very detail the imagery was chosen for.
       'hillshade-highlight-color': 'rgba(255, 255, 255, 0)',
@@ -228,6 +278,7 @@ export function contourLayerSpecs(
   labelId: string,
   source: string,
   visible: boolean,
+  opacity = 1,
 ): LayerSpecification[] {
   return [
     {
@@ -241,7 +292,13 @@ export function contourLayerSpecs(
         // Index contours carry the labels and the number you actually read, so
         // they are the ones that have to survive being drawn over a photograph.
         'line-width': ['case', ['>', ['get', 'level'], 0], 1.1, 0.6],
-        'line-opacity': ['case', ['>', ['get', 'level'], 0], 0.7, 0.45],
+        /*
+         * Scaled rather than replaced, so the index contours keep reading as
+         * heavier than the minor ones at every setting — that contrast is what
+         * makes the labelled lines findable, and a flat opacity would throw it
+         * away the moment somebody turned the lines down.
+         */
+        'line-opacity': ['case', ['>', ['get', 'level'], 0], 0.7 * opacity, 0.45 * opacity],
       },
     },
     {
@@ -291,12 +348,18 @@ export function contourLayerSpecs(
  */
 export function terrainLayers(overlays: Overlays): LayerSpecification[] {
   return [
-    hillshadeLayerSpec(HILLSHADE_LAYER, DEM_SOURCE, overlays.hillshade),
+    hillshadeLayerSpec(
+      HILLSHADE_LAYER,
+      DEM_SOURCE,
+      overlays.hillshade,
+      overlays.hillshadeOpacity,
+    ),
     ...contourLayerSpecs(
       CONTOUR_LINE_LAYER,
       CONTOUR_LABEL_LAYER,
       CONTOUR_SOURCE,
       overlays.contours,
+      overlays.contourOpacity,
     ),
   ];
 }

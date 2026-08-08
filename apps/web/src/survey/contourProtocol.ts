@@ -2,7 +2,7 @@ import maplibregl from 'maplibre-gl';
 import mlcontour from 'maplibre-contour';
 
 import { readTile } from './store';
-import { contourThresholds } from '../map/terrain';
+import { contourThresholds, subsampleFor } from '../map/terrain';
 import type { UnitSystem } from '../units';
 
 /**
@@ -27,7 +27,18 @@ import type { UnitSystem } from '../units';
 
 export const SURVEY_CONTOUR_PROTOCOL = 'survey-contour';
 
-export const SURVEY_CONTOUR_TILES_URL = `${SURVEY_CONTOUR_PROTOCOL}://tile/{z}/{x}/{y}`;
+/**
+ * The survey's contour tiles, with the smoothing level in the url.
+ *
+ * Units are held in module state and swapped in place — the url is stable for
+ * them — but smoothing cannot be, because there has to be something for
+ * `setTiles` to notice. MapLibre drops a source's cached tiles when its url
+ * changes and keeps them when it does not, so a setting that must retrace the
+ * isolines has to be visible in the url. This is the same reason the global
+ * overlay encodes every generator argument into its own.
+ */
+export const surveyContourTilesUrl = (smoothing = 0): string =>
+  `${SURVEY_CONTOUR_PROTOCOL}://tile/{z}/{x}/{y}?s=${Math.round(smoothing)}`;
 
 const TILE_PATTERN = /\/(\d+)\/(\d+)\/(\d+)/;
 
@@ -115,6 +126,10 @@ export function registerSurveyContourProtocol(): void {
     const levels = levelsFor(Number(z));
     if (levels.length === 0) return { data: new ArrayBuffer(0) };
 
+    // Read back off the url rather than held here, so a tile always traces at
+    // the setting it was requested for even if another change is in flight.
+    const smoothing = Number(/[?&]s=(\d+)/.exec(params.url)?.[1] ?? 0);
+
     try {
       const tile = await manager.fetchContourTile(
         Number(z),
@@ -123,6 +138,9 @@ export function registerSurveyContourProtocol(): void {
         {
           levels,
           multiplier: contourThresholds(units).multiplier,
+          // A real number here, unlike the global path where the library's own
+          // url codec hands it back as a string. See `contourTilesUrl`.
+          subsampleBelow: subsampleFor(smoothing),
           elevationKey: 'ele',
           levelKey: 'level',
           contourLayer: 'contours',
