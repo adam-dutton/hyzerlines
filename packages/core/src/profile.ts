@@ -26,6 +26,112 @@ export interface ProfilePoint {
   elevation: number | null;
 }
 
+/**
+ * How hard to smooth a profile before reading its shape.
+ *
+ * A reading preference, not a property of the course — see `prefs.ts` in the
+ * web app. It changes what the chart draws and the shape statistics below it.
+ * It **cannot** change `netGain`, and therefore cannot change a par.
+ */
+export type Smoothing = 'off' | 'light' | 'medium' | 'strong';
+
+/**
+ * Smoothing windows, in metres of ground.
+ *
+ * Metres rather than samples, because a profile is always 64 points however
+ * long the hole is: a 100m hole samples every 1.6m and a 400m hole every 6.3m,
+ * so a window counted in samples would smooth a short hole savagely and a long
+ * one barely. In metres it means the same thing on every hole.
+ *
+ * The sizes are pinned to the data rather than picked for feel. `light` is one
+ * posting of the global model (~10m) — the width of the sampling staircase and
+ * nothing wider, so it removes the artifact and leaves the terrain: measured
+ * against ground truly falling at 8%, it takes a raw reading of 16.8% down to
+ * 8.6%. `medium` spans a few postings, which is what a long hole needs once 64
+ * samples no longer resolve a 10m grid. `strong` is for reading the shape of a
+ * hillside rather than a hole.
+ *
+ * These are display choices and are labelled as such wherever they are applied.
+ * Nothing here is a PDGA figure and nothing here reaches par.
+ */
+export const SMOOTHING_METERS: Record<Smoothing, number> = {
+  off: 0,
+  light: 10,
+  medium: 25,
+  strong: 50,
+};
+
+/**
+ * Smooth the elevations along a profile, leaving gaps as gaps.
+ *
+ * ## Why this is removing an artifact rather than hiding data
+ *
+ * Elevation is read by nearest neighbour from a raster — the same rule the
+ * resampler used to write it, because bilinear would smear a nodata cell into
+ * its neighbours. That means consecutive samples inside one DEM cell come back
+ * *identical*, and the sample that crosses into the next cell carries the whole
+ * step. On the global model, 10m cells sampled every 4.7m produce grades that
+ * alternate between 0% and 17% down ground that genuinely falls at 8%.
+ *
+ * So the raw series is not the ground: it is the ground plus a staircase whose
+ * width we know. Averaging over that width is what recovers the terrain.
+ *
+ * Gaussian rather than a box average, so a real ridge keeps its height instead
+ * of being clipped — a 20m mound survives light smoothing at 118 of its 120m.
+ *
+ * `windowMeters` is the width of the kernel's ±1σ band: the filter averages
+ * over about that much ground, and is truncated at twice it, which captures
+ * ~95% of the mass. Getting this relationship wrong is easy and quiet — with
+ * sigma a quarter of the window the kernel barely reaches its own neighbours at
+ * 4.7m sample spacing and leaves a 16% staircase reading 12.7%, which looks
+ * like smoothing and is not.
+ *
+ * **The limit is sampling, not filtering.** A profile is 64 points however long
+ * the hole, so a 450m hole samples every 7m — which under-samples a 10m DEM,
+ * and no window recovers what was never measured. Long holes need `medium`.
+ */
+export function smoothProfile(
+  points: readonly ProfilePoint[],
+  windowMeters: number,
+): ProfilePoint[] {
+  if (windowMeters <= 0 || points.length < 3) return [...points];
+
+  const sigma = windowMeters / 2;
+  const limit = windowMeters;
+  const twoSigmaSquared = 2 * sigma * sigma;
+
+  /*
+   * The window stops at a gap rather than reaching over it.
+   *
+   * The chart already refuses to draw a line across missing data, on the
+   * grounds that the ground there is unknown. Averaging across it would be the
+   * same claim made quietly, so the filter obeys the same rule: a run of known
+   * samples is smoothed against itself and nothing else.
+   */
+  const accumulate = (from: number, step: -1 | 1, at: ProfilePoint) => {
+    let sum = 0;
+    let weight = 0;
+    for (let i = from; i >= 0 && i < points.length; i += step) {
+      const other = points[i]!;
+      if (other.elevation === null) break;
+      const gap = Math.abs(other.distance - at.distance);
+      if (gap > limit) break;
+      const w = Math.exp(-(gap * gap) / twoSigmaSquared);
+      sum += w * other.elevation;
+      weight += w;
+    }
+    return { sum, weight };
+  };
+
+  return points.map((point, i) => {
+    if (point.elevation === null) return point;
+    const back = accumulate(i, -1, point);
+    const forward = accumulate(i + 1, 1, point);
+    const weight = back.weight + forward.weight;
+    return weight === 0 ? point : { ...point, elevation: (back.sum + forward.sum) / weight };
+  });
+}
+
 export interface ElevationProfile {
   points: readonly ProfilePoint[];
   /**
@@ -54,6 +160,8 @@ export interface ElevationProfile {
   steepestGrade: number | null;
   /** How many samples came back with no data. A profile can be partial. */
   missing: number;
+  /** The smoothing window these numbers were read through, in metres. 0 is raw. */
+  smoothingMeters: number;
 }
 
 /**
@@ -123,8 +231,27 @@ export function sampleLine(
   return samples;
 }
 
-/** Summarise sampled elevations into the numbers a designer reads. */
-export function summarizeProfile(points: readonly ProfilePoint[]): ElevationProfile {
+/**
+ * Summarise sampled elevations into the numbers a designer reads.
+ *
+ * `smoothingMeters` widens a window over the raw samples first — see
+ * `smoothProfile`. Everything about the *shape* of the hole is then read
+ * through that window, because the shape is what the sampling artifact
+ * corrupts: total climb counts every noise wiggle twice, and steepest grade is
+ * simply the largest artifact on the hole.
+ *
+ * **`netGain` is the exception, and deliberately so.** It is read from the raw
+ * endpoints, always, whatever the smoothing is set to. It is the term that
+ * reaches the PDGA's effective-length formula and can move a par by two
+ * strokes, and a par that changed because somebody adjusted a chart preference
+ * would be indefensible. Smoothing is for reading; this number is for
+ * measuring.
+ */
+export function summarizeProfile(
+  raw: readonly ProfilePoint[],
+  smoothingMeters = 0,
+): ElevationProfile {
+  const points = smoothProfile(raw, smoothingMeters);
   const known = points.filter((p) => p.elevation !== null);
 
   if (known.length === 0) {
@@ -137,6 +264,7 @@ export function summarizeProfile(points: readonly ProfilePoint[]): ElevationProf
       maxElevation: null,
       steepestGrade: null,
       missing: points.length,
+      smoothingMeters,
     };
   }
 
@@ -165,9 +293,15 @@ export function summarizeProfile(points: readonly ProfilePoint[]): ElevationProf
    * the gain from wherever the data started, which describes a different hole —
    * and this number goes on to change par, so a plausible wrong value is the
    * worst outcome available.
+   *
+   * Read from `raw`, never from the smoothed series. A tee's elevation is the
+   * height of one specific patch of ground, and the smoothing window at an
+   * endpoint is one-sided — it can only pull the value towards the hole, which
+   * on a hole that starts on a knoll would quietly shave metres off the rise.
+   * The chart may be filtered; the measurement may not.
    */
-  const teeElevation = points[0]?.elevation ?? null;
-  const targetElevation = points.at(-1)?.elevation ?? null;
+  const teeElevation = raw[0]?.elevation ?? null;
+  const targetElevation = raw.at(-1)?.elevation ?? null;
 
   return {
     points,
@@ -179,6 +313,7 @@ export function summarizeProfile(points: readonly ProfilePoint[]): ElevationProf
     maxElevation: Math.max(...known.map((p) => p.elevation!)),
     steepestGrade,
     missing: points.length - known.length,
+    smoothingMeters,
   };
 }
 
@@ -191,3 +326,63 @@ export function summarizeProfile(points: readonly ProfilePoint[]): ElevationProf
  * inventing a bigger number.
  */
 export const STEEP_GRADE = 0.1;
+
+/* ------------------------------------------------------------------------- */
+/* Axis ticks                                                                 */
+/* ------------------------------------------------------------------------- */
+
+/** Steps a reader can do arithmetic in, per decade. */
+const NICE_STEPS = [1, 2, 2.5, 5, 10];
+
+/**
+ * A round step covering `span` in roughly `count` divisions.
+ *
+ * The reason an axis is labelled 980, 1000, 1020 rather than 983.4, 1006.7:
+ * the numbers on a chart are there to be read off and subtracted, and nobody
+ * subtracts 983.4 from 1006.7 in their head.
+ */
+export function niceStep(span: number, count = 4): number {
+  if (!(span > 0)) return 1;
+  const rough = span / count;
+  const magnitude = 10 ** Math.floor(Math.log10(rough));
+  const step = NICE_STEPS.find((s) => s * magnitude >= rough) ?? 10;
+  return step * magnitude;
+}
+
+/**
+ * Round tick values spanning `[low, high]`, with the bounds they imply.
+ *
+ * The axis is widened out to whole steps rather than clipped to the data, so
+ * the first and last gridlines land exactly on the top and bottom of the plot.
+ * An axis whose end labels float slightly inside the frame reads as a mistake.
+ *
+ * `minSpan` is a floor for ground that is genuinely flat: without it the axis
+ * would divide a range of zero, and a hole that falls four centimetres would be
+ * drawn as a dramatic hillside with an axis of meaningless precision.
+ */
+export function axisTicks(
+  low: number,
+  high: number,
+  { count = 4, minSpan = 1 }: { count?: number; minSpan?: number } = {},
+): { ticks: number[]; low: number; high: number } {
+  let from = low;
+  let to = high;
+
+  if (to - from < minSpan) {
+    const middle = (from + to) / 2;
+    from = middle - minSpan / 2;
+    to = middle + minSpan / 2;
+  }
+
+  const step = niceStep(to - from, count);
+  const axisLow = Math.floor(from / step) * step;
+  const axisHigh = Math.ceil(to / step) * step;
+
+  const ticks: number[] = [];
+  // Stepped by index rather than by repeated addition: accumulating a float
+  // step drifts, and the drift shows up as a label reading 1019.9999999.
+  const steps = Math.round((axisHigh - axisLow) / step);
+  for (let i = 0; i <= steps; i++) ticks.push(axisLow + i * step);
+
+  return { ticks, low: axisLow, high: axisHigh };
+}

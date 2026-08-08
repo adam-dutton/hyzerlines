@@ -230,6 +230,13 @@ survey is a different instrument (10–20cm vertical, posted at a metre) and is
 allowed to change the number. The hole panel says which is in use either way.
 The rule lives in one place: `feedsPar` in `apps/web/src/survey/useProfiles.tsx`.
 
+**Chart smoothing cannot reach any of this.** The app offers a smoothing
+preference for reading the profiles, because nearest-neighbour sampling of a
+raster turns a slope into a staircase and exaggerates the reported grade. It
+filters the drawn curve, the climb, the descent and the steepest grade.
+`netGain` is read from the raw endpoints at every setting, so no reading
+preference can change an effective length or a par. See `summarizeProfile`.
+
 A change of less than half a metre is treated as no elevation at all
 (`ELEVATION_FLOOR_M`). Tripled and pushed through a band boundary, a few
 centimetres of interpolation noise could otherwise flip a par.

@@ -6,11 +6,13 @@ import {
   pairElevationKey,
   sampleLine,
   summarizeProfile,
+  SMOOTHING_METERS,
   type Course,
   type ElevationProfile,
   type PairElevations,
   type Position,
   type SiteSurvey,
+  type Smoothing,
 } from '@hyzerlines/core';
 
 import { profilePoints, tileCache, type ElevationSource } from './elevation';
@@ -98,6 +100,7 @@ export function useHoleProfile(
 export function ProfileProvider({
   course,
   survey,
+  smoothing,
   children,
 }: {
   course: Course;
@@ -109,8 +112,17 @@ export function ProfileProvider({
    * can read it" are different facts, and only the second one may move a par.
    */
   survey: SiteSurvey | null;
+  /**
+   * How hard to filter the drawn curve. A reading preference — see `prefs.ts`.
+   *
+   * It reaches `summarizeProfile` and stops there. `netGain` is read from the
+   * raw endpoints whatever this says, so the par cannot move because somebody
+   * changed a dropdown.
+   */
+  smoothing: Smoothing;
   children: React.ReactNode;
 }) {
+  const smoothingMeters = SMOOTHING_METERS[smoothing];
   const [profiles, setProfiles] = useState<HoleProfiles>(empty.profiles);
   const [loading, setLoading] = useState(false);
 
@@ -188,7 +200,7 @@ export function ProfileProvider({
           const points = await profilePoints(sampleLine(line), source, zoom, cache);
           if (runRef.current !== run) return;
 
-          const profile = summarizeProfile(points);
+          const profile = summarizeProfile(points, smoothingMeters);
           // Nothing came back: outside the survey, or offline with no tiles. An
           // absent entry reads as "no data", which is the truth; an entry full
           // of nulls would read as a chart that failed to draw.
@@ -204,7 +216,7 @@ export function ProfileProvider({
     }, SETTLE_MS);
 
     return () => clearTimeout(timer);
-  }, [geometryKey, source, zoom]);
+  }, [geometryKey, source, zoom, smoothingMeters]);
 
   /*
    * The subset core is allowed to price into par.

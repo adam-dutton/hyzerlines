@@ -6,6 +6,7 @@ import {
   viewHoles,
   type Course,
   type Op,
+  type Smoothing,
 } from '@hyzerlines/core';
 
 import { formatDistance, type UnitSystem } from '../units';
@@ -91,6 +92,8 @@ export function CoursePanel({
   onOpen,
   onSave,
   onUnitsChange,
+  smoothing,
+  onSmoothingChange,
   onDrawBoundary,
 }: {
   course: Course;
@@ -103,6 +106,8 @@ export function CoursePanel({
   onOpen: () => void;
   onSave: () => void;
   onUnitsChange: (units: UnitSystem) => void;
+  smoothing: Smoothing;
+  onSmoothingChange: (value: Smoothing) => void;
   onDrawBoundary: () => void;
 }) {
   // Same elevations the scorecard and the hole panel read, so the course
@@ -224,6 +229,8 @@ export function CoursePanel({
           units={units}
           onOp={onOp}
           onUnitsChange={onUnitsChange}
+          smoothing={smoothing}
+          onSmoothingChange={onSmoothingChange}
           onDrawBoundary={onDrawBoundary}
         />
       </div>

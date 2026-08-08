@@ -465,6 +465,7 @@ label position · polygon area and course acreage · elevation and ground profil
 | ---------------------------------------------- | -------------------------------- |
 | "Save as default" — surface, color, dimensions | localStorage, keyed by tee color |
 | Feet or meters                                 | localStorage — see below         |
+| Elevation chart smoothing                      | localStorage — see `prefs.ts`    |
 | Par readout show/hide                          | View setting                     |
 | Which pair a hole panel is describing          | Editor state, per selection      |
 

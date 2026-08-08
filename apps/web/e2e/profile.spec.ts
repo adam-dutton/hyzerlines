@@ -1,6 +1,14 @@
 import { test, expect, type Page } from '@playwright/test';
 
-import { course, fakeSurveyGeoTiff, openEditor, openLayers, place, project } from './fixtures';
+import {
+  course,
+  fakeSurveyGeoTiff,
+  openEditor,
+  openLayers,
+  openSection,
+  place,
+  project,
+} from './fixtures';
 
 /**
  * Elevation profiles, end to end.
@@ -252,5 +260,123 @@ test.describe('elevation profiles', () => {
         { timeout: 20_000 },
       )
       .not.toBe(before);
+  });
+});
+
+/**
+ * Smoothing, and the axis you read the result against.
+ *
+ * The arithmetic is unit tested in core against a synthetic staircase. What
+ * only a browser can answer is whether the preference is actually wired to the
+ * chart — whether choosing "Off" in a dropdown three panels away reaches the
+ * numbers under the drawing, and whether it stops where it is supposed to stop.
+ */
+
+/** Read a value out of the elevation block by its label. */
+const readStat = (page: Page, label: string): Promise<string> =>
+  page.getByText(label, { exact: true }).locator('..').innerText();
+
+const gradePercent = async (page: Page): Promise<number> =>
+  Number((await readStat(page, 'Steepest grade')).replace(/[^\d]/g, ''));
+
+/** Choose a smoothing level from the course panel's Settings section. */
+async function setSmoothing(page: Page, level: 'off' | 'light' | 'medium' | 'strong') {
+  await openSection(page, 'Settings');
+  await page.getByRole('combobox', { name: 'Smooth elevation' }).selectOption(level);
+}
+
+test.describe('elevation smoothing', () => {
+  /*
+   * The complaint this feature answers, at the level a designer sees it: the
+   * raw series reports a grade far steeper than the ground, because
+   * nearest-neighbour sampling turns a slope into a staircase.
+   */
+  test('smoothing lowers the steepest grade the chart reports', async ({ page }) => {
+    await openEditor(page, { center: [-93.1, 44.9], zoom: 16 });
+    await drawHole(page, [400, 500], [800, 300]);
+    await expect.poll(() => drawnPaths(page), { timeout: 20_000 }).toBeGreaterThan(0);
+
+    await setSmoothing(page, 'off');
+    await expect(page.getByText(/Raw samples, unsmoothed/)).toBeVisible({ timeout: 20_000 });
+    const raw = await gradePercent(page);
+
+    await setSmoothing(page, 'strong');
+    await expect(page.getByText(/smoothed over 50 m/)).toBeVisible({ timeout: 20_000 });
+
+    await expect.poll(() => gradePercent(page), { timeout: 20_000 }).toBeLessThan(raw);
+  });
+
+  /*
+   * And the rule that keeps it honest. Smoothing is a dropdown; net change is a
+   * measurement that reaches the PDGA's effective-length formula. A preference
+   * that moved a par would be indefensible, so it is pinned here as well as in
+   * core — this is the wiring, and wiring is what actually breaks.
+   */
+  test('smoothing never moves net change or par', async ({ page }) => {
+    await openEditor(page, { center: [-93.1, 44.9], zoom: 16 });
+    await drawHole(page, [400, 500], [800, 300]);
+    await expect.poll(() => drawnPaths(page), { timeout: 20_000 }).toBeGreaterThan(0);
+
+    await setSmoothing(page, 'off');
+    await expect(page.getByText(/Raw samples, unsmoothed/)).toBeVisible({ timeout: 20_000 });
+    const rawNet = await readStat(page, 'Net change');
+    const rawPar = await parFor(page);
+
+    for (const level of ['light', 'medium', 'strong'] as const) {
+      await setSmoothing(page, level);
+      await expect(page.getByText(/smoothed over/)).toBeVisible({ timeout: 20_000 });
+      expect(await readStat(page, 'Net change')).toBe(rawNet);
+      expect(await parFor(page)).toBe(rawPar);
+    }
+  });
+
+  test('the choice is remembered across a reload', async ({ page }) => {
+    await openEditor(page, { center: [-93.1, 44.9], zoom: 16 });
+    await setSmoothing(page, 'strong');
+
+    await page.reload();
+    await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
+
+    await openSection(page, 'Settings');
+    await expect(page.getByRole('combobox', { name: 'Smooth elevation' })).toHaveValue(
+      'strong',
+    );
+  });
+
+  /*
+   * The vertical axis. Without labels the chart is a shape with no scale, and
+   * the exaggeration that makes it readable also makes it unreadable as a
+   * measurement — which is the whole reason the numbers are there.
+   */
+  test('the chart carries a labelled vertical axis', async ({ page }) => {
+    await openEditor(page, { center: [-93.1, 44.9], zoom: 16 });
+    await drawHole(page, [400, 500], [800, 300]);
+    await expect.poll(() => drawnPaths(page), { timeout: 20_000 }).toBeGreaterThan(0);
+
+    const chart = page.locator('svg[aria-label*="Ground profile"]');
+
+    // The unit, once, above the numbers it belongs to.
+    await expect(chart.getByText('ft', { exact: true })).toBeVisible();
+
+    // Gridlines, and a label on each.
+    // textContent, not innerText: `innerText` is an HTML concept and comes back
+    // empty for SVG elements, which reads as "no axis" rather than as a bad query.
+    const labels = await chart.locator('text').allTextContents();
+    const numeric = labels.filter((t) => /^-?\d+$/.test(t));
+    expect(numeric.length).toBeGreaterThanOrEqual(2);
+
+    /*
+     * Round numbers, not whatever the data happened to reach. An axis reading
+     * 983, 1006, 1030 is arithmetic the reader has to do; 980, 1000, 1020 is
+     * arithmetic they can see.
+     */
+    const values = numeric.map(Number).sort((a, b) => a - b);
+    const step = values[1]! - values[0]!;
+    for (let i = 1; i < values.length; i++) {
+      expect(values[i]! - values[i - 1]!).toBe(step);
+    }
+
+    await expect(chart.getByText('Tee')).toBeVisible();
+    await expect(chart.getByText('Basket')).toBeVisible();
   });
 });

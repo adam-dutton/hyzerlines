@@ -5,7 +5,7 @@ import {
   resolveInitialTheme,
   type ThemeName,
 } from '@hyzerlines/design';
-import type { View } from '@hyzerlines/core';
+import type { Smoothing, View } from '@hyzerlines/core';
 
 import { MapCanvas } from './map/MapCanvas';
 import { basemaps } from './map/basemaps';
@@ -17,6 +17,7 @@ import { ShortcutsOverlay } from './chrome/ShortcutsOverlay';
 import { CourseEditor } from './CourseEditor';
 import { useShortcuts } from './keyboard/useShortcuts';
 import { getStoredUnits, storeUnits, type UnitSystem } from './units';
+import { getStoredSmoothing, storeSmoothing } from './prefs';
 import { CourseProvider, useCourse } from './document/CourseProvider';
 import { useSurvey } from './survey/useSurvey';
 import { ProfileProvider } from './survey/useProfiles';
@@ -57,6 +58,7 @@ function Shell() {
 
   const [theme, setTheme] = useState<ThemeName>(resolveInitialTheme);
   const [units, setUnits] = useState<UnitSystem>(getStoredUnits);
+  const [smoothing, setSmoothing] = useState<Smoothing>(getStoredSmoothing);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [chromeHidden, setChromeHidden] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -80,6 +82,11 @@ function Shell() {
   const changeUnits = useCallback((next: UnitSystem) => {
     setUnits(next);
     storeUnits(next);
+  }, []);
+
+  const changeSmoothing = useCallback((next: Smoothing) => {
+    setSmoothing(next);
+    storeSmoothing(next);
   }, []);
 
   /*
@@ -146,7 +153,7 @@ function Shell() {
         wraps the canvas so the scorecard, the course totals and the hole panel
         all read one answer; see the note in `useProfiles`.
       */}
-      <ProfileProvider course={course} survey={readySurvey}>
+      <ProfileProvider course={course} survey={readySurvey} smoothing={smoothing}>
         <MapCanvas
           basemapId={course.basemapId}
           overlays={course.overlays}
@@ -200,6 +207,8 @@ function Shell() {
                 onOpen={() => void openFile()}
                 onSave={() => downloadCourse(course)}
                 onUnitsChange={changeUnits}
+                smoothing={smoothing}
+                onSmoothingChange={changeSmoothing}
                 onDrawBoundary={drawBoundary}
               />
             )}

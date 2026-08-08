@@ -13,9 +13,11 @@ import {
   type Course,
   type Display,
   type Op,
+  type Smoothing,
 } from '@hyzerlines/core';
 
 import { formatArea, formatRange, type UnitSystem } from '../units';
+import { SMOOTHING_OPTIONS } from '../prefs';
 import { Row, SectionTitle, ToggleRow, fieldWidth, selectClass } from './propertyRow';
 
 /**
@@ -48,12 +50,16 @@ export function CourseProperties({
   units,
   onOp,
   onUnitsChange,
+  smoothing,
+  onSmoothingChange,
   onDrawBoundary,
 }: {
   course: Course;
   units: UnitSystem;
   onOp: (op: Op) => void;
   onUnitsChange: (units: UnitSystem) => void;
+  smoothing: Smoothing;
+  onSmoothingChange: (value: Smoothing) => void;
   /** Arms the boundary tool, for the prompt shown when there is no site yet. */
   onDrawBoundary: () => void;
 }) {
@@ -224,6 +230,40 @@ export function CourseProperties({
             <option value="metric">Meters and hectares</option>
           </select>
         </Row>
+
+        {/*
+          Smoothing the elevation charts.
+
+          Here rather than on the layers panel because it is a fact about the
+          reader, like units — the terrain switches next to it control what the
+          *map* draws, and this controls how a *number* is read.
+
+          It filters the drawn curve and the shape figures under it: climb,
+          descent and steepest grade. It cannot touch net change, and so cannot
+          move a par. Elevation is sampled by nearest neighbour from a raster,
+          so consecutive samples inside one cell come back identical and the one
+          that crosses into the next carries the whole step — which reads as a
+          grade twice what the land does. Averaging over the width of that
+          staircase is what recovers the terrain.
+        */}
+        <Row label="Smooth elevation">
+          <select
+            aria-label="Smooth elevation"
+            value={smoothing}
+            onChange={(e) => onSmoothingChange(e.target.value as Smoothing)}
+            className={cn(selectClass, fieldWidth, 'truncate')}
+          >
+            {SMOOTHING_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </Row>
+        <p className="mt-1 text-2xs leading-4 text-text-muted">
+          Evens out sampling steps in the elevation charts. Net change and par are read from the
+          raw data and never smoothed.
+        </p>
 
         <div className="mt-3">
           <SectionTitle>Show on map</SectionTitle>

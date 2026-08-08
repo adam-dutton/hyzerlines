@@ -236,6 +236,20 @@ exaggerated, because a 300 ft hole that falls four metres would otherwise be a
 flat line, and the elevation range is printed underneath so the picture is read
 against real numbers.
 
+The elevations are labelled up the left edge, because a profile with no scale
+is a shape rather than a measurement — the vertical is stretched to fill the
+frame, so the slope you see is never the slope on the ground.
+
+**Smoothing lives in Settings, beside units.** Elevation is read by nearest
+neighbour from a raster, so consecutive samples inside one cell come back
+identical and the sample that crosses into the next carries the whole step —
+which reads as a grade roughly twice what the land actually does. Averaging over
+the width of that staircase is what recovers the terrain: on ground truly
+falling at 8%, a raw reading of 16.8% comes back to 8.6%. Light smoothing is the
+default, it is named on every chart it is applied to, and it filters the climb,
+descent and grade only. Net change is read from the raw ends and is never
+smoothed, so the setting cannot move a par.
+
 That profile also feeds par. The PDGA's effective-length formula adds three times
 the rise from tee to target, which is the difference between a par 3 and a par 4
 on the same measured distance — and it is the one term the app has been unable to

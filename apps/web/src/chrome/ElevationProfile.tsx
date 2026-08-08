@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import { STEEP_GRADE, type ElevationProfile as Profile } from '@hyzerlines/core';
+import { axisTicks, STEEP_GRADE, type ElevationProfile as Profile } from '@hyzerlines/core';
 
 import { formatDistance, toFeet, type UnitSystem } from '../units';
 import type { HoleProfile } from '../survey/useProfiles';
@@ -14,22 +14,52 @@ import { SectionTitle } from './propertyRow';
  * like a par 4. This is that second dimension, drawn from the elevation source
  * the map is already reading.
  *
- * ## It is exaggerated, and it says so
+ * ## It is exaggerated, and the axis is how you find out by how much
  *
  * A hole is a few hundred metres long and falls a few metres. Drawn to scale it
  * would be a horizontal line, so the vertical axis is stretched to fill the
  * frame — which means the *slope you see is not the slope on the ground*. Every
- * chart of terrain does this and most of them stay quiet about it. This one puts
- * the elevation range under the drawing, so the picture is read against real
- * numbers rather than mistaken for them.
+ * chart of terrain does this and most stay quiet about it. Here the elevations
+ * are labelled up the left edge, so the exaggeration is something you can read
+ * off rather than something you have to be warned about.
+ *
+ * ## The aspect ratio is uniform, deliberately
+ *
+ * An earlier version used `preserveAspectRatio="none"` to stretch a fixed
+ * viewBox across whatever width the panel had. That is fine for a bare line and
+ * impossible once there is type in the drawing: non-uniform scaling stretches
+ * glyphs horizontally, so the tick labels would render wider than tall and
+ * differently at every panel width.
  */
 
-/* A tall, thin frame in user units. Rendered at whatever width the panel is. */
-const WIDTH = 240;
-const HEIGHT = 64;
+/*
+ * The frame, in user units, at roughly one unit per CSS pixel — the panel is a
+ * fixed 18rem wide, so keeping the viewBox near its rendered size means font
+ * sizes below read as the pixel sizes they very nearly are.
+ */
+const WIDTH = 264;
+const HEIGHT = 96;
 
-/** Room above and below the line, so the extremes are not clipped to the edge. */
-const PAD_Y = 6;
+/** Left gutter, holding the elevation labels. */
+const GUTTER = 30;
+
+const PLOT_LEFT = GUTTER;
+const PLOT_RIGHT = WIDTH - 4;
+const PLOT_TOP = 12;
+const PLOT_BOTTOM = 74;
+
+/** Where the tee / length / basket row sits, inside the SVG so it stays aligned. */
+const FOOT_Y = 90;
+
+/**
+ * The smallest elevation span the axis will show, in display units.
+ *
+ * Ground that is genuinely flat has a range near zero, and an axis divided over
+ * that would label a hole falling four centimetres with meaningless precision
+ * and draw it as a dramatic hillside. Ten feet, or three metres, is the floor —
+ * below it the line sits flat in a frame that says so.
+ */
+const MIN_SPAN = { imperial: 10, metric: 3 } as const;
 
 /**
  * The drawing, as one or more polyline segments.
@@ -42,8 +72,8 @@ const PAD_Y = 6;
 function segments(
   profile: Profile,
   span: number,
-  low: number,
-  range: number,
+  toDisplay: (meters: number) => number,
+  yFor: (display: number) => number,
 ): { line: string; area: string }[] {
   const runs: { x: number; y: number }[][] = [];
   let run: { x: number; y: number }[] = [];
@@ -55,20 +85,27 @@ function segments(
       continue;
     }
     run.push({
-      x: span === 0 ? 0 : (point.distance / span) * WIDTH,
-      // SVG y grows downward; elevation grows upward.
-      y: HEIGHT - PAD_Y - ((point.elevation - low) / range) * (HEIGHT - PAD_Y * 2),
+      x:
+        span === 0 ? PLOT_LEFT : PLOT_LEFT + (point.distance / span) * (PLOT_RIGHT - PLOT_LEFT),
+      y: yFor(toDisplay(point.elevation)),
     });
   }
   if (run.length > 0) runs.push(run);
 
+  const round = (n: number) => Math.round(n * 100) / 100;
+
   return runs
     .filter((points) => points.length >= 2)
     .map((points) => {
-      const line = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x} ${p.y}`).join(' ');
+      const line = points
+        .map((p, i) => `${i === 0 ? 'M' : 'L'}${round(p.x)} ${round(p.y)}`)
+        .join(' ');
       const first = points[0]!;
       const last = points.at(-1)!;
-      return { line, area: `${line} L${last.x} ${HEIGHT} L${first.x} ${HEIGHT} Z` };
+      return {
+        line,
+        area: `${line} L${round(last.x)} ${PLOT_BOTTOM} L${round(first.x)} ${PLOT_BOTTOM} Z`,
+      };
     });
 }
 
@@ -80,6 +117,12 @@ function formatChange(meters: number, units: UnitSystem): string {
   // An explicit sign on both directions. "3 ft" beside a hole that drops is the
   // kind of ambiguity that puts the wrong par on a scorecard.
   return `${rounded > 0 ? '+' : rounded < 0 ? '−' : ''}${Math.abs(rounded)} ${suffix}`;
+}
+
+/** Tick labels drop their decimals only when the step is whole. */
+function formatTick(value: number, step: number): string {
+  const decimals = step >= 1 ? 0 : step >= 0.1 ? 1 : 2;
+  return value.toFixed(decimals);
 }
 
 export function ElevationProfileChart({
@@ -101,17 +144,26 @@ export function ElevationProfileChart({
 
   if (low === null || high === null) return null;
 
-  /*
-   * A floor under the vertical range.
-   *
-   * Genuinely flat ground has a range of zero, and scaling to it would put the
-   * line at an arbitrary height and amplify centimetres of sampling noise into
-   * a dramatic hillside. A metre of headroom makes flat ground *look* flat,
-   * which is the honest drawing.
-   */
-  const range = Math.max(high - low, 1);
-  const paths = segments(profile, span, low, range);
+  const metric = units === 'metric';
+  const toDisplay = (meters: number) => (metric ? meters : toFeet(meters));
+  const unitLabel = metric ? 'm' : 'ft';
 
+  /*
+   * The axis is computed in the reader's own unit, not in metres and converted
+   * afterwards. Round numbers do not survive a unit conversion: a tidy 5 m step
+   * relabelled in feet becomes 16.4, which is precisely the arithmetic the
+   * whole "nice ticks" exercise exists to spare people.
+   */
+  const axis = axisTicks(toDisplay(low), toDisplay(high), {
+    minSpan: MIN_SPAN[units],
+  });
+  const step = (axis.ticks[1] ?? axis.high) - axis.low;
+  const axisSpan = axis.high - axis.low || 1;
+
+  const yFor = (display: number) =>
+    PLOT_BOTTOM - ((display - axis.low) / axisSpan) * (PLOT_BOTTOM - PLOT_TOP);
+
+  const paths = segments(profile, span, toDisplay, yFor);
   const steep = profile.steepestGrade !== null && profile.steepestGrade > STEEP_GRADE;
 
   return (
@@ -121,7 +173,6 @@ export function ElevationProfileChart({
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         className="w-full text-text-accent"
-        preserveAspectRatio="none"
         role="img"
         aria-label={
           profile.netGain === null
@@ -136,6 +187,53 @@ export function ElevationProfileChart({
           </linearGradient>
         </defs>
 
+        {/* The unit, once, above the numbers it belongs to. */}
+        <text
+          x={GUTTER - 4}
+          y={PLOT_TOP - 4}
+          textAnchor="end"
+          className="fill-text-muted text-[8px]"
+        >
+          {unitLabel}
+        </text>
+
+        {/*
+          Gridlines and their labels. Drawn under the profile so the ground
+          reads as sitting on the chart rather than behind it.
+        */}
+        <g aria-hidden="true">
+          {axis.ticks.map((tick) => {
+            const y = yFor(tick);
+            return (
+              <g key={tick}>
+                <line
+                  x1={PLOT_LEFT}
+                  y1={y}
+                  x2={PLOT_RIGHT}
+                  y2={y}
+                  /*
+                   * `border-default`, not `border-subtle`, and a whole pixel.
+                   * Subtle at half a pixel antialiases a 7%-opacity line into
+                   * nothing — a gridline you cannot see is not a gridline, and
+                   * the labels beside it then have nothing to point at.
+                   */
+                  className="stroke-border-default"
+                  strokeWidth={1}
+                  vectorEffect="non-scaling-stroke"
+                />
+                <text
+                  x={GUTTER - 6}
+                  y={y + 2.5}
+                  textAnchor="end"
+                  className="fill-text-muted text-[8px] tabular-nums"
+                >
+                  {formatTick(tick, step)}
+                </text>
+              </g>
+            );
+          })}
+        </g>
+
         {paths.map((path) => (
           <path key={path.line} d={path.area} fill={`url(#${gradientId})`} />
         ))}
@@ -148,22 +246,28 @@ export function ElevationProfileChart({
             strokeWidth={1.5}
             strokeLinejoin="round"
             strokeLinecap="round"
-            /*
-             * Without this the non-uniform scale — a 240-unit box stretched to
-             * whatever the panel is wide, and 64 units tall — would make the
-             * stroke thicker on one axis than the other.
-             */
             vectorEffect="non-scaling-stroke"
           />
         ))}
-      </svg>
 
-      {/* The ends, named. A profile with no tee marked is just a squiggle. */}
-      <div className="flex justify-between text-2xs text-text-muted">
-        <span>Tee</span>
-        {length !== null && <span>{formatDistance(length, units)}</span>}
-        <span>Basket</span>
-      </div>
+        {/*
+          The ends, named, and inside the drawing so they line up with the plot
+          rather than with the panel. A profile with no tee marked is a squiggle.
+        */}
+        <g aria-hidden="true" className="fill-text-muted text-[8px]">
+          <text x={PLOT_LEFT} y={FOOT_Y}>
+            Tee
+          </text>
+          {length !== null && (
+            <text x={(PLOT_LEFT + PLOT_RIGHT) / 2} y={FOOT_Y} textAnchor="middle">
+              {formatDistance(length, units)}
+            </text>
+          )}
+          <text x={PLOT_RIGHT} y={FOOT_Y} textAnchor="end">
+            Basket
+          </text>
+        </g>
+      </svg>
 
       <dl className="mt-1.5 space-y-0.5">
         {profile.netGain !== null && (
@@ -198,11 +302,29 @@ export function ElevationProfileChart({
       </dl>
 
       {/*
-        The vertical scale, spelled out, because the drawing above is stretched.
-        See the note at the top of this file.
+        The vertical is still exaggerated — the axis says by how much, but only
+        if you go and read it, and the one thing a reader must not do is take
+        the drawn slope at face value.
+
+        Naming the smoothing here rather than only in Settings is the point:
+        climb, descent and the grade above are all read through that window, and
+        a filtered number presented as a raw measurement is the dishonest
+        version of this feature.
       */}
       <p className="mt-1 text-2xs leading-4 text-text-muted">
-        Vertical exaggerated. The chart spans {formatChange(high - low, units)} of elevation.
+        Vertical exaggerated.{' '}
+        {profile.smoothingMeters > 0
+          ? /*
+             * Which numbers are filtered, named individually.
+             *
+             * Not pedantry: smoothing pulls the ends of the curve inward, so on
+             * a strongly filtered hole the climb can read less than the net
+             * change and the two will not reconcile. That looks like an
+             * arithmetic bug unless the reader knows they are measured
+             * differently — one through the window, one not at all.
+             */
+            `Climb, descent and grade smoothed over ${profile.smoothingMeters} m. Net change is unfiltered.`
+          : 'Raw samples, unsmoothed.'}
       </p>
 
       {/*
