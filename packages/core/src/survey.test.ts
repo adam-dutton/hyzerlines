@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  VERTICAL_UNITS,
+  VERTICAL_UNIT_METERS,
   decodeTerrarium,
   encodeTerrarium,
+  linearUnitOf,
   metersPerPixel,
+  siteSurveySchema,
   surveyZooms,
   tileBounds,
   tileCount,
   tileForPosition,
   tileRange,
+  toMetersInPlace,
   withMargin,
   zoomForResolution,
 } from './survey.js';
@@ -214,5 +219,114 @@ describe('choosing a pyramid', () => {
 
     expect(total).toBeGreaterThan(0);
     expect(total).toBeLessThan(400);
+  });
+});
+
+/**
+ * Vertical units.
+ *
+ * The bug this exists to prevent: a Colorado survey in State Plane US survey
+ * feet, read as metres, reported ground at 22,000 ft. Every other part of the
+ * import was correct — the projection, the bounds, the resolution, the contours
+ * — which is exactly what makes it dangerous. The elevations were wrong by
+ * 3.28, and then the PDGA's effective-length formula multiplied them by three.
+ */
+describe('vertical units', () => {
+  it('converts feet to metres exactly', () => {
+    expect(VERTICAL_UNIT_METERS.meter).toBe(1);
+    expect(VERTICAL_UNIT_METERS.foot).toBe(0.3048);
+    // The US survey foot is 1200/3937 m by definition, two parts per million
+    // longer than the international foot. On a hole that is nothing; on an
+    // elevation of 6,700 ft it is 4mm, and both are named in the EPSG register
+    // so there is no reason to conflate them.
+    expect(VERTICAL_UNIT_METERS.usFoot).toBeCloseTo(0.30480061, 8);
+    expect(VERTICAL_UNIT_METERS.usFoot).not.toBe(VERTICAL_UNIT_METERS.foot);
+  });
+
+  it('maps the GeoTIFF VerticalUnitsGeoKey codes', () => {
+    expect(VERTICAL_UNITS[9001]).toBe('meter');
+    expect(VERTICAL_UNITS[9002]).toBe('foot');
+    expect(VERTICAL_UNITS[9003]).toBe('usFoot');
+    // Anything else is not a linear unit we can convert, and must not be
+    // silently treated as one.
+    expect(VERTICAL_UNITS[9102]).toBeUndefined();
+  });
+
+  /*
+   * The fallback, for the common case of a file that declares no vertical unit
+   * at all. It reads the unit the file states for its coordinates rather than
+   * assuming metres — which is an assumption with no basis in the file.
+   */
+  describe('linearUnitOf', () => {
+    it('reads US survey feet from a State Plane definition', () => {
+      // EPSG:6428, NAD83(2011) / Colorado Central (ftUS) — the exact projection
+      // that produced the 22,000 ft reading.
+      expect(
+        linearUnitOf(
+          '+proj=lcc +lat_0=37.83 +lon_0=-105.5 +lat_1=39.75 +lat_2=38.45 ' +
+            '+x_0=914401.828803657 +y_0=304800.609601219 +ellps=GRS80 +units=us-ft',
+        ),
+      ).toBe('usFoot');
+    });
+
+    it('tells international feet from US survey feet', () => {
+      expect(linearUnitOf('+proj=lcc +units=ft')).toBe('foot');
+      expect(linearUnitOf('+proj=lcc +units=us-ft')).toBe('usFoot');
+    });
+
+    it('reads metres from a UTM definition', () => {
+      expect(linearUnitOf('+proj=utm +zone=15 +datum=NAD83 +units=m')).toBe('meter');
+    });
+
+    /*
+     * A definition stating no unit, and a geographic one in degrees. proj4
+     * treats an unstated linear unit as metres, and elevations alongside
+     * latitude and longitude are metres by every convention going.
+     */
+    it('falls back to metres when no linear unit is stated', () => {
+      expect(linearUnitOf('+proj=utm +zone=15 +datum=NAD83')).toBe('meter');
+      expect(linearUnitOf('+proj=longlat +datum=WGS84')).toBe('meter');
+    });
+  });
+
+  describe('toMetersInPlace', () => {
+    it('leaves a metric grid untouched, without copying it', () => {
+      const values = new Float32Array([100, 200, 300]);
+      expect(toMetersInPlace(values, 'meter')).toBe(values);
+      expect([...values]).toEqual([100, 200, 300]);
+    });
+
+    it('converts the reading that started this', () => {
+      // 6,700 US survey feet is Colorado ground, not the roof of the Andes.
+      const values = new Float32Array([6700]);
+      toMetersInPlace(values, 'usFoot');
+      expect(values[0]).toBeCloseTo(2042.16, 1);
+    });
+
+    it('handles elevations below sea level and zero', () => {
+      const values = new Float32Array([0, -282]);
+      toMetersInPlace(values, 'foot');
+      expect(values[0]).toBe(0);
+      expect(values[1]).toBeCloseTo(-85.95, 2);
+    });
+  });
+
+  /*
+   * Older documents carry no vertical unit. They were all imported by a build
+   * that assumed metres, so metres is what they were read as — the default has
+   * to describe what happened, not what we would choose now.
+   */
+  it('defaults an older survey record to declared metres', () => {
+    const parsed = siteSurveySchema.parse({
+      name: 'old.tif',
+      bounds: [-93.2, 44.8, -93.1, 44.9],
+      resolutionMeters: 1,
+      crs: 'EPSG:26915',
+      minZoom: 12,
+      maxZoom: 16,
+      importedAt: new Date().toISOString(),
+    });
+    expect(parsed.verticalUnit).toBe('meter');
+    expect(parsed.verticalUnitDeclared).toBe(true);
   });
 });

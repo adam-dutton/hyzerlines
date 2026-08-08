@@ -65,6 +65,25 @@ export const siteSurveySchema = z.object({
    */
   crsName: z.string().default(''),
 
+  /**
+   * The unit the file's elevations were read as.
+   *
+   * Recorded because it cannot always be known for certain — see
+   * `VERTICAL_UNITS` — and a survey read in the wrong vertical unit is wrong by
+   * a factor of 3.28 while looking entirely reasonable. A Colorado course at
+   * 6,700 ft read as metres reports 22,000 ft, which is only obviously wrong if
+   * you know the ground.
+   */
+  verticalUnit: z.enum(['meter', 'foot', 'usFoot']).default('meter'),
+
+  /**
+   * Whether the file said so, or whether it was inferred from its coordinates.
+   *
+   * The panel says which, because an inference is a thing a designer can check
+   * and a declaration is not worth questioning.
+   */
+  verticalUnitDeclared: z.boolean().default(true),
+
   /** Deepest zoom with real detail. Past this the tiles are interpolation. */
   maxZoom: z.number().int().min(0).max(24),
   minZoom: z.number().int().min(0).max(24),
@@ -241,4 +260,83 @@ export function surveyZooms(
 ): { minZoom: number; maxZoom: number } {
   const maxZoom = zoomForResolution(resolutionMeters, latitude);
   return { minZoom: Math.max(0, maxZoom - 4), maxZoom };
+}
+
+/* ------------------------------------------------------------------------- */
+/* Vertical units                                                             */
+/* ------------------------------------------------------------------------- */
+
+export type VerticalUnit = 'meter' | 'foot' | 'usFoot';
+
+/**
+ * Metres per unit, for turning a file's elevations into the app's.
+ *
+ * The US survey foot is 1200/3937 m exactly, which is not the international
+ * foot and differs from it by two parts per million. That is nothing on a hole
+ * and it is not nothing on an elevation of 6,700 ft, and since both are named
+ * distinctly in the EPSG register there is no reason to conflate them.
+ */
+export const VERTICAL_UNIT_METERS: Record<VerticalUnit, number> = {
+  meter: 1,
+  foot: 0.3048,
+  usFoot: 1200 / 3937,
+};
+
+export const VERTICAL_UNIT_LABELS: Record<VerticalUnit, string> = {
+  meter: 'meters',
+  foot: 'feet',
+  usFoot: 'US survey feet',
+};
+
+/**
+ * `VerticalUnitsGeoKey` (4099) values, per the GeoTIFF specification.
+ *
+ * The same EPSG unit-of-measure codes `+units=` maps to: 9001 metre, 9002
+ * international foot, 9003 US survey foot.
+ */
+export const VERTICAL_UNITS: Record<number, VerticalUnit> = {
+  9001: 'meter',
+  9002: 'foot',
+  9003: 'usFoot',
+};
+
+/**
+ * The linear unit a proj4 definition measures in.
+ *
+ * Used to work out a file's *vertical* unit when it does not declare one, which
+ * is the common case — most published DEMs omit `VerticalUnitsGeoKey` entirely.
+ *
+ * ## Why this is a reading rather than a guess
+ *
+ * The GeoTIFF specification defines no default for an absent
+ * `VerticalUnitsGeoKey`, so something has to be decided. The choice is between
+ * assuming metres — which has no basis in the file at all — and taking the unit
+ * the file does state, for its coordinates. A State Plane DEM published in US
+ * survey feet has its elevations in US survey feet essentially without
+ * exception, and either way this reads a fact out of the file instead of
+ * inventing one.
+ *
+ * It is still an inference, so it is recorded as one and the panel says so.
+ */
+export function linearUnitOf(proj4Definition: string): VerticalUnit {
+  const match = /\+units=([\w-]+)/.exec(proj4Definition);
+  switch (match?.[1]) {
+    case 'us-ft':
+      return 'usFoot';
+    case 'ft':
+      return 'foot';
+    default:
+      // Includes `+units=m` and definitions that state none, which in proj4 are
+      // metres. A geographic CRS in degrees lands here too, and its elevations
+      // are metres by every convention going.
+      return 'meter';
+  }
+}
+
+/** Convert a grid of elevations to metres, in place. Identity for metric files. */
+export function toMetersInPlace(values: Float32Array, unit: VerticalUnit): Float32Array {
+  const scale = VERTICAL_UNIT_METERS[unit];
+  if (scale === 1) return values;
+  for (let i = 0; i < values.length; i++) values[i] = values[i]! * scale;
+  return values;
 }

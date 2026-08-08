@@ -1,10 +1,14 @@
 import {
   MAX_SOURCE_CELLS,
+  VERTICAL_UNITS,
+  VERTICAL_UNIT_METERS,
   boundsFromGrid,
+  linearUnitOf,
   resampleTile,
   surveyZooms,
   tileCount,
   tileRange,
+  toMetersInPlace,
   withMargin,
   type Bounds,
   type SiteSurvey,
@@ -180,14 +184,44 @@ export async function importSurvey(
   const band = rasters[0];
   if (!band) throw new SurveyImportError('That file has no elevation band in it.');
 
+  /*
+   * What unit the elevations are in, before anything is done with them.
+   *
+   * This is the difference between a Colorado course reading 6,700 ft and the
+   * same course reading 22,000 — a State Plane file measures its coordinates in
+   * US survey feet and, almost always, its heights too. Reading those as metres
+   * multiplies every elevation by 3.28, which is not obviously wrong unless you
+   * happen to know the ground, and it flows straight into the PDGA's
+   * effective-length formula where it is multiplied again by three.
+   *
+   * `VerticalUnitsGeoKey` is authoritative when a file sets it. Most do not, so
+   * the fallback reads the unit the file states for its coordinates rather than
+   * assuming metres, which is an assumption with no basis in the file at all.
+   */
+  const declared = VERTICAL_UNITS[keys['VerticalUnitsGeoKey'] as number];
+  const verticalUnit = declared ?? linearUnitOf(projection.definition);
+
+  const values = band instanceof Float32Array ? band : Float32Array.from(band);
+
+  /*
+   * Converted before the nodata comparison, not after.
+   *
+   * `getGDALNoData` is in the file's own unit, so scaling the data first and
+   * comparing against an unscaled sentinel would stop matching — and a -9999
+   * that no longer registers as nodata becomes a ten-kilometre hole in the
+   * terrain. Scaling the sentinel alongside keeps the two in the same unit.
+   */
+  const rawNoData = image.getGDALNoData();
+  const scale = VERTICAL_UNIT_METERS[verticalUnit];
+
   const grid: SourceGrid = {
     // Float32Array regardless of the file's own type, so the resampler has one
     // shape to handle and integer DEMs still carry their values exactly.
-    data: band instanceof Float32Array ? band : Float32Array.from(band),
+    data: toMetersInPlace(values, verticalUnit),
     width: image.getWidth(),
     height: image.getHeight(),
     bbox,
-    noDataValue: image.getGDALNoData(),
+    noDataValue: rawNoData === null ? null : rawNoData * scale,
   };
 
   /*
@@ -253,6 +287,8 @@ export async function importSurvey(
       resolutionMeters,
       crs,
       crsName: projection.name,
+      verticalUnit,
+      verticalUnitDeclared: declared !== undefined,
       minZoom,
       maxZoom,
     },

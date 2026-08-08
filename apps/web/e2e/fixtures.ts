@@ -153,6 +153,16 @@ export interface SurveyTiffOptions {
   origin?: [number, number];
   /** Ground sample distance, in that projection's own linear unit. */
   pixelSize?: number;
+  /** Elevation at the top-left corner, in whatever unit the band is in. */
+  baseElevation?: number;
+  /**
+   * `VerticalUnitsGeoKey`, when the file declares one.
+   *
+   * 9001 metre, 9002 international foot, 9003 US survey foot. Left undeclared
+   * by default, which is the common and difficult case: most published DEMs
+   * omit it entirely.
+   */
+  verticalUnits?: number;
 }
 
 /**
@@ -179,6 +189,8 @@ export async function fakeSurveyGeoTiff({
   epsg = 26915,
   origin = [480_000, 4_975_000],
   pixelSize = 8,
+  baseElevation = 100,
+  verticalUnits,
 }: SurveyTiffOptions = {}): Promise<Buffer> {
   const { writeArrayBuffer } = await import('geotiff');
 
@@ -188,7 +200,7 @@ export async function fakeSurveyGeoTiff({
     for (let col = 0; col < size; col++) {
       // Enough fall across the tile to produce contours at every interval
       // terrain.ts defines.
-      values[row * size + col] = 100 + (col + row) * 0.8;
+      values[row * size + col] = baseElevation + (col + row) * 0.8;
     }
   }
 
@@ -201,6 +213,7 @@ export async function fakeSurveyGeoTiff({
     GTModelTypeGeoKey: 1,
     GTRasterTypeGeoKey: 1,
     ProjectedCSTypeGeoKey: epsg,
+    ...(verticalUnits === undefined ? {} : { VerticalUnitsGeoKey: verticalUnits }),
   });
 
   return Buffer.from(buffer);

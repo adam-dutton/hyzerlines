@@ -6,6 +6,7 @@ import {
   layerVisible,
   openEditor,
   openLayers,
+  place,
   setSwitch,
   waitForSave,
 } from './fixtures';
@@ -257,5 +258,145 @@ test.describe('site survey', () => {
 
     await expect(page.getByRole('alert')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole('button', { name: 'Try another file' })).toBeVisible();
+  });
+});
+
+/**
+ * Vertical units.
+ *
+ * The bug these exist to prevent shipped once: a Colorado survey in State Plane
+ * US survey feet, read as metres, put the ground at 22,000 ft. Everything else
+ * about the import was right — the projection resolved, the bounds landed, the
+ * contours drew — which is what made it survive review. Elevations were out by
+ * 3.28, and the PDGA's effective-length formula then multiplied them by three.
+ *
+ * Browser-only: the unit is recovered from GeoKeys by `geotiff`, and the
+ * conversion has to survive resampling, terrarium encoding, a PNG round trip
+ * and IndexedDB before anybody reads a number off it.
+ */
+
+/** The elevations the chart's own axis is labelled with. */
+async function axisLabels(page: Page): Promise<number[]> {
+  const chart = page.locator('svg[aria-label*="Ground profile"]');
+  const text = await chart.locator('text').allTextContents();
+  return text.filter((t) => /^-?\d+$/.test(t)).map(Number);
+}
+
+/** Import a file, look at it, and draw a hole across it. */
+async function surveyWithHole(page: Page, tiff: Buffer): Promise<void> {
+  await openLayers(page);
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'site.tif',
+    mimeType: 'image/tiff',
+    buffer: tiff,
+  });
+  await expect
+    .poll(async () => (await course(page)).siteSurvey !== null, { timeout: 20_000 })
+    .toBe(true);
+  await page.keyboard.press('Escape');
+
+  const bounds = await page.evaluate(
+    () => window.hyzerlinesStore!.getSnapshot().course.siteSurvey!.bounds,
+  );
+  const [west, south, east, north] = bounds;
+  await page.evaluate((center) => window.hyzerlinesMap!.jumpTo({ center, zoom: 16 }), [
+    (west + east) / 2,
+    (south + north) / 2,
+  ] as [number, number]);
+  await page.waitForTimeout(400);
+
+  await place(page, 'Tee pad', 450, 300);
+  await place(page, 'Target', 800, 500);
+  await page.getByRole('button', { name: 'Add hole' }).click();
+}
+
+test.describe('survey vertical units', () => {
+  /*
+   * The regression itself. EPSG:6428 is NAD83(2011) / Colorado Central (ftUS),
+   * and a State Plane DEM carries its heights in the same US survey feet its
+   * coordinates are in. Ground here is around 6,700 ft; read as metres it
+   * reports 22,000, which is above the summit of Denali.
+   */
+  test('a State Plane survey in feet reports feet, not metres', async ({ page }) => {
+    await openEditor(page, { center: [-105.5, 39.0], zoom: 16 });
+    await surveyWithHole(
+      page,
+      await fakeSurveyGeoTiff({
+        epsg: 6428,
+        origin: [3_000_000, 1_600_000],
+        pixelSize: 26,
+        baseElevation: 6700,
+      }),
+    );
+
+    await expect(page.getByText(/From your imported survey/)).toBeVisible({ timeout: 20_000 });
+
+    const labels = await axisLabels(page);
+    expect(labels.length).toBeGreaterThan(0);
+    // Colorado ground, in the feet the reader asked for. The failing build put
+    // every one of these above 22,000.
+    for (const label of labels) {
+      expect(label).toBeGreaterThan(6000);
+      expect(label).toBeLessThan(8000);
+    }
+  });
+
+  /* The panel says which unit was used, and that it was worked out rather than read. */
+  test('the panel says the vertical unit was inferred', async ({ page }) => {
+    await openEditor(page, { center: [-105.5, 39.0], zoom: 16 });
+    await openLayers(page);
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'colorado.tif',
+      mimeType: 'image/tiff',
+      buffer: await fakeSurveyGeoTiff({
+        epsg: 6428,
+        origin: [3_000_000, 1_600_000],
+        pixelSize: 26,
+        baseElevation: 6700,
+      }),
+    });
+
+    await expect(page.getByText(/Heights in US survey feet/)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/inferred from its coordinates/)).toBeVisible();
+  });
+
+  /*
+   * A declaration beats the inference. A file whose coordinates are in feet but
+   * whose heights are declared metric is unusual and entirely legal, and
+   * `VerticalUnitsGeoKey` is the file saying so outright.
+   */
+  test('a declared vertical unit wins over the coordinate system', async ({ page }) => {
+    await openEditor(page, { center: [-105.5, 39.0], zoom: 16 });
+    await openLayers(page);
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'declared.tif',
+      mimeType: 'image/tiff',
+      buffer: await fakeSurveyGeoTiff({
+        epsg: 6428,
+        origin: [3_000_000, 1_600_000],
+        pixelSize: 26,
+        baseElevation: 2042,
+        verticalUnits: 9001,
+      }),
+    });
+
+    await expect(page.getByText(/Heights in meters/)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/inferred from its coordinates/)).toHaveCount(0);
+  });
+
+  /* And a metric file is still read as metric — the fix must not invert. */
+  test('a UTM survey in metres is unchanged', async ({ page }) => {
+    await openEditor(page, { center: [-93.1, 44.9], zoom: 16 });
+    await surveyWithHole(page, await fakeSurveyGeoTiff({ baseElevation: 100 }));
+
+    await expect(page.getByText(/From your imported survey/)).toBeVisible({ timeout: 20_000 });
+
+    const labels = await axisLabels(page);
+    expect(labels.length).toBeGreaterThan(0);
+    // 100–303 m of fixture, read in feet: 328–995. Nothing near 1,000 m worth.
+    for (const label of labels) {
+      expect(label).toBeGreaterThan(200);
+      expect(label).toBeLessThan(1200);
+    }
   });
 });

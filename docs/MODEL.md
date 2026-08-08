@@ -439,6 +439,14 @@ data:
 The tiles live in IndexedDB, in their own database, keyed by `z/x/y`. A `.hyzer`
 is a document you email and forty megabytes of elevation is not.
 
+**The vertical unit is part of the record.** `verticalUnit` says what the file's
+elevations were read as and `verticalUnitDeclared` says whether the file stated
+it or whether it was taken from the unit its coordinates are in. Both are stored
+rather than recomputed, because the tiles are already encoded in metres by the
+time anything reads them — the unit is a fact about how they were built, not
+something derivable from them afterwards. A survey read in the wrong vertical
+unit is out by a factor of 3.28 and looks entirely plausible.
+
 But the record still travels, because **it describes how the course was
 designed**. Someone opening a file you sent is told the design was drawn against
 a 1m survey and which one, even though they do not have it — that is a missing

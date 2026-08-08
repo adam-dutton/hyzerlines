@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { cn } from '@hyzerlines/design';
+import { VERTICAL_UNIT_LABELS } from '@hyzerlines/core';
 
 import type { SurveyState } from '../survey/useSurvey';
 import { formatDistance, type UnitSystem } from '../units';
@@ -113,6 +114,21 @@ export function SurveySection({
               for documents written before the name was recorded. */}
           <p className="truncate text-2xs text-text-muted" title={state.survey.crsName}>
             {state.survey.crsName || state.survey.crs}
+          </p>
+          {/*
+            The vertical unit, and whether the file said so.
+
+            Worth its own line because it is the one thing here that can be
+            wrong while everything else looks right. A GeoTIFF need not declare
+            `VerticalUnitsGeoKey` and most do not, so a file whose coordinates
+            are in feet has its heights read as feet — which is correct
+            essentially always, and is still an inference the designer should be
+            able to check against ground they know. Read as metres instead, a
+            6,700 ft Colorado course reports 22,000.
+          */}
+          <p className="truncate text-2xs text-text-muted">
+            Heights in {VERTICAL_UNIT_LABELS[state.survey.verticalUnit]}
+            {state.survey.verticalUnitDeclared ? '' : ', inferred from its coordinates'}
           </p>
           <button
             type="button"

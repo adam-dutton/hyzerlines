@@ -224,6 +224,15 @@ Plane in feet or metres, national grids — is read and named back to you, so yo
 can check the file was understood the way you meant. Anything that _cannot_ be
 reprojected accurately is refused rather than placed approximately.
 
+**Heights get the same treatment.** A GeoTIFF states the unit its coordinates
+are in but need not state the unit its elevations are in, and most published
+DEMs do not. Where the file declares one it is used; where it does not, the
+elevations are read in the unit the file states for its coordinates — so a State
+Plane survey in US survey feet is read in feet, not silently multiplied by 3.28.
+The panel says which unit was used and whether the file declared it, because
+that is the one thing about an import that can be wrong while everything else
+looks right.
+
 The tiles live in your browser rather than in the `.hyzer` file, so sending
 someone a course sends the design and not forty megabytes of elevation — they
 are told which survey it was designed against and can import the same file.
