@@ -7,9 +7,11 @@ Point it at a piece of land, draw tees and baskets on satellite imagery, and get
 real measurements — distances, elevation, par suggestions, safety envelopes —
 instead of shapes on a screenshot.
 
-> **Status: early.** You can draw a course, measure it, and get PDGA par and
-> design checks against it. Terrain, flight modelling and sharing are still
-> ahead. See [`docs/PLAN.md`](docs/PLAN.md) for what is built and what is coming.
+> **Status: early.** You can draw a course on real terrain, measure it, read the
+> ground it is thrown over, and get PDGA par and design checks against it —
+> including elevation, from LiDAR you bring yourself. Layouts, flight modelling
+> and sharing are still ahead. See [`docs/PLAN.md`](docs/PLAN.md) for what is
+> built and what is coming.
 
 ## Running it
 
@@ -122,6 +124,14 @@ measurement lives on the **pair** — one tee to one target — rather than on t
 hole. How the course is _played_ is a **layout**: an ordered sequence that can
 skip a hole or play one twice. Skill level is read from tee colours, never stored
 on the course.
+
+**The model runs ahead of the interface here, and it is worth being plain about
+which is which.** A hole can hold several tees and pins today, each pair
+measures and gets its own par, and the panel lets you pick which shot you are
+looking at. What it does not yet do is show them side by side — the scorecard
+reports one shot per hole — and layouts exist in the file format and the core
+library with no interface at all. Both are the next two pieces of work; see
+[`docs/PLAN.md`](docs/PLAN.md).
 
 [`docs/MODEL.md`](docs/MODEL.md) is the full reference, including how version 1
 documents migrate.
