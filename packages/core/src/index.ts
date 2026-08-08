@@ -1,4 +1,5 @@
 export * from './geo.js';
+export * from './coordinates.js';
 export * from './pdga.js';
 export * from './features.js';
 export * from './measure.js';
