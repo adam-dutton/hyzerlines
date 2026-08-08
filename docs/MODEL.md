@@ -481,6 +481,26 @@ document model refuses to do anywhere else.
 
 ---
 
+## Coordinates are `[lng, lat]`, and people are not
+
+The document stores positions lng-first because GeoJSON and MapLibre do — see
+the note in `geo.ts`. Every human-facing surface is latitude-first, because
+every source a designer copies from writes it that way: Google Maps, handheld
+GPS units, permit drawings.
+
+That transposition lives in exactly one module, `coordinates.ts`, so there is
+one place to get it right and one place to test it. It is the classic
+coordinate bug and its failure mode is uneven: a Minnesota course at
+`44.9, -93.1` read backwards is not a valid latitude and fails loudly, while one
+at `40, -75` read backwards lands in Kazakhstan and fails silently. The tests
+use fixtures of both kinds.
+
+Typing a position dispatches `moveFeatureTo`, the same op dragging uses — so a
+line is translated whole rather than having one vertex yanked, and a tee takes
+its fairways with it either way.
+
+---
+
 ## Derived, never stored
 
 Played number · distance · effective length · par suggestion · course and layout

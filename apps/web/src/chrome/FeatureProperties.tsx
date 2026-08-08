@@ -16,6 +16,7 @@ import {
 } from '@hyzerlines/core';
 
 import { formatArea, formatDistance, toFeet, toMeters, type UnitSystem } from '../units';
+import { PositionSection } from './PositionSection';
 import {
   DegreeField,
   Row,
@@ -499,6 +500,15 @@ export function FeatureProperties({
         position that does not move.
       */}
       <HoleAssignment course={course} feature={feature} onOp={onOp} />
+
+      {/*
+        Where it is, above what it is made of.
+
+        The map answers "about here" and cannot answer "exactly here" — a
+        basket surveyed with a handheld, a tee off a permit drawing. Those
+        arrive as numbers, and this is where they go in.
+      */}
+      <PositionSection course={course} feature={feature} onOp={onOp} />
 
       {/* Measured, not entered. A line's length and an area's acreage are the
           numbers a designer is actually reaching for, so they sit above the
