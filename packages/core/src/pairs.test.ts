@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import { createFeature, type Feature, type Geometry } from './features.js';
 import { distance } from './measure.js';
-import { findPair, measurePair, skillLevelOfTee, suggestParForPair } from './pairs.js';
+import {
+  ELEVATION_FLOOR_M,
+  findPair,
+  measurePair,
+  skillLevelOfTee,
+  suggestParForPair,
+} from './pairs.js';
 import {
   createLayout,
   createPlay,
@@ -282,5 +288,107 @@ describe('layouts', () => {
     expect(measured).toEqual([]);
     expect(layoutPar(measured)).toBe(0);
     expect(layoutLength(measured)).toBe(0);
+  });
+});
+
+/**
+ * Elevation in the par suggestion.
+ *
+ * `[PAR]` p8: "Effective Length = Measured Length + 3 x (Target Elevation - Tee
+ * Elevation) + ...". The term has existed in `effectiveLength` since PR 4 and
+ * has always been handed a zero; these are the tests for it actually carrying a
+ * measurement.
+ *
+ * The stakes are why they are this thorough. This is the one input that can
+ * move a par by two strokes on a number nobody typed, so every way it could be
+ * plausibly wrong — reading the sign backwards, treating "unknown" as "flat",
+ * amplifying sampling noise into a stroke — is its own case.
+ */
+describe('elevation in the par suggestion', () => {
+  const suggest = (meters: number, gain: number | null) => {
+    const { tee, target, featureById } = shot(meters);
+    return suggestParForPair(featureById, tee.id, target.id, null, 'white', gain);
+  };
+
+  it('adds three times the rise for an uphill hole', () => {
+    const flat = suggest(200, null)!;
+    const uphill = suggest(200, 10)!;
+    expect(uphill.effectiveMeters).toBeCloseTo(flat.effectiveMeters + 30, 6);
+    // The measured length is untouched: only the *effective* length moves.
+    expect(uphill.measuredMeters).toBeCloseTo(flat.measuredMeters, 6);
+  });
+
+  it('subtracts three times the drop for a downhill hole', () => {
+    const flat = suggest(200, null)!;
+    const downhill = suggest(200, -10)!;
+    expect(downhill.effectiveMeters).toBeCloseTo(flat.effectiveMeters - 30, 6);
+  });
+
+  /*
+   * The reason the parameter is `number | null` and not `number`.
+   *
+   * Zero is a claim that somebody measured this hole and found it flat. Null is
+   * "nobody measured". They produce the same arithmetic and must not produce
+   * the same panel: a hole with no elevation data has no business showing an
+   * elevation factor at all.
+   */
+  it('treats unknown elevation differently from flat ground', () => {
+    const unknown = suggest(200, null)!;
+    const flat = suggest(200, 0)!;
+
+    expect(unknown.effectiveMeters).toBeCloseTo(flat.effectiveMeters, 6);
+    expect(unknown.factors.some((f) => /uphill|downhill/i.test(f.label))).toBe(false);
+    expect(flat.factors.some((f) => /uphill|downhill/i.test(f.label))).toBe(false);
+  });
+
+  /*
+   * A floor under the term, because the multiplier is three.
+   *
+   * Two adjacent DEM samples can differ by a few centimetres from interpolation
+   * alone. Tripled and pushed through a band boundary, that noise could flip a
+   * par — so anything under half a metre is not treated as elevation.
+   */
+  it('ignores changes below the floor', () => {
+    const flat = suggest(200, null)!;
+    const trivial = suggest(200, ELEVATION_FLOOR_M - 0.01)!;
+    expect(trivial.effectiveMeters).toBeCloseTo(flat.effectiveMeters, 6);
+    expect(trivial.factors.some((f) => /uphill/i.test(f.label))).toBe(false);
+
+    const real = suggest(200, ELEVATION_FLOOR_M)!;
+    expect(real.effectiveMeters).toBeCloseTo(flat.effectiveMeters + 3 * ELEVATION_FLOOR_M, 6);
+  });
+
+  it('says which way the hole runs, and that the multiplier is three', () => {
+    const uphill = suggest(200, 10)!.factors.find((f) => /uphill/i.test(f.label));
+    expect(uphill?.effect).toBe('lengthens');
+    expect(uphill?.label).toMatch(/three times/i);
+
+    const downhill = suggest(200, -10)!.factors.find((f) => /downhill/i.test(f.label));
+    expect(downhill?.effect).toBe('shortens');
+  });
+
+  /*
+   * The whole point. A par that does not move is a term that does not matter.
+   *
+   * White plays par 3 to 430 ft. A 425 ft hole is par 3 on the flat and par 4
+   * climbing two metres, which is exactly the call a plan view cannot make.
+   */
+  it('can move a par across a band boundary', () => {
+    expect(suggest(feet(425), null)!.par).toBe(3);
+    expect(suggest(feet(425), 2)!.par).toBe(4);
+  });
+
+  it('can move a par down a band when the hole drops', () => {
+    expect(suggest(feet(440), null)!.par).toBe(4);
+    expect(suggest(feet(440), -2)!.par).toBe(3);
+  });
+
+  it('reads the sign as target minus tee, not the other way round', () => {
+    // If the sign were inverted this test and the two above would still pass in
+    // isolation, so pin the direction directly: uphill is always the longer of
+    // the two, whatever the band arithmetic does.
+    expect(suggest(200, 10)!.effectiveMeters).toBeGreaterThan(
+      suggest(200, -10)!.effectiveMeters,
+    );
   });
 });

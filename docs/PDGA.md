@@ -214,11 +214,37 @@ and the caveat on the multiplier:
 
 The app uses 3 and does not guess beyond it.
 
-**What the app currently supplies.** Only the measured length. Elevation waits on
-terrain data (PR 5); the dogleg term needs the distance to the corner and the
-water term needs the detour a carry forces, neither of which is in the document
-model yet. Those inputs are omitted rather than estimated. `effectiveLength` is
-already shaped to take them.
+**What the app currently supplies.** The measured length, and the elevation term
+— but only from an imported site survey.
+
+Elevation is read from a per-hole ground profile: the shot's centreline is
+sampled at 64 points, each point's metres come out of the same DEM tiles the
+hillshade and contours are drawn from, and `Target Elevation - Tee Elevation` is
+the difference between the two ends. See `packages/core/src/profile.ts`.
+
+**The global elevation overlay draws that profile but never moves a par.** It is
+roughly 10m posted in the US and 30m elsewhere, with vertical error that can
+reach ±16m on SRTM, and the formula above multiplies elevation by three — so a
+par could be two strokes wrong from measurement error alone. An imported LiDAR
+survey is a different instrument (10–20cm vertical, posted at a metre) and is
+allowed to change the number. The hole panel says which is in use either way.
+The rule lives in one place: `feedsPar` in `apps/web/src/survey/useProfiles.tsx`.
+
+**Chart smoothing cannot reach any of this.** The app offers a smoothing
+preference for reading the profiles, because nearest-neighbour sampling of a
+raster turns a slope into a staircase and exaggerates the reported grade. It
+filters the drawn curve, the climb, the descent and the steepest grade.
+`netGain` is read from the raw endpoints at every setting, so no reading
+preference can change an effective length or a par. See `summarizeProfile`.
+
+A change of less than half a metre is treated as no elevation at all
+(`ELEVATION_FLOOR_M`). Tripled and pushed through a band boundary, a few
+centimetres of interpolation noise could otherwise flip a par.
+
+The dogleg term needs the distance to the corner and the water term needs the
+detour a carry forces, neither of which is in the document model yet. Those two
+are omitted rather than estimated. `effectiveLength` is already shaped to take
+them.
 
 ---
 

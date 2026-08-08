@@ -208,7 +208,12 @@ publishes three densities and marks none typical, so an unset value means the
 area is measured and reported without a comparison. See `acreage.ts`.
 
 **Elevation is absent everywhere on purpose.** It is sampled from terrain, not
-typed in, and offering a box for it would invite a number nobody measured.
+typed in, and offering a box for it would invite a number nobody measured. A
+hole's ground profile — and the `Target Elevation - Tee Elevation` term the PDGA
+prices par with — is read from DEM tiles at the moment it is needed and never
+written back. Storing it would mean a `.hyzer` carrying elevations from whatever
+source the author happened to have, silently outliving both the survey they came
+from and any correction to it.
 
 ### Tees and drop zones are points with derived footprints
 
@@ -380,6 +385,100 @@ and half in whichever browser last touched it.
 Added without a version bump: the field carries defaults, so a version 2 document
 written before it existed parses with everything on.
 
+## Terrain overlays are too, and default the other way
+
+`course.overlays` is a sibling of `basemapId`, not part of `display`:
+
+```ts
+{
+  hillshade: boolean;
+  contours: boolean;
+}
+```
+
+The split is what each is about. `display` is the course — the fairways and
+putting circles the app derives from what you drew. These are the **ground**:
+readings of the land itself, from a source outside the document, sitting between
+the basemap and the design. `basemapId` was already in the document for the same
+reason, and a wooded site sent to a reviewer with hillshade on was sent that way
+on purpose — the designer is saying "the reason hole 7 doglegs is this ridge".
+
+**They default off, where every drawing aid defaults on.** A fairway corridor is
+the app drawing something you made; a contour is the app fetching tiles from a
+third party and printing lines over your imagery. Nobody's first impression of a
+course should be a network request they did not ask for.
+
+Additive with defaults, so no version bump — a document written before this
+existed parses with both off, which is what it was showing.
+
+**The adjustments live here too.** `hillshadeOpacity`, `hillshadeSoftness`,
+`contourOpacity` and `contourSmoothing` are in the document for the same reason
+the switches are: a course sent to a reviewer with the shading turned down was
+sent that way on purpose. Each defaults to the appearance that existed before it
+was adjustable, so an older document opens unchanged.
+
+`OverlaySwitch` and `OverlayAmount` are derived from the schema rather than
+listed, so a new field lands in one set or the other automatically and every
+consumer that has to handle it fails to compile until it does — the same
+discipline that keeps an overlay from existing with no control for it.
+
+**What the numbers are worth is part of the model.** The elevation source is
+roughly 10m over the US and 30m elsewhere. That will show a ridge, a bowl and a
+fall line; it will not show a two-metre mound behind a green, and a contour drawn
+through one is interpolation rather than measurement. The interval stops
+tightening past z13 because the data stops improving there, and the layers panel
+says so next to the switch. Everything else in this document is a measurement;
+these are a reading, and the interface has to be honest about the difference.
+
+## A site survey is metadata here and pixels elsewhere
+
+`course.siteSurvey` is the one field that deliberately does **not** carry its own
+data:
+
+```ts
+{
+  name: string; // the file it came from
+  bounds: [w, s, e, n]; // WGS84, after reprojection
+  resolutionMeters: number; // what the tiles achieved, not what the file claims
+  crs: string; // 'EPSG:26916' — shown, not used again
+  minZoom: number;
+  maxZoom: number;
+  importedAt: string;
+}
+```
+
+The tiles live in IndexedDB, in their own database, keyed by `z/x/y`. A `.hyzer`
+is a document you email and forty megabytes of elevation is not.
+
+**A survey is a set of files.** `sources` carries one entry per GeoTIFF, each
+with its own name, bounds, projection and vertical unit — they genuinely can
+differ, and a designer who mixed a State Plane tile with a UTM one needs to see
+that rather than have it averaged away. The survey's own `bounds` is their union
+and its `resolutionMeters` is the _coarsest_ of them, because that is the only
+figure true of the whole thing. Older documents held one file's fields at the
+top level; a `z.preprocess` wraps them as a single source, which is a widening
+rather than a version bump — the tiles in IndexedDB are untouched, so such a
+course opens working rather than merely parsing.
+
+**The vertical unit is part of the record.** `verticalUnit` says what the file's
+elevations were read as and `verticalUnitDeclared` says whether the file stated
+it or whether it was taken from the unit its coordinates are in. Both are stored
+rather than recomputed, because the tiles are already encoded in metres by the
+time anything reads them — the unit is a fact about how they were built, not
+something derivable from them afterwards. A survey read in the wrong vertical
+unit is out by a factor of 3.28 and looks entirely plausible.
+
+But the record still travels, because **it describes how the course was
+designed**. Someone opening a file you sent is told the design was drawn against
+a 1m survey and which one, even though they do not have it — that is a missing
+attachment, not a corrupt document, and the interface says exactly that rather
+than failing.
+
+**`resolutionMeters` is the tiles', never the file's.** A large GeoTIFF is read
+from a coarser overview level to fit a memory budget; reporting its headline
+number would overstate what was actually built, which is the one thing this
+document model refuses to do anywhere else.
+
 ---
 
 ## Derived, never stored
@@ -387,7 +486,7 @@ written before it existed parses with everything on.
 Played number · distance · effective length · par suggestion · course and layout
 totals · layout skill level · layout playability · tee and drop-zone footprints ·
 tee bearing · fairway centreline and corridor polygon · putting circles · hole
-label position · polygon area and course acreage · elevation
+label position · polygon area and course acreage · elevation and ground profiles
 
 ## Not in the document at all
 
@@ -395,6 +494,7 @@ label position · polygon area and course acreage · elevation
 | ---------------------------------------------- | -------------------------------- |
 | "Save as default" — surface, color, dimensions | localStorage, keyed by tee color |
 | Feet or meters                                 | localStorage — see below         |
+| Elevation chart smoothing                      | localStorage — see `prefs.ts`    |
 | Par readout show/hide                          | View setting                     |
 | Which pair a hole panel is describing          | Editor state, per selection      |
 

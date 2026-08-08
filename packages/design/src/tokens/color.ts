@@ -230,6 +230,21 @@ export const feature = {
     casing: primitive.accent[500],
   },
   snap: { stroke: '#22d3ee', fill: 'rgb(34 211 238 / 0.40)', casing: CASING },
+
+  /**
+   * Contour lines, and the one warm thing on the map.
+   *
+   * The drawing is white, selection is blue, and out of bounds is red. Terrain
+   * is a fourth channel — not part of the design, not the interface talking
+   * about the design, but a reading of the ground both are sitting on — so it
+   * needs a hue that cannot be mistaken for any of the three.
+   *
+   * Warm tan, which is also what a topographic sheet has used for a century.
+   * It survives being drawn over canopy, sand and water, and it recedes behind
+   * white geometry rather than competing with it, which is the right ranking:
+   * you are designing the course, not reading the hill.
+   */
+  contour: { stroke: '#e3b183', fill: 'rgb(227 177 131 / 0.18)', casing: CASING },
 } as const satisfies Record<string, FeatureColor>;
 
 export type FeatureKind = keyof typeof feature;

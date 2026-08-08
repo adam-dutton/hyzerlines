@@ -44,22 +44,25 @@ current as PRs land.
 | **5**   | Document model v2: pairs, layouts, migration                                       | ✅ done |
 | **6**   | Derived geometry: tee footprints, pair picker, fairway corridors, vertex editing   | ✅ done |
 | **7**   | Boundaries and acreage                                                             | ✅ done |
-| **8**   | Layouts and routing: named layouts, skip, repeat, reorder                          | next    |
-| **9**   | Expanded palette: relief areas, noted areas, drop zones, invert, circles           |         |
-| **10**  | Terrain: DEM sampling, elevation profiles, hillshade                               |         |
-| **11**  | Parametric flight model, shot editor, disc database                                |         |
-| **12**  | Safety: dispersion envelopes, overlap and proximity rules                          |         |
-| **13**  | Accounts, share links, published course pages (backend begins here)                |         |
-| **14**  | Exports: PDF/PNG maps, tee signs, punch lists                                      |         |
-| **15**  | KML/KMZ interop                                                                    |         |
-| **16**  | Terrain 2: contours, slope analysis, LiDAR, custom DEM upload                      |         |
-| **17**  | Offline/PWA, tile caching                                                          |         |
-| **18**  | Field mode: touch targets, GPS, geotagged photos                                   |         |
-| **19**  | Donations, public gallery, self-host via docker-compose                            |         |
+| **8**   | UI/UX: the chrome rearranged (8a), the insides of the panels (8b)                  | ✅ done |
+| **9**   | Map overlays: one style, hillshade, contours                                       | ✅ done |
+| **10**  | Site surveys: import LiDAR GeoTIFFs, reproject and tile in-browser                 | ✅ done |
+| **10b** | Elevation profiles per hole, and the PDGA elevation term in par                    | ✅ done |
+| **11**  | Layouts and routing: named layouts, skip, repeat, reorder                          | next    |
+| **12**  | Expanded palette: relief areas, noted areas, drop zones, invert, circles           |         |
+| **13**  | Terrain 2: 3D tilt, canopy height, slope shading                                   |         |
+| **14**  | Parametric flight model, shot editor, disc database                                |         |
+| **15**  | Safety: dispersion envelopes, overlap and proximity rules                          |         |
+| **16**  | Accounts, share links, published course pages (backend begins here)                |         |
+| **17**  | Exports: PDF/PNG maps, tee signs, punch lists                                      |         |
+| **18**  | KML/KMZ interop                                                                    |         |
+| **19**  | Offline/PWA, tile caching                                                          |         |
+| **20**  | Field mode: touch targets, GPS, geotagged photos                                   |         |
+| **21**  | Donations, public gallery, self-host via docker-compose                            |         |
 
-Sharing sits at PR 13 rather than the end because a published, linkable course
-page is the growth loop — it is how a designer shows a parks department and how a
-club shows its players.
+Sharing sits mid-roadmap rather than at the end because a published, linkable
+course page is the growth loop — it is how a designer shows a parks department
+and how a club shows its players.
 
 PRs 5 through 9 are one piece of work split for reviewability: the document
 model the app should have had from the start. It came out of a design session
@@ -94,7 +97,9 @@ Notable decisions encoded there:
 **App shell.** MapLibre with Esri imagery (default), Esri topo, and OSM — all
 keyless, so the app works on first load with no signup and no billing
 relationship. The map instance is created once and never torn down; basemap
-switches swap the style in place so the camera and future editing state survive.
+switches swapped the style in place so the camera and future editing state
+survived. (PR 9 went further and stopped swapping the style at all — every
+basemap is a source in one style now, and switching is a visibility change.)
 
 **Chrome.** Inline-editable course name, theme toggle, basemap segmented control,
 zoom and bearing controls, an adaptive scale bar, live coordinates, a units
@@ -870,6 +875,254 @@ moment of the click.
 **The Features section on a hole is still one shot.** A hole with three tees and
 three pins is nine shots and the panel still picks one to describe. Making that
 a real list is the multi-tee work, and it wants layouts first.
+
+---
+
+## PR 9 — overlays, and reading the land
+
+Imagery answers what is growing there and where the paths already run. It cannot
+answer the question that decides half a course's routing: **which way does this
+fall, and by how much.** A hole that plays flat in a photograph and drops fifteen
+metres in its last eighty is a different hole.
+
+### One style, switched rather than swapped
+
+The enabling change, and it is not about terrain at all. Changing the basemap
+called `setStyle`, which throws away every source and layer the app added and
+re-parses the document — a large hammer for "show a different picture", and one
+that had already cost a real bug: `FeatureLayer` had to reinstall its whole scene
+on `styledata`, that handler was bound once, so it closed over first-render props
+and re-added the sources with an empty document. Switching the basemap emptied
+the map until you reloaded.
+
+So **every basemap is a source in one style from the start**, and switching is a
+`visibility` change. MapLibre does not request tiles for a source no visible
+layer uses, so the two unused basemaps cost a few lines of JSON and nothing else
+— there is a test for exactly that claim, because the whole design rests on it.
+Nothing is ever removed, so the course, the handles and the preview are never
+disturbed. `setStyle` is gone from the app entirely.
+
+Once layers are switched rather than swapped, **an overlay is not a new concept**
+— it is another layer that starts hidden. That is the entire architecture.
+
+### The readiness trap
+
+`map.isStyleLoaded()` looks like the right gate for "can I change a layer yet"
+and is not. It means every _source_ has loaded too, and it stays false while any
+of them is still fetching — on a bad network, forever. Gating a visibility change
+on it means a switch that silently does nothing.
+
+What has to be true is that the **layers exist**, which happens as soon as the
+style JSON parses. `styleReady` checks that directly. The effect applies
+immediately if it can and waits on `styledata` if it cannot, dropping the
+listener the moment it succeeds — that last part matters, because applying
+visibility itself fires `styledata`.
+
+This is not hypothetical. Restoring the autosave is asynchronous: the map is
+built from a default document and the real one, which may have had hillshade on,
+lands a beat later. The first version of this used `once('load')`, which never
+fires if load has already happened, and every overlay toggle did nothing.
+
+### Hillshade and contours, from one fetch
+
+[AWS Open Data terrain tiles](https://registry.opendata.aws/terrain-tiles/):
+keyless, no signup, no billing relationship — the same bar every basemap has to
+clear. Terrarium encoding, which MapLibre decodes natively.
+
+**Contours are computed in the browser**, not fetched. `maplibre-contour` runs
+isolines over the elevation tiles in a worker and hands MapLibre a vector tile.
+So the hillshade source points at that library's shared DEM protocol rather than
+at S3: with both overlays on, a tile is downloaded and decoded **once** and
+serves the shading and the lines.
+
+**Igor hillshade, not the default.** The standard method darkens by slope in both
+directions, which over aerial imagery reads as grime — flat ground goes muddy and
+the photograph stops being legible. Igor shades only the shadowed side, so canopy
+still looks like canopy and relief arrives as a separate signal. Highlights are
+fully transparent for the same reason.
+
+**Contours are quoted in the reader's units.** The interval and the
+metres-to-feet multiplier are encoded in the tile url, so switching units
+re-points the source with `setTiles` rather than rebuilding anything — and it
+compares before writing, because re-pointing throws away every contour tile
+already computed.
+
+**Warm tan is the fourth channel.** The drawing is white, selection is blue, OB is
+red. Terrain is not part of the design and not the interface talking about the
+design — it is a reading of the ground both sit on — so it needs a hue that
+cannot be mistaken for any of the three. It is also what a topographic sheet has
+used for a century.
+
+### Saying what the data is worth
+
+Roughly 10m over the US and 30m elsewhere. That shows a ridge, a bowl and a fall
+line; it does not show the two-metre mound behind a green, and a contour through
+one is interpolation rather than measurement. The interval **stops tightening
+past z13** because the data stops improving there — drawing foot contours off a
+30m grid would be inventing precision — and the layers panel says so next to the
+switch. Everything else in this app is a measurement; this is a reading, and the
+interface has to be honest about the difference.
+
+### A popover, because the layers control became a panel
+
+It was a menu with a radio group, which was right while picking one of three was
+all it did. Now there are two groups and you _work_ in it — flip hillshade, look
+at the map, flip contours, look again — and a menu that closes on select is
+fighting that. `Popover` is Radix, for the reasons `Menu` and `Dialog` are.
+
+**Attribution composes**, because the map does. Turning on an overlay adds a
+second provider's data to what is on screen, so it adds that provider's credit —
+and turning it off takes it away again, since crediting a source that is not
+being drawn is its own kind of wrong.
+
+### Testing something computed in a worker
+
+The browser tests stub a **synthetic terrarium tile**: a hillside falling across
+the diagonal, 0m to about 510m corner to corner. A flat tile would satisfy "the
+layer is visible" and prove nothing about whether the isoline generator ever ran,
+which is the only interesting question. Verified by flattening it and watching
+the test fail.
+
+### Deliberately not in this PR
+
+**3D terrain.** The same DEM would drive `setTerrain` in a few lines, but it
+changes how every drawing tool converts a screen point to a ground point while
+the map is tilted — placement, dragging and vertex editing all need re-testing
+under pitch. Hillshade and contours carry the elevation information and are inert
+at pitch 0, which is where all the drawing happens. Tilt gets its own PR.
+
+**Slope shading.** Arguably more useful than contours for disc golf — where a
+disc rolls, where water runs — but MapLibre has no native slope layer, so it
+means computing a raster ourselves through a custom protocol. That is a
+subsystem, not a layer.
+
+**Parcels, and higher-resolution imagery.** There is no free nationwide parcel
+source; only about ten US states publish a statewide layer. Both wait for a
+per-jurisdiction registry or a keyed provider behind a tile proxy, and neither is
+free.
+
+---
+
+## PR 10 — site surveys: bring your own LiDAR
+
+The global overlay reads roughly 10m data and says so. At 10m you get a ridge
+and a fall line; you do not get the two-metre mound behind a green. **1m LiDAR
+exists, free and public domain, for most of the United States and all of
+England** — and the reason no app offers it as a basemap is that a global 1m
+tileset is petabytes.
+
+But **a course is about a square kilometre**, and a square kilometre of 1m
+elevation is a few megabytes. That reframing is the whole PR: you do not need
+global 1m, you need 1m _here_. So the designer brings a GeoTIFF for their own
+site and the browser turns it into tiles. No backend, no API key, no
+per-request cost, and it works anywhere LiDAR is published rather than only
+where we built an integration.
+
+### It was spiked before it was planned
+
+Against a real USGS 3DEP tile, over the real internet, before any of this was
+designed: ranged reads work, the projection comes out of the GeoKeys cleanly,
+proj4 round-trips it, and the file carries six overview levels so the pyramid is
+free. The one thing that would have killed the approach — `maplibre-cog-protocol`
+refuses anything that is not already EPSG:3857 and does not reproject — is why
+we resample ourselves rather than pointing a plugin at the bucket.
+
+### Metadata in the document, pixels in IndexedDB
+
+`course.siteSurvey` records the file's name, bounds, CRS, zoom range and the
+resolution **actually achieved**. The tiles do not travel with it.
+
+That split is deliberate rather than merely pragmatic. A `.hyzer` is a document
+you email; forty megabytes of elevation is not. But someone opening a course you
+sent should still be told the design was drawn against a 1m survey and which one
+— that is a fact about how the course was designed. A missing survey is a
+missing attachment, not a corrupt document, and the panel says so in those
+words.
+
+**The resolution reported is the tiles', never the file's.** A large file is
+read from a coarser overview to fit a memory budget; claiming its headline
+number would be the same overstatement of precision this app exists to avoid.
+
+### Three things that only showed up in a browser
+
+**Alpha is not an escape hatch.** The obvious way to mark "no data" is a
+transparent pixel, and MapLibre's DEM decoder ignores alpha entirely — it reads
+RGB regardless. A transparent pixel carrying zeroes decodes as −32768 and
+hillshades as a thirty-kilometre pit. Edges are handled by **clamping to the
+nearest edge sample** instead, the way every texture sampler does, so a tile
+straddling the survey's border continues the last real elevation outward
+instead of falling off a cliff to sea level.
+
+**`maplibre-contour` fetches its own tiles.** `DemSource` takes a URL and calls
+`fetch` on it in its worker, so a MapLibre custom protocol like `survey://` is
+invisible to it — MapLibre resolves those, `fetch` does not. The failure was
+silent in the worst way: hillshade drew, because MapLibre loaded that source,
+and contours simply never appeared. `LocalDemManager` is the seam — same isoline
+machinery, exported separately, and it accepts a `getTile` we can point at
+IndexedDB.
+
+**Contours need a 3×3 neighbourhood, and reject the tile if any of the nine is
+missing.** A course-sized survey is narrower than three tiles, so it produced
+_zero_ contours. Fixed with a one-tile skirt of edge-clamped tiles that the
+generator can read and MapLibre never draws, because both survey sources carry
+the survey's real bounds. Diagnosed by instrumenting the page — the import was
+provably correct (right tiles, right zooms, right bounds) and the output was
+still empty, which is not something types or unit tests can tell you.
+
+### The projection table is generated, and proves itself
+
+The importer began with a hand-written table of three projection families — UTM,
+British National Grid, plain latitude/longitude — which lasted exactly until a
+file arrived in **EPSG:6428, NAD83(2011) / Colorado Central (ftUS)**. US State
+Plane alone is about 120 zones across several datum realizations, and every
+country has a grid of its own: a curated list is a list that is always missing
+the one in front of you.
+
+So the whole EPSG registry is compiled in from `epsg-index`, a devDependency
+that never ships. 7357 systems, in a chunk that loads only on import — 132 KB
+gzipped, next to `geotiff`'s 114 KB.
+
+**Two families are deliberately left out**, and for the same reason: proj4js
+does not throw when it cannot do the job. It returns `NaN`, or a plausible
+coordinate in the wrong county. So projections it does not implement, and
+definitions needing a grid-shift file we do not ship, are excluded — and the
+importer says plainly that it cannot read them. A refusal is recoverable; a
+survey silently in the wrong place is not.
+
+**The generator refuses to emit a table it cannot verify.** It checks a real
+USGS tile's corner against the coordinate measured in the original spike, checks
+that Colorado Central puts Denver at a plausible ftUS easting (the linear-unit
+trap), and compares every trimmed definition against its original across a wide
+sample. That last check earned its place immediately: stripping an all-zero
+`+towgs84` looks completely safe and is not — its presence is what tells proj4js
+the datum is known, and removing it silently moved every system built on a
+non-WGS84 ellipsoid.
+
+### Where the work is testable
+
+Everything that can be wrong quietly is pure and lives in core: tile bounds,
+terrarium encoding, and the resampler, tested against grids whose every value
+encodes its own position. Terrain that lands mirrored, half a pixel north, or
+with nodata smeared into real ground all render as _something_, and something is
+much harder to notice than nothing — so the fixtures ramp with the column index
+and the assertions read the position back out.
+
+The browser tests import a real GeoTIFF, written with `geotiff`'s own writer
+rather than hand-rolled: a fixture we encoded to match our own reader would
+prove nothing about reading a real file.
+
+### Deliberately not in this PR
+
+**Canopy height.** LiDAR ships two surfaces — bare earth and top of canopy — and
+subtracting them gives tree heights per square metre, which answers "can I throw
+over that gap" from data. It is the most novel thing this data enables and it
+wants a second import slot and a way to display a derived raster; neither exists
+yet.
+
+**Fetching surveys for the user.** OpenTopography has an API that would remove
+the download step, and it needs a key that is free only for academics. A tiling
+backend that subsets 3DEP for a bounding box would be better than either, and
+waits for the backend that arrives with accounts and sharing.
 
 ---
 

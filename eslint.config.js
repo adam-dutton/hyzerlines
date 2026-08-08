@@ -4,7 +4,13 @@ import reactHooks from 'eslint-plugin-react-hooks';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/node_modules/**', 'packages/design/dist/**'],
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      'packages/design/dist/**',
+      // Generated from the EPSG registry; see apps/web/scripts/build-epsg.ts.
+      'apps/web/src/survey/epsg.generated.ts',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

@@ -1,5 +1,7 @@
 import { DESCRIPTION_MAX, type Course } from './schema.js';
 import type { Display } from './display.js';
+import type { Overlays } from './overlays.js';
+import type { SiteSurvey } from './survey.js';
 import type { View } from './geo.js';
 import type { Feature, Geometry } from './features.js';
 import type { Hole } from './holes.js';
@@ -22,7 +24,11 @@ export type Op =
   | { type: 'setView'; view: View }
   | { type: 'setBasemap'; basemapId: string }
   | { type: 'setNotes'; notes: string }
-  | { type: 'setLocation'; location: string }
+  /**
+   * `seeded` marks a value the app worked out rather than one the designer
+   * typed — see `isUndoable`.
+   */
+  | { type: 'setLocation'; location: string; seeded?: boolean }
   | { type: 'setDescription'; description: string }
   | { type: 'addFeature'; feature: Feature }
   | { type: 'removeFeature'; id: string }
@@ -62,6 +68,20 @@ export type Op =
    */
   | { type: 'setDisplay'; changes: Partial<Display> }
   /**
+   * Turn the terrain overlays on and off. Partial for the same reason
+   * `setDisplay` is — see overlays.ts for why these are in the document.
+   */
+  | { type: 'setOverlays'; changes: Partial<Overlays> }
+  /**
+   * Attach or clear the imported elevation for this site.
+   *
+   * Whole-value rather than partial: a survey is one artefact from one file,
+   * and there is no such thing as changing its bounds without changing the
+   * pixels underneath. Undoable like everything else — importing the wrong
+   * file should cost one ⌘Z, not a hunt for a Remove button.
+   */
+  | { type: 'setSiteSurvey'; survey: SiteSurvey | null }
+  /**
    * Several edits that are one action.
    *
    * Moving a tee from hole 3 to hole 4 is two `updateHole`s, and bending a
@@ -89,11 +109,24 @@ export interface ApplyResult {
  * a pan is not an edit. If it were undoable, ⌘Z after ten minutes of scrolling
  * would rewind the camera instead of the work — which is precisely the moment a
  * designer reaches for undo and is most alarmed to have it do the wrong thing.
+ *
+ * ## Seeded values are the same argument, arriving later
+ *
+ * A value the app worked out on the designer's behalf is not an edit either,
+ * and it is worse than a camera move because it lands *asynchronously*. The
+ * location seed reverse-geocodes the first thing you draw and returns a second
+ * or two afterwards — so the undo stack read: your drawing, then a location you
+ * never typed. Press ⌘Z expecting to take back the drawing and you took back an
+ * invisible field instead, and the drawing was still there.
+ *
+ * A designer typing in that field is a real edit and stays undoable; only the
+ * seed carries the flag. See `useAutoLocation`.
  */
 export function isUndoable(op: Op): boolean {
   // A batch is undoable if any part of it is — a batch that also moved the
   // camera should still be reversible for the edit it carried.
   if (op.type === 'batch') return op.ops.some(isUndoable);
+  if (op.type === 'setLocation' && op.seeded === true) return false;
   return op.type !== 'setView' && op.type !== 'setActiveLayout';
 }
 
@@ -385,6 +418,21 @@ export function applyOp(course: Course, op: Op): ApplyResult {
         // to land on the state that existed, and a partial inverse would leave
         // whatever a coalesced run of toggles happened to set in between.
         { type: 'setDisplay', changes: course.display },
+        undoable,
+      );
+
+    case 'setOverlays':
+      return result(
+        { ...course, overlays: { ...course.overlays, ...op.changes } },
+        // The whole previous object, for the reason setDisplay's inverse is.
+        { type: 'setOverlays', changes: course.overlays },
+        undoable,
+      );
+
+    case 'setSiteSurvey':
+      return result(
+        { ...course, siteSurvey: op.survey },
+        { type: 'setSiteSurvey', survey: course.siteSurvey },
         undoable,
       );
 

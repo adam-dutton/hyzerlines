@@ -6,9 +6,11 @@ import {
   viewHoles,
   type Course,
   type Op,
+  type Smoothing,
 } from '@hyzerlines/core';
 
 import { formatDistance, type UnitSystem } from '../units';
+import { useProfiles } from '../survey/useProfiles';
 import { CourseMenu } from './CourseMenu';
 import { CourseProperties } from './CourseProperties';
 import { useAutoLocation } from './useAutoLocation';
@@ -90,6 +92,8 @@ export function CoursePanel({
   onOpen,
   onSave,
   onUnitsChange,
+  smoothing,
+  onSmoothingChange,
   onDrawBoundary,
 }: {
   course: Course;
@@ -102,9 +106,14 @@ export function CoursePanel({
   onOpen: () => void;
   onSave: () => void;
   onUnitsChange: (units: UnitSystem) => void;
+  smoothing: Smoothing;
+  onSmoothingChange: (value: Smoothing) => void;
   onDrawBoundary: () => void;
 }) {
-  const views = viewHoles(course, course.holes);
+  // Same elevations the scorecard and the hole panel read, so the course
+  // total is the sum of the pars actually shown beside each hole.
+  const { elevations } = useProfiles();
+  const views = viewHoles(course, course.holes, elevations);
   const holes = course.holes.length;
 
   /*
@@ -123,7 +132,13 @@ export function CoursePanel({
   useAutoLocation({
     location: course.location,
     hasFeatures: course.features.length > 0,
-    onResolved: (location) => onOp({ type: 'setLocation', location }),
+    /*
+     * `seeded`, so this never lands on the undo stack. It arrives a second or
+     * two after the first thing you draw, and without the flag ⌘Z would take
+     * back a field you never typed instead of the drawing you did. See
+     * `isUndoable`.
+     */
+    onResolved: (location) => onOp({ type: 'setLocation', location, seeded: true }),
   });
 
   return (
@@ -220,6 +235,8 @@ export function CoursePanel({
           units={units}
           onOp={onOp}
           onUnitsChange={onUnitsChange}
+          smoothing={smoothing}
+          onSmoothingChange={onSmoothingChange}
           onDrawBoundary={onDrawBoundary}
         />
       </div>

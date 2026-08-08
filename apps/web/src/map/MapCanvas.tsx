@@ -2,12 +2,33 @@ import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-import { basemapById, styleForBasemap, type Basemap } from './basemaps';
+import type { Overlays } from '@hyzerlines/core';
+
 import { MapContext, type MapViewState } from './MapContext';
+import {
+  applyBasemap,
+  applyContourUnits,
+  applyDemSoftness,
+  applyOverlayStyling,
+  applyOverlays,
+  buildStyle,
+  styleReady,
+} from './style';
 import { useOrbit } from './useOrbit';
+import type { UnitSystem } from '../units';
 
 interface MapCanvasProps {
   basemapId: string;
+  /** What is drawn over the basemap. See terrain.ts. */
+  overlays: Overlays;
+  /** Contour intervals are quoted in whatever the reader thinks in. */
+  units: UnitSystem;
+  /**
+   * An imported survey is supplying the elevation, so the global overlay stands
+   * down. Both drawn at once would be two hillshades of the same hill at
+   * different resolutions, stacked.
+   */
+  suppressTerrain: boolean;
   children?: React.ReactNode;
   /** Debounced camera reports, for persisting where the user was working. */
   onViewChange?: (view: MapViewState) => void;
@@ -19,10 +40,14 @@ const VIEW_DEBOUNCE_MS = 400;
 /**
  * Owns the MapLibre instance.
  *
- * The map is created exactly once and never torn down on prop changes — basemap
- * switches swap the style in place. Recreating the map would reset camera, break
- * pointer capture mid-drag, and (once drawing lands) drop editing state. Anything
- * that needs the instance gets it through MapContext rather than by remounting.
+ * The map is created exactly once and never torn down on prop changes.
+ * Recreating it would reset the camera, break pointer capture mid-drag, and drop
+ * editing state. Anything that needs the instance gets it through MapContext
+ * rather than by remounting.
+ *
+ * The style is built once too. Every basemap and both terrain overlays are in it
+ * from the start, and changing what is shown is a `visibility` change on a
+ * layer — see `style.ts` for why `setStyle` is no longer called at all.
  *
  * Two things this component deliberately does NOT do:
  *
@@ -35,7 +60,14 @@ const VIEW_DEBOUNCE_MS = 400;
  *   only moves the anchor, and anchoring to the centre walks a tee at the edge
  *   of the screen straight off it.
  */
-export function MapCanvas({ basemapId, children, onViewChange }: MapCanvasProps) {
+export function MapCanvas({
+  basemapId,
+  overlays,
+  units,
+  suppressTerrain,
+  children,
+  onViewChange,
+}: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const viewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -54,10 +86,9 @@ export function MapCanvas({ basemapId, children, onViewChange }: MapCanvasProps)
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    const basemap: Basemap = basemapById(basemapId);
     const instance = new maplibregl.Map({
       container: containerRef.current,
-      style: styleForBasemap(basemap),
+      style: buildStyle(basemapId, overlays, units),
       center: view.center,
       zoom: view.zoom,
       // Course design is a plan-view task. Rotation and tilt are available but
@@ -119,12 +150,60 @@ export function MapCanvas({ basemapId, children, onViewChange }: MapCanvasProps)
 
   useOrbit(map);
 
-  // Basemap changes swap the style, preserving camera and any future overlays.
+  /*
+   * What is shown, as visibility rather than as a new style.
+   *
+   * One effect for all three, and it has to survive arriving early. Restoring
+   * the autosave is asynchronous: the map is built from the default document
+   * and the real one — which may have had hillshade on — lands a beat later.
+   * If that beat falls before the style JSON has parsed, `setLayoutProperty`
+   * has no layer to talk to and the restored setting is silently dropped.
+   *
+   * So it applies now if it can, and waits on `styledata` if it cannot,
+   * dropping the listener the moment it succeeds. That last part matters:
+   * applying visibility itself fires `styledata`, so a handler that stayed
+   * subscribed would keep re-entering.
+   *
+   * Values come from a ref rather than the closure, so a listener registered on
+   * one render applies whatever is current when it finally runs.
+   */
+  const desiredRef = useRef({ basemapId, overlays, units, suppressTerrain });
+  desiredRef.current = { basemapId, overlays, units, suppressTerrain };
+
   useEffect(() => {
-    const instance = mapRef.current;
-    if (!instance) return;
-    instance.setStyle(styleForBasemap(basemapById(basemapId)));
-  }, [basemapId]);
+    if (!map) return;
+
+    const apply = (): boolean => {
+      if (!styleReady(map)) return false;
+      const desired = desiredRef.current;
+      applyBasemap(map, desired.basemapId);
+      /*
+       * Suppression turns the global overlays off without touching the rest of
+       * the settings: an imported survey draws its own hillshade and contours
+       * from the same opacity and softness, so those must survive the switch
+       * or the shading would jump when a survey arrived.
+       */
+      const effective = desired.suppressTerrain
+        ? { ...desired.overlays, hillshade: false, contours: false }
+        : desired.overlays;
+
+      applyOverlays(map, effective);
+      applyOverlayStyling(map, effective);
+      applyDemSoftness(map, effective);
+      applyContourUnits(map, desired.units, effective.contourSmoothing);
+      return true;
+    };
+
+    if (apply()) return;
+
+    const retry = () => {
+      if (apply()) map.off('styledata', retry);
+    };
+    map.on('styledata', retry);
+    return () => {
+      map.off('styledata', retry);
+    };
+  }, [map, basemapId, overlays, units, suppressTerrain]);
 
   return (
     <MapContext.Provider value={{ map, view }}>

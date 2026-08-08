@@ -19,6 +19,29 @@ export interface TestCourse {
   }[];
   holes: { id: string; teeIds: string[]; targetIds: string[] }[];
   pairs: { teeId: string; targetId: string; fairwayId: string | null }[];
+  overlays: {
+    hillshade: boolean;
+    contours: boolean;
+    hillshadeOpacity: number;
+    hillshadeSoftness: number;
+    contourOpacity: number;
+    contourSmoothing: number;
+  };
+  siteSurvey: {
+    // A survey is a set of files: a course can be larger than one published
+    // LiDAR tile, and county downloads arrive as a grid of them.
+    sources: {
+      name: string;
+      crs: string;
+      crsName: string;
+      resolutionMeters: number;
+      bounds: [number, number, number, number];
+      verticalUnit: string;
+      verticalUnitDeclared: boolean;
+    }[];
+    resolutionMeters: number;
+    bounds: [number, number, number, number];
+  } | null;
 }
 
 declare global {
@@ -51,26 +74,26 @@ export const course = (page: Page): Promise<TestCourse> =>
  * and five `openEditor`s that had already begun to drift.
  */
 
+const TILE = 256;
+
 /**
- * A 256×256 checkerboard PNG, encoded by hand.
+ * A 256×256 truecolour PNG, encoded by hand.
  *
- * Tiles are stubbed in-process rather than fetched: the tests must not depend
- * on Esri being up, and a green-grey check is enough for a screenshot to be
- * readable when one fails. Hand-rolled because pulling in an image library for
- * four rectangles of flat colour is not worth the dependency.
+ * Hand-rolled because pulling in an image library to draw a checkerboard and a
+ * gradient is not worth the dependency, and because both stubs below have to
+ * produce exact bytes — a DEM tile's pixels *are* its elevations, so anything
+ * that re-encodes or colour-manages them would quietly change the terrain.
  */
-export function fakeTile(): Buffer {
-  const W = 256;
-  const H = 256;
-  const raw = Buffer.alloc((W * 3 + 1) * H);
+function encodePng(pixel: (x: number, y: number) => [number, number, number]): Buffer {
+  const raw = Buffer.alloc((TILE * 3 + 1) * TILE);
   let o = 0;
-  for (let y = 0; y < H; y++) {
+  for (let y = 0; y < TILE; y++) {
     raw[o++] = 0; // filter byte: none
-    for (let x = 0; x < W; x++) {
-      const on = ((x >> 5) + (y >> 5)) % 2 === 0;
-      raw[o++] = on ? 0x2f : 0x25;
-      raw[o++] = on ? 0x5a : 0x46;
-      raw[o++] = on ? 0x33 : 0x2a;
+    for (let x = 0; x < TILE; x++) {
+      const [r, g, b] = pixel(x, y);
+      raw[o++] = r;
+      raw[o++] = g;
+      raw[o++] = b;
     }
   }
   const table = [...Array<number>(256)].map((_, n) => {
@@ -92,8 +115,8 @@ export function fakeTile(): Buffer {
     return Buffer.concat([len, td, c]);
   };
   const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(W, 0);
-  ihdr.writeUInt32BE(H, 4);
+  ihdr.writeUInt32BE(TILE, 0);
+  ihdr.writeUInt32BE(TILE, 4);
   ihdr[8] = 8; // bit depth
   ihdr[9] = 2; // truecolour
   return Buffer.concat([
@@ -102,6 +125,113 @@ export function fakeTile(): Buffer {
     chunk('IDAT', deflateSync(raw)),
     chunk('IEND', Buffer.alloc(0)),
   ]);
+}
+
+/**
+ * A checkerboard, standing in for aerial imagery.
+ *
+ * Tiles are stubbed in-process rather than fetched: the tests must not depend
+ * on Esri being up, and a green-grey check is enough for a screenshot to be
+ * readable when one fails.
+ */
+export function fakeTile(): Buffer {
+  return encodePng((x, y) =>
+    ((x >> 5) + (y >> 5)) % 2 === 0 ? [0x2f, 0x5a, 0x33] : [0x25, 0x46, 0x2a],
+  );
+}
+
+/**
+ * A terrarium elevation tile: a hillside falling across the diagonal.
+ *
+ * Terrarium packs metres into RGB as `(R * 256 + G + B / 256) - 32768`, so a
+ * ramp in `R * 256 + G` is a ramp in elevation. This one runs 0m to about 510m
+ * corner to corner, which is enough relief that every contour interval in
+ * `terrain.ts` produces lines at every zoom the tests use.
+ *
+ * A flat tile would be the wrong stub. It would satisfy "the layer is visible"
+ * and prove nothing about whether the isoline generator ever ran, which is the
+ * only interesting question — contours are computed in the browser rather than
+ * fetched.
+ */
+export function fakeDemTile(): Buffer {
+  return encodePng((x, y) => {
+    const elevation = x + y;
+    const packed = elevation + 32768;
+    return [Math.floor(packed / 256), packed % 256, 0];
+  });
+}
+
+export interface SurveyTiffOptions {
+  /** The projection to declare. Defaults to NAD83 / UTM zone 15N. */
+  epsg?: number;
+  /** Top-left corner in that projection's own linear unit. */
+  origin?: [number, number];
+  /** Ground sample distance, in that projection's own linear unit. */
+  pixelSize?: number;
+  /** Elevation at the top-left corner, in whatever unit the band is in. */
+  baseElevation?: number;
+  /**
+   * `VerticalUnitsGeoKey`, when the file declares one.
+   *
+   * 9001 metre, 9002 international foot, 9003 US survey foot. Left undeclared
+   * by default, which is the common and difficult case: most published DEMs
+   * omit it entirely.
+   */
+  verticalUnits?: number;
+}
+
+/**
+ * A small projected GeoTIFF with real relief, standing in for a LiDAR survey.
+ *
+ * Written with `geotiff`'s own writer rather than hand-rolled, because the
+ * thing under test is whether the importer reads a *real* file — projection
+ * recovered from GeoKeys, elevation off the band, bounds reprojected — and a
+ * fixture we encoded ourselves to match our own reader would prove none of it.
+ *
+ * Defaults to NAD83 / UTM zone 15N (EPSG:26915), which covers Minnesota, where
+ * the rest of the browser tests put their courses. The surface is a diagonal
+ * ramp so a sample's value says where it came from, the same trick
+ * `fakeDemTile` uses.
+ *
+ * Parameterised because the projection is the interesting variable: a survey in
+ * State Plane feet exercises a completely different path through the EPSG table
+ * than one in UTM metres.
+ *
+ * Returned as bytes for `setInputFiles`, which is how a file reaches the page
+ * without a real file dialog.
+ */
+export async function fakeSurveyGeoTiff({
+  epsg = 26915,
+  origin = [480_000, 4_975_000],
+  pixelSize = 8,
+  baseElevation = 100,
+  verticalUnits,
+}: SurveyTiffOptions = {}): Promise<Buffer> {
+  const { writeArrayBuffer } = await import('geotiff');
+
+  const size = 128;
+  const values = new Float32Array(size * size);
+  for (let row = 0; row < size; row++) {
+    for (let col = 0; col < size; col++) {
+      // Enough fall across the tile to produce contours at every interval
+      // terrain.ts defines.
+      values[row * size + col] = baseElevation + (col + row) * 0.8;
+    }
+  }
+
+  const buffer = writeArrayBuffer(values, {
+    width: size,
+    height: size,
+    ModelPixelScale: [pixelSize, pixelSize, 0],
+    // Ties raster (0,0) — the top-left corner — to its projected position.
+    ModelTiepoint: [0, 0, 0, origin[0], origin[1], 0],
+    GTModelTypeGeoKey: 1,
+    GTRasterTypeGeoKey: 1,
+    ProjectedCSTypeGeoKey: epsg,
+    ...(verticalUnits === undefined ? {} : { VerticalUnitsGeoKey: verticalUnits }),
+  });
+
+  return Buffer.from(buffer);
 }
 
 export interface OpenOptions {
@@ -121,6 +251,34 @@ export async function openEditor(page: Page, options: OpenOptions = {}): Promise
   await page.route('**://server.arcgisonline.com/**', (route) =>
     route.fulfill({ status: 200, contentType: 'image/png', body: tile }),
   );
+  // Elevation too, for the same reason: no test should fail because AWS was
+  // slow. Stubbed for every test rather than only the terrain ones, since the
+  // overlays are off by default and nothing requests these until they are on.
+  const dem = fakeDemTile();
+  await page.route('**://s3.amazonaws.com/elevation-tiles-prod/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'image/png', body: dem }),
+  );
+  /*
+   * The reverse geocoder, answered rather than left to the network.
+   *
+   * `useAutoLocation` fills the location field in from whatever is drawn first,
+   * and it is the one request in the app that fires without anyone asking. Left
+   * unstubbed it made the suite depend on photon.komoot.io being reachable —
+   * which is why two undo tests passed locally and failed in CI for weeks: the
+   * sandbox could not reach it, so the op never landed, so the bug it caused
+   * never showed. Stubbed to *succeed*, because that is the case that breaks
+   * things.
+   */
+  await page.route('**://photon.komoot.io/**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        features: [{ properties: { name: 'Test Park', city: 'Testville', state: 'MN' } }],
+      }),
+    }),
+  );
+
   await page.goto('/');
   await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
 
@@ -153,6 +311,37 @@ export async function openSection(page: Page, title: string): Promise<void> {
   if ((await header.getAttribute('aria-expanded')) !== 'true') await header.click();
   await expect(header).toHaveAttribute('aria-expanded', 'true');
 }
+
+/**
+ * Open the layers panel, which holds the basemap choice and the overlays.
+ *
+ * A popover rather than a menu now — you keep it open while flipping several
+ * things and watching the map — so unlike the old menu it does not close when
+ * you pick a basemap, and a test does not have to reopen it to read state back.
+ *
+ * Idempotent, so a test can call it without tracking what its own earlier steps
+ * left open.
+ */
+export async function openLayers(page: Page): Promise<void> {
+  const trigger = page.getByRole('button', { name: 'Layers' });
+  if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
+  await expect(page.getByRole('radiogroup', { name: 'Basemap' })).toBeVisible();
+}
+
+/** Choose a basemap by name, opening the layers panel if it is closed. */
+export async function chooseBasemap(page: Page, name: string): Promise<void> {
+  await openLayers(page);
+  await page.getByRole('radio', { name: new RegExp(name) }).click();
+}
+
+/** Whether a map layer is currently drawn. Overlays install hidden. */
+export const layerVisible = (page: Page, id: string): Promise<boolean> =>
+  page.evaluate(
+    (layerId) =>
+      window.hyzerlinesMap!.getLayer(layerId) !== undefined &&
+      window.hyzerlinesMap!.getLayoutProperty(layerId, 'visibility') !== 'none',
+    id,
+  );
 
 /**
  * A labelled switch, and setting one.

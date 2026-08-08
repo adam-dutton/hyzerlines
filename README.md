@@ -201,6 +201,93 @@ placements, because building one is a single task with two clicks in it.
 The course sits top left — its name is the panel's heading, and everything else
 about it is underneath, in sections that fold — one at a time, so the hole list
 below never gets squeezed out. Its holes are in the column below.
+The layers button in the bottom-right corner picks what is underneath —
+satellite, topographic or street — and what is drawn over it. **Hillshade**
+shades the slopes, and **contours** draws lines you can count. Both read public
+elevation data at roughly 10m detail: enough to see which way a hole falls and
+how far, not enough for spot heights, and the panel says so where the switch is.
+Contours are quoted in whatever units you have set, and are computed in your
+browser rather than fetched.
+
+Both have their own adjustments, under the switch that turns them on. The
+hillshade takes an **opacity** and a **softness** — the second reads the terrain
+a step or two coarser, which is the useful thing over 1m LiDAR where the shading
+otherwise resolves tree crowns and looks like gravel. The contours take an
+opacity and a **smoothing**, which interpolates the elevation grid before
+tracing so the lines curve instead of showing the facets of the grid they were
+drawn on. None of it invents elevation: smoothing interpolates between measured
+samples and no contour moves to a height the data does not support.
+
+**For real detail, import a site survey.** Nobody hosts 1m elevation for the
+whole world — it is petabytes — but LiDAR at 1m is published free for most of
+the United States ([The National Map](https://apps.nationalmap.gov/downloader/))
+and all of England ([Environment
+Agency](https://environment.data.gov.uk/survey)), and a course is about a square
+kilometre. Download the GeoTIFF for your site, drop it on the layers panel, and
+the app reprojects and tiles it in your browser. No account, no API key, nothing
+uploaded anywhere. At 1m the contours stop being a hint and start being a
+measurement.
+
+Any projection the EPSG registry defines and proj4 can compute — UTM, State
+Plane in feet or metres, national grids — is read and named back to you, so you
+can check the file was understood the way you meant. Anything that _cannot_ be
+reprojected accurately is refused rather than placed approximately.
+
+**Heights get the same treatment.** A GeoTIFF states the unit its coordinates
+are in but need not state the unit its elevations are in, and most published
+DEMs do not. Where the file declares one it is used; where it does not, the
+elevations are read in the unit the file states for its coordinates — so a State
+Plane survey in US survey feet is read in feet, not silently multiplied by 3.28.
+The panel says which unit was used and whether the file declared it, because
+that is the one thing about an import that can be wrong while everything else
+looks right.
+
+**A survey can be several files.** A course is routinely larger than one
+published LiDAR tile — county downloads arrive as a grid of them — so importing
+a second GeoTIFF extends the survey instead of replacing it, and the panel lists
+what went in. Where two files overlap they are combined pixel by pixel, so
+neither loses ground to the other's edge.
+
+The shading and the contours stop at the edge of the data. Tiles at the boundary
+are half survey and half nothing, and the part that is nothing is marked as such
+rather than filled with the last real elevation copied outward — which is what
+used to draw long smears off the side of a survey with contour lines running out
+of them into land nobody measured.
+
+The tiles live in your browser rather than in the `.hyzer` file, so sending
+someone a course sends the design and not forty megabytes of elevation — they
+are told which survey it was designed against and can import the same file.
+
+**Every hole gets an elevation profile.** Select a hole and the panel draws the
+ground its shot is thrown over, sampled along the fairway you actually routed
+rather than the straight line between the ends — with the net rise or fall, the
+climb and descent, and the steepest grade on the hole. The vertical is
+exaggerated, because a 300 ft hole that falls four metres would otherwise be a
+flat line, and the elevation range is printed underneath so the picture is read
+against real numbers.
+
+The elevations are labelled up the left edge, because a profile with no scale
+is a shape rather than a measurement — the vertical is stretched to fill the
+frame, so the slope you see is never the slope on the ground.
+
+**Smoothing lives in Settings, beside units.** Elevation is read by nearest
+neighbour from a raster, so consecutive samples inside one cell come back
+identical and the sample that crosses into the next carries the whole step —
+which reads as a grade roughly twice what the land actually does. Averaging over
+the width of that staircase is what recovers the terrain: on ground truly
+falling at 8%, a raw reading of 16.8% comes back to 8.6%. Light smoothing is the
+default, it is named on every chart it is applied to, and it filters the climb,
+descent and grade only. Net change is read from the raw ends and is never
+smoothed, so the setting cannot move a par.
+
+That profile also feeds par. The PDGA's effective-length formula adds three times
+the rise from tee to target, which is the difference between a par 3 and a par 4
+on the same measured distance — and it is the one term the app has been unable to
+supply until now. **Only an imported survey moves a par.** The global overlay is
+good to roughly 10m vertically and the formula multiplies by three, so a par
+computed from it could be two strokes wrong from measurement error alone; it
+draws the chart and stops there, and the panel says which source you are on.
+
 Whatever you select opens top right. The tools are along the top, centred
 between the two columns, with undo and redo on the end of the rail; the camera
 controls — imagery, north, zoom — stack in the bottom right corner. Everything

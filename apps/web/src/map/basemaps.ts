@@ -1,5 +1,5 @@
 /**
- * Basemap registry.
+ * Basemap registry — what goes underneath everything.
  *
  * Course design is imagery-first — you are reading tree lines, terrain and
  * existing paths — so aerial is the default and the others are references.
@@ -10,10 +10,12 @@
  * the tile proxy; the shape below already accommodates them.
  *
  * ATTRIBUTION IS NOT OPTIONAL. Each entry carries the exact string its provider
- * requires and MapCanvas renders it. Do not add a source without one.
+ * requires and `Attribution` renders it. Do not add a source without one.
+ *
+ * Adding one is now this list and nothing else: `style.ts` turns every entry
+ * into a source and a hidden layer, and switching is a visibility change.
+ * What is drawn *over* the basemap lives in `terrain.ts`.
  */
-
-import type { StyleSpecification } from 'maplibre-gl';
 
 export interface Basemap {
   id: string;
@@ -67,30 +69,4 @@ export const DEFAULT_BASEMAP = basemaps[0]!;
 
 export function basemapById(id: string): Basemap {
   return basemaps.find((b) => b.id === id) ?? DEFAULT_BASEMAP;
-}
-
-/** Minimal MapLibre style for a single raster source. */
-export function styleForBasemap(basemap: Basemap): StyleSpecification {
-  return {
-    version: 8,
-    // Local glyphs would be better, but PR 0 has no labels of its own yet.
-    glyphs: 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf',
-    sources: {
-      basemap: {
-        type: 'raster',
-        tiles: [...basemap.tiles],
-        tileSize: 256,
-        maxzoom: basemap.maxZoom,
-        attribution: basemap.attribution,
-      },
-    },
-    layers: [
-      {
-        id: 'basemap',
-        type: 'raster',
-        source: 'basemap',
-        paint: { 'raster-fade-duration': 120 },
-      },
-    ],
-  } as StyleSpecification;
 }

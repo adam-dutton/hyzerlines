@@ -59,16 +59,39 @@ export function fallbackSkillLevel(course: Course): SkillLevel {
   );
 }
 
+/**
+ * Elevation gains a view can use, keyed by `pairElevationKey`.
+ *
+ * Passed in rather than looked up, because elevation is not in the document:
+ * it comes from tiles the browser holds, is asynchronous to read, and is
+ * absent entirely until somebody imports a survey. Core stays synchronous and
+ * pure; the web app decides what is known and hands it over.
+ */
+export type PairElevations = ReadonlyMap<string, number>;
+
+/** One pair's key in a `PairElevations` map. */
+export const pairElevationKey = (teeId: string, targetId: string): string =>
+  `${teeId}:${targetId}`;
+
 export function pairView(
   course: Course,
   teeId: string,
   targetId: string,
   featureById: ReadonlyMap<string, Feature> = featureIndex(course),
   fallback: SkillLevel = fallbackSkillLevel(course),
+  elevations?: PairElevations,
 ): PairView {
   const pair = findPair(course.pairs, teeId, targetId);
   const fairwayId = pair?.fairwayId ?? null;
-  const suggestion = suggestParForPair(featureById, teeId, targetId, fairwayId, fallback);
+  const elevationGain = elevations?.get(pairElevationKey(teeId, targetId)) ?? null;
+  const suggestion = suggestParForPair(
+    featureById,
+    teeId,
+    targetId,
+    fairwayId,
+    fallback,
+    elevationGain,
+  );
 
   return {
     teeId,
@@ -119,20 +142,24 @@ export function viewHole(
   hole: Hole,
   featureById: ReadonlyMap<string, Feature> = featureIndex(course),
   fallback: SkillLevel = fallbackSkillLevel(course),
+  elevations?: PairElevations,
 ): PairView | null {
   const chosen = representativePair(course, hole);
   if (!chosen) return null;
-  return pairView(course, chosen.teeId, chosen.targetId, featureById, fallback);
+  return pairView(course, chosen.teeId, chosen.targetId, featureById, fallback, elevations);
 }
 
 /** Every hole's view in one pass, so a panel does not index features per row. */
 export function viewHoles(
   course: Course,
   holes: readonly Hole[],
+  elevations?: PairElevations,
 ): Map<string, PairView | null> {
   const featureById = featureIndex(course);
   const fallback = fallbackSkillLevel(course);
-  return new Map(holes.map((hole) => [hole.id, viewHole(course, hole, featureById, fallback)]));
+  return new Map(
+    holes.map((hole) => [hole.id, viewHole(course, hole, featureById, fallback, elevations)]),
+  );
 }
 
 export function totalPar(views: Iterable<PairView | null>): number {
@@ -297,6 +324,39 @@ function defaultFairwayLine(tee: Position, target: Position): Position[] {
   return line;
 }
 
+/**
+ * The centreline a shot actually follows: the stored line, or tee to target.
+ *
+ * The one place that question is answered. `courseFairways` uses it to build
+ * what the map draws, and the elevation profile uses it to decide what ground
+ * to sample — and those two must agree, or the chart would describe a straight
+ * line over a ridge while the map showed a fairway routed around it.
+ *
+ * Null when either end is missing. A shot needs both.
+ */
+export function fairwayLine(
+  course: Course,
+  teeId: string,
+  targetId: string,
+  featureById: ReadonlyMap<string, Feature> = featureIndex(course),
+): Position[] | null {
+  const tee = featureById.get(teeId);
+  const target = featureById.get(targetId);
+  if (!tee || !target) return null;
+
+  const pair = findPair(course.pairs, teeId, targetId);
+  const stored = pair?.fairwayId ? featureById.get(pair.fairwayId) : undefined;
+
+  /*
+   * anchorOf a tee is its stored point, which is the front centre of the pad —
+   * the same point hole length is measured from. The straight line therefore
+   * starts exactly where the measurement does.
+   */
+  return stored?.geometry.type === 'line'
+    ? [...stored.geometry.coordinates]
+    : defaultFairwayLine(anchorOf(tee), anchorOf(target));
+}
+
 export function courseFairways(course: Course, choices?: FairwayChoices): HoleFairway[] {
   const featureById = featureIndex(course);
   const holeOfPair = new Map<string, string>();
@@ -309,21 +369,11 @@ export function courseFairways(course: Course, choices?: FairwayChoices): HoleFa
     if (seen.has(key(teeId, targetId))) return;
 
     const tee = featureById.get(teeId);
-    const target = featureById.get(targetId);
-    if (!tee || !target) return;
+    const line = fairwayLine(course, teeId, targetId, featureById);
+    if (!tee || !line) return;
 
     const pair = findPair(course.pairs, teeId, targetId);
     const stored = pair?.fairwayId ? featureById.get(pair.fairwayId) : undefined;
-
-    /*
-     * anchorOf a tee is its stored point, which is the front centre of the pad —
-     * the same point hole length is measured from. The straight line therefore
-     * starts exactly where the measurement does.
-     */
-    const line =
-      stored?.geometry.type === 'line'
-        ? [...stored.geometry.coordinates]
-        : defaultFairwayLine(anchorOf(tee), anchorOf(target));
 
     seen.add(key(teeId, targetId));
     fairways.push({

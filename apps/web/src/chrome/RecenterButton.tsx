@@ -63,7 +63,14 @@ export function RecenterButton({
           className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-text-primary transition-colors duration-fast hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         >
           <svg width="13" height="13" viewBox="0 0 15 15" aria-hidden="true">
-            <circle cx="7.5" cy="7.5" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
+            <circle
+              cx="7.5"
+              cy="7.5"
+              r="4.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.3"
+            />
             <circle cx="7.5" cy="7.5" r="1.4" fill="currentColor" />
             <path
               d="M7.5 1v1.6M7.5 12.4V14M14 7.5h-1.6M2.6 7.5H1"

@@ -14,6 +14,8 @@ import {
 } from '@hyzerlines/core';
 
 import { formatDistance, type UnitSystem } from '../units';
+import { useHoleProfile, useProfiles } from '../survey/useProfiles';
+import { ElevationProfileChart } from './ElevationProfile';
 import {
   Row,
   SectionTitle,
@@ -215,7 +217,18 @@ export function HoleProperties({
   onDelete: () => void;
   onRevealFeature: (id: string) => void;
 }) {
-  const view = pair ? pairView(course, pair.teeId, pair.targetId) : null;
+  /*
+   * The par is priced with elevation when — and only when — an imported survey
+   * supplied it. See `ProfileProvider`: `elevations` is already filtered to the
+   * shots whose numbers are good enough to move a stroke, so this passes the
+   * whole map and lets core find the one it needs.
+   */
+  const { elevations, loading } = useProfiles();
+  const holeProfile = useHoleProfile(pair);
+
+  const view = pair
+    ? pairView(course, pair.teeId, pair.targetId, undefined, undefined, elevations)
+    : null;
   const measurement = view?.measurement;
   const suggestion = view?.suggestion ?? null;
   const par = view?.par ?? null;
@@ -368,6 +381,35 @@ export function HoleProperties({
           </Row>
         )}
       </div>
+
+      {/*
+        The ground the shot is thrown over.
+
+        Directly under the measurements, because that is what it is: the third
+        dimension of the same shot, and the one a plan view cannot show. It is
+        also the input to the elevation term of the par above, so it belongs
+        between the two rather than at the bottom of the panel.
+
+        Absent rather than empty when there is nothing to draw. A hole outside
+        the survey with the global overlay unavailable has no profile, and an
+        empty chart frame would suggest flat ground.
+      */}
+      {pair && (holeProfile || loading) && (
+        <div className={sectionClass}>
+          {holeProfile ? (
+            <ElevationProfileChart
+              entry={holeProfile}
+              length={measurement?.effective ?? null}
+              units={units}
+            />
+          ) : (
+            <>
+              <SectionTitle>Elevation</SectionTitle>
+              <p className="text-2xs leading-4 text-text-muted">Reading the terrain…</p>
+            </>
+          )}
+        </div>
+      )}
 
       {/*
         "Features", not "Shot" — it is the list of things the hole is made of,

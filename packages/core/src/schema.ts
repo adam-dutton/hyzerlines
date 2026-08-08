@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 import { displaySchema } from './display.js';
+import { overlaysSchema } from './overlays.js';
+import { siteSurveySchema } from './survey.js';
 import { viewSchema, type View } from './geo.js';
 import { featureSchema, type Feature } from './features.js';
 import { holeSchema } from './holes.js';
@@ -94,6 +96,25 @@ export const courseSchema = z.object({
    * with everything on and needs no migration.
    */
   display: displaySchema.default({}),
+
+  /**
+   * What is drawn over the imagery. See overlays.ts.
+   *
+   * Additive with defaults for the same reason as `display` — a document
+   * written before this existed parses with every overlay off, which is what
+   * it was showing.
+   */
+  overlays: overlaysSchema.default({}),
+
+  /**
+   * Elevation the designer brought for this site. See survey.ts.
+   *
+   * Metadata only — the tiles live in IndexedDB, because a `.hyzer` is a
+   * document you email and forty megabytes of elevation is not. Someone opening
+   * a course you sent is told it was designed against a 1m survey and which
+   * one, even though they do not have the pixels.
+   */
+  siteSurvey: siteSurveySchema.nullable().default(null),
 });
 
 export type Course = z.infer<typeof courseSchema>;

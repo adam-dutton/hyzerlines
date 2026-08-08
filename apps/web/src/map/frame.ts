@@ -73,12 +73,7 @@ export function courseIsAdrift(map: maplibregl.Map, features: readonly Feature[]
   const bottom = Math.max(...corners.map((p) => p.y));
 
   // Entirely outside the viewport, on any side.
-  if (
-    right < 0 ||
-    left > canvas.clientWidth ||
-    bottom < 0 ||
-    top > canvas.clientHeight
-  ) {
+  if (right < 0 || left > canvas.clientWidth || bottom < 0 || top > canvas.clientHeight) {
     return true;
   }
 
