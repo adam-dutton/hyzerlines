@@ -2,7 +2,8 @@ import maplibregl from 'maplibre-gl';
 import mlcontour from 'maplibre-contour';
 
 import { readTile } from './store';
-import { contourThresholds, subsampleFor } from '../map/terrain';
+import { decodeSurveyTile, type DecodedTile } from './elevation';
+import { contourThresholds } from '../map/terrain';
 import type { UnitSystem } from '../units';
 
 /**
@@ -53,7 +54,76 @@ const TILE_PATTERN = /\/(\d+)\/(\d+)\/(\d+)/;
 let units: UnitSystem = 'imperial';
 let manager: InstanceType<typeof mlcontour.LocalDemManager> | null = null;
 let managerMaxZoom = 0;
+let managerSmoothing = 0;
 let registered = false;
+
+/**
+ * How far the elevation grid is averaged before the isolines are traced, in
+ * cells, per smoothing level.
+ *
+ * ## Why the grid and not the lines
+ *
+ * The first attempt at this used `maplibre-contour`'s `subsampleBelow`, which
+ * interpolates the grid to twice or four times its resolution before tracing.
+ * It does produce smoother lines and it is the wrong lever: the isoline pass is
+ * quadratic in grid width, so four times the resolution is sixteen times the
+ * work, and at the top setting tiles began exceeding the ten-second timeout and
+ * coming back empty. That is what "sometimes it works, sometimes the lines
+ * disappear" was — not smoothing failing, but smoothing timing out on whichever
+ * tiles were not already cached.
+ *
+ * Averaging the grid first costs one linear pass and traces the same number of
+ * cells as before. It is also the more honest operation: the jaggedness comes
+ * from noise in the elevations — on 1m LiDAR, tree crowns and vehicle ruts —
+ * so smoothing the elevations removes the cause rather than drawing a finer
+ * line around it.
+ */
+const SMOOTH_RADIUS = [0, 2, 4] as const;
+
+const radiusFor = (level: number): number =>
+  SMOOTH_RADIUS[Math.max(0, Math.min(2, Math.round(level)))] ?? 0;
+
+/**
+ * A separable box average over the elevation grid, leaving gaps as gaps.
+ *
+ * Absent ground is NaN — see `decodeSurveyTile` — and a window touching one
+ * contributes nothing rather than poisoning the result, so the survey's edge
+ * stays where it is instead of eroding by the width of the window. Two passes,
+ * horizontal then vertical, which is what makes a square window linear in its
+ * radius rather than quadratic.
+ */
+export function smoothGrid(tile: DecodedTile, radius: number): DecodedTile {
+  if (radius <= 0) return tile;
+  const { width, height, data } = tile;
+
+  const pass = (from: Float32Array, horizontal: boolean): Float32Array => {
+    const to = new Float32Array(from.length);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const at = y * width + x;
+        if (Number.isNaN(from[at]!)) {
+          to[at] = Number.NaN;
+          continue;
+        }
+        let sum = 0;
+        let count = 0;
+        for (let d = -radius; d <= radius; d++) {
+          const nx = horizontal ? x + d : x;
+          const ny = horizontal ? y : y + d;
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+          const value = from[ny * width + nx]!;
+          if (Number.isNaN(value)) continue;
+          sum += value;
+          count++;
+        }
+        to[at] = count === 0 ? Number.NaN : sum / count;
+      }
+    }
+    return to;
+  };
+
+  return { width, height, data: pass(pass(data, true), false) };
+}
 
 export function setSurveyContourUnits(next: UnitSystem): void {
   units = next;
@@ -66,8 +136,15 @@ export function setSurveyContourUnits(next: UnitSystem): void {
  * asking for real tiles, so a new survey with a different depth needs a new
  * manager. Cheap: it holds caches, not data.
  */
-export function prepareSurveyContours(maxZoom: number): void {
-  if (manager && managerMaxZoom === maxZoom) return;
+export function prepareSurveyContours(maxZoom: number, smoothing = 0): void {
+  /*
+   * Rebuilt when the smoothing changes as well as the depth. The manager caches
+   * *decoded* tiles by url, and the url has no smoothing in it — so without
+   * this, turning smoothing on would re-request the contour tiles and retrace
+   * them from elevations that were still smoothed the old way.
+   */
+  if (manager && managerMaxZoom === maxZoom && managerSmoothing === smoothing) return;
+  const radius = radiusFor(smoothing);
   manager = new mlcontour.LocalDemManager({
     // Substituted by the library and then parsed straight back out by
     // `getTile`; it never reaches the network.
@@ -75,6 +152,21 @@ export function prepareSurveyContours(maxZoom: number): void {
     cacheSize: 200,
     encoding: 'terrarium',
     maxzoom: maxZoom,
+    /*
+     * Our decoder, not the library's, and this is what clips the contours.
+     *
+     * The default reads RGB and knows nothing about coverage, so every pixel
+     * outside the survey came back as a real elevation and got a real contour
+     * line — the lines running off the edge of the data. Ours reads the alpha
+     * the resampler writes and returns NaN there, and `generateIsolines` skips
+     * any cell touching a NaN. That is the library's own nodata convention, so
+     * the clipping is exact to the pixel rather than to the tile.
+     */
+    decodeImage: async (blob) => {
+      const tile = await decodeSurveyTile(blob);
+      if (!tile) throw new Error('undecodable survey tile');
+      return smoothGrid(tile, radius);
+    },
     timeoutMs: 10_000,
     getTile: async (url) => {
       const match = TILE_PATTERN.exec(url);
@@ -90,6 +182,7 @@ export function prepareSurveyContours(maxZoom: number): void {
     },
   });
   managerMaxZoom = maxZoom;
+  managerSmoothing = smoothing;
 }
 
 /**
@@ -126,10 +219,6 @@ export function registerSurveyContourProtocol(): void {
     const levels = levelsFor(Number(z));
     if (levels.length === 0) return { data: new ArrayBuffer(0) };
 
-    // Read back off the url rather than held here, so a tile always traces at
-    // the setting it was requested for even if another change is in flight.
-    const smoothing = Number(/[?&]s=(\d+)/.exec(params.url)?.[1] ?? 0);
-
     try {
       const tile = await manager.fetchContourTile(
         Number(z),
@@ -138,9 +227,6 @@ export function registerSurveyContourProtocol(): void {
         {
           levels,
           multiplier: contourThresholds(units).multiplier,
-          // A real number here, unlike the global path where the library's own
-          // url codec hands it back as a string. See `contourTilesUrl`.
-          subsampleBelow: subsampleFor(smoothing),
           elevationKey: 'ele',
           levelKey: 'level',
           contourLayer: 'contours',

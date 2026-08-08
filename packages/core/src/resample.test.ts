@@ -48,7 +48,12 @@ function rampGrid(options: Partial<SourceGrid> = {}): SourceGrid {
 
 const identity = (lngLat: [number, number]): [number, number] => lngLat;
 
-/** Read one pixel's elevation back out of a resampled tile. */
+/** The raw bytes at a pixel, for asserting about ground that has no elevation. */
+function raw(rgba: Uint8ClampedArray, px: number, py: number): number[] {
+  const i = (py * TILE_SIZE + px) * 4;
+  return [rgba[i]!, rgba[i + 1]!, rgba[i + 2]!, rgba[i + 3]!];
+}
+
 function elevationAt(rgba: Uint8ClampedArray, px: number, py: number): number | null {
   const i = (py * TILE_SIZE + px) * 4;
   if (rgba[i + 3] === 0) return null;
@@ -125,13 +130,23 @@ describe('resampleTile', () => {
   });
 
   /*
-   * The edge case that decides whether an imported survey looks like terrain or
-   * like a plateau someone dropped on the map. Alpha cannot express "no data"
-   * here — MapLibre's DEM decoder reads RGB and ignores it — so a tile
-   * straddling the boundary either continues the last real elevation outward or
-   * falls off a cliff to sea level. It has to continue.
+   * The artifact that made clamping untenable.
+   *
+   * This used to continue the last real elevation outward, on the grounds that
+   * MapLibre's DEM decoder reads RGB and cannot be told about nodata. It kept
+   * the hillshade continuous and it drew ground that was not there: clamping
+   * repeats the edge column, so the terrain goes flat *across* the boundary
+   * while still varying *along* it — rendered as long horizontal smears running
+   * off the side of the survey, with contour lines extending straight out of
+   * them into land nobody surveyed.
+   *
+   * So outside is absent now, and alpha carries that. The two consumers that
+   * can read it do — the contour generator decodes absent cells to NaN and
+   * skips them, and the elevation profile reports a gap. The hillshade still
+   * cannot be told, which is what the flat fill is for: relief shading is a
+   * function of slope, and a constant has none.
    */
-  it('clamps to the edge outside the grid rather than cliffing to sea level', () => {
+  it('marks ground outside the grid absent rather than clamping to the edge', () => {
     /*
      * The grid's west edge has to fall *inside* a tile for any of this tile's
      * pixels to be outside it. At z12 a tile spans 0.088°, so a grid starting
@@ -147,27 +162,28 @@ describe('resampleTile', () => {
     const rgba = resampleTile(grid, identity, z, x, y)!;
     expect(rgba).not.toBeNull();
 
-    // Every pixel across the row carries a real elevation — none is absent, and
-    // none has dropped to sea level.
     const row = TILE_SIZE / 2;
-    for (let px = 0; px < TILE_SIZE; px++) {
-      const value = elevationAt(rgba, px, row);
-      expect(value).not.toBeNull();
-      expect(value).toBeGreaterThanOrEqual(BASE_ELEVATION);
-    }
 
-    // West of the grid the value is pinned to column 0's elevation, and the
-    // ramp only begins once the samples are genuinely inside.
-    expect(elevationAt(rgba, 0, row)).toBe(BASE_ELEVATION);
-    expect(elevationAt(rgba, TILE_SIZE - 1, row)).toBeGreaterThan(BASE_ELEVATION);
+    // West of the grid there is no data, and it says so.
+    expect(elevationAt(rgba, 0, row)).toBeNull();
+    // Inside it, the ramp is measured as it always was.
+    expect(elevationAt(rgba, TILE_SIZE - 1, row)).toBeGreaterThanOrEqual(BASE_ELEVATION);
+
+    /*
+     * And the absent side is *flat*, which is the half that only the hillshade
+     * cares about. Under the old clamp these pixels inherited the edge column's
+     * variation and shaded as terrain; a constant has no slope and shades as
+     * nothing.
+     */
+    const absent = [0, 1, 2].map((px) => raw(rgba, px, row));
+    expect(absent[0]).toEqual(absent[1]);
+    expect(absent[1]).toEqual(absent[2]);
+    // Flat down the column too, where the clamp used to vary most.
+    expect(raw(rgba, 0, 10)).toEqual(raw(rgba, 0, TILE_SIZE - 10));
   });
 
-  /*
-   * Clamping must not become a licence to invent terrain: a tile whose every
-   * pixel is outside the grid is all repeats of one edge sample, and storing it
-   * would smear the survey's border across the county.
-   */
-  it('rejects a tile made entirely of clamped edge samples', () => {
+  /* A tile with nothing of the survey in it is not a tile worth storing. */
+  it('rejects a tile with no measured ground in it', () => {
     const grid = rampGrid();
     // Adjacent to the grid but not overlapping it.
     const { z, x, y } = tileAt(1.5, 0.5, 12);
@@ -181,17 +197,44 @@ describe('resampleTile', () => {
    * tiles, so without this it produces no contours at all — which is exactly
    * what it did until this was added.
    */
-  it('produces a fully clamped tile when asked, for the contour skirt', () => {
+  it('produces an all-absent tile when asked, for the contour skirt', () => {
     const grid = rampGrid();
     const { z, x, y } = tileAt(1.5, 0.5, 12);
 
     const rgba = resampleTile(grid, identity, z, x, y, { allowFullyClamped: true });
     expect(rgba).not.toBeNull();
 
-    // Every sample is the grid's eastern edge, repeated.
-    const easternmost = BASE_ELEVATION + 99;
-    expect(elevationAt(rgba!, 0, TILE_SIZE / 2)).toBe(easternmost);
-    expect(elevationAt(rgba!, TILE_SIZE - 1, TILE_SIZE / 2)).toBe(easternmost);
+    /*
+     * It exists, and every pixel of it is absent. That is what the generator
+     * needs: a neighbour it can read, saying there is nothing here — so the
+     * isolines stop at the survey's edge instead of being thrown away for a
+     * missing tile or continued into land nobody measured.
+     */
+    for (const px of [0, TILE_SIZE / 2, TILE_SIZE - 1]) {
+      expect(elevationAt(rgba!, px, TILE_SIZE / 2)).toBeNull();
+    }
+  });
+
+  /*
+   * What the hillshade sees where the survey says nothing.
+   *
+   * It is the one consumer that cannot be told — MapLibre reads RGB and has no
+   * nodata — so the RGB has to be chosen rather than left to chance. Sea level,
+   * the old choice, puts a two-kilometre cliff around a survey of Colorado.
+   */
+  it('fills absent ground with the elevation it is given', () => {
+    const grid = rampGrid();
+    const { z, x, y } = tileAt(1.5, 0.5, 12);
+
+    const rgba = resampleTile(grid, identity, z, x, y, {
+      allowFullyClamped: true,
+      fillMeters: 2000,
+    })!;
+
+    const i = ((TILE_SIZE / 2) * TILE_SIZE + TILE_SIZE / 2) * 4;
+    // Absent, and carrying the fill rather than sea level.
+    expect(rgba[i + 3]).toBe(0);
+    expect(decodeTerrarium(rgba[i]!, rgba[i + 1]!, rgba[i + 2]!)).toBeCloseTo(2000, 2);
   });
 
   /*

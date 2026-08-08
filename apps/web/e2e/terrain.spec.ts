@@ -300,7 +300,10 @@ test.describe('overlay adjustments', () => {
         const value = (await paint(page, 'terrain-contour-line', 'line-opacity')) as unknown[];
         return Array.isArray(value) ? value.slice(-2) : null;
       })
-      .toEqual([0.35, 0.225]);
+      // Full strength is a solid line now — it used to top out at 0.7, which
+      // over canopy was barely there. The minor lines keep their ratio to the
+      // index ones, which is the contrast that makes the labels findable.
+      .toEqual([0.5, 0.32]);
   });
 
   /*
@@ -317,10 +320,17 @@ test.describe('overlay adjustments', () => {
     const before = await sourceTiles(page, 'terrain-contours');
     expect(before).toContain('subsampleBelow=256');
 
+    /*
+     * 512, not 1024, and the cap is the point. The isoline pass is quadratic in
+     * grid width, so four times the resolution is sixteen times the work — at
+     * 1024 tiles began exceeding their timeout and coming back empty, which is
+     * what "the contours sometimes disappear" was. One doubling is the most the
+     * global overlay can be asked for safely.
+     */
     await setSlider(page, 'Contours smoothing', '2');
     await expect
       .poll(() => sourceTiles(page, 'terrain-contours'))
-      .toContain('subsampleBelow=1024');
+      .toContain('subsampleBelow=512');
   });
 
   /* And the settings travel with the course, like the switches they sit under. */

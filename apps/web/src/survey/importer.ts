@@ -3,6 +3,7 @@ import {
   VERTICAL_UNITS,
   VERTICAL_UNIT_METERS,
   boundsFromGrid,
+  gridFillElevation,
   linearUnitOf,
   resampleTile,
   surveyZooms,
@@ -11,7 +12,7 @@ import {
   toMetersInPlace,
   withMargin,
   type Bounds,
-  type SiteSurvey,
+  type SurveySource,
   type SourceGrid,
 } from '@hyzerlines/core';
 
@@ -51,7 +52,10 @@ export interface ImportedTile {
 }
 
 export interface ImportResult {
-  survey: Omit<SiteSurvey, 'importedAt'>;
+  /** What this one file is and covers. Folded into the survey by the caller. */
+  source: SurveySource;
+  /** The zoom range this file alone justifies. Widened across files. */
+  zooms: { minZoom: number; maxZoom: number };
   tiles: ImportedTile[];
 }
 
@@ -255,6 +259,13 @@ export async function importSurvey(
     total += tileCount(range);
   }
 
+  /*
+   * What to write where the survey says nothing. See `fillMeters` in the
+   * resampler — it decides how the hillshade behaves outside the data, and it
+   * is the survey's own mean so the boundary step is as small as it can be.
+   */
+  const fillMeters = gridFillElevation(grid);
+
   const forward = (lngLat: [number, number]) => toSource.forward(lngLat) as [number, number];
   const tiles: ImportedTile[] = [];
   let done = 0;
@@ -265,7 +276,10 @@ export async function importSurvey(
         // The skirt is allowed to be pure extrapolation; it is read by the
         // isoline generator and never drawn, because the sources carry the
         // survey's real bounds.
-        const rgba = resampleTile(grid, forward, range.z, x, y, { allowFullyClamped: true });
+        const rgba = resampleTile(grid, forward, range.z, x, y, {
+          allowFullyClamped: true,
+          fillMeters,
+        });
         done++;
         if (rgba) tiles.push({ z: range.z, x, y, png: await encodePng(rgba) });
         if (done % 16 === 0) onProgress({ phase: 'tiling', ratio: done / total });
@@ -281,7 +295,7 @@ export async function importSurvey(
   }
 
   return {
-    survey: {
+    source: {
       name: file.name,
       bounds,
       resolutionMeters,
@@ -289,9 +303,8 @@ export async function importSurvey(
       crsName: projection.name,
       verticalUnit,
       verticalUnitDeclared: declared !== undefined,
-      minZoom,
-      maxZoom,
     },
+    zooms: { minZoom, maxZoom },
     tiles,
   };
 }

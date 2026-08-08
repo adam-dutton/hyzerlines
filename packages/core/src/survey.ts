@@ -31,11 +31,21 @@ import type { Bounds } from './measure.js';
  * corrupted document.
  */
 
-export const siteSurveySchema = z.object({
+/**
+ * One file that went into the survey.
+ *
+ * A course is often larger than one published LiDAR tile — county downloads
+ * arrive as a grid of them — so a survey is a set of files rather than a file.
+ * Each keeps its own provenance, because they genuinely can differ: two tiles
+ * from the same download can carry different resolutions, and a designer who
+ * mixed a State Plane tile with a UTM one needs to see that rather than have it
+ * averaged away.
+ */
+export const surveySourceSchema = z.object({
   /** The file it came from. The only name a designer will recognise. */
   name: z.string().min(1).max(200),
 
-  /** Where it covers, in WGS84, after reprojection. */
+  /** Where this file covers, in WGS84, after reprojection. */
   bounds: z.tuple([z.number(), z.number(), z.number(), z.number()]),
 
   /**
@@ -83,15 +93,113 @@ export const siteSurveySchema = z.object({
    * and a declaration is not worth questioning.
    */
   verticalUnitDeclared: z.boolean().default(true),
+});
+
+export type SurveySource = z.infer<typeof surveySourceSchema>;
+
+const surveyFields = {
+  /** Every file that went in, in the order they were imported. */
+  sources: z.array(surveySourceSchema).min(1),
+
+  /** Everything the survey covers together: the union of its files. */
+  bounds: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+
+  /**
+   * The coarsest ground sample distance among the files, in metres.
+   *
+   * The coarsest rather than the finest, because it is the one figure that is
+   * true of the whole survey. Quoting the best file's resolution for a survey
+   * that also contains a 10m tile would overstate the ground the designer is
+   * about to measure on — which is the same overstatement this app refuses to
+   * make anywhere else.
+   */
+  resolutionMeters: z.number().positive(),
 
   /** Deepest zoom with real detail. Past this the tiles are interpolation. */
   maxZoom: z.number().int().min(0).max(24),
   minZoom: z.number().int().min(0).max(24),
 
   importedAt: z.string().datetime(),
-});
+};
+
+/**
+ * The survey as a whole.
+ *
+ * `z.preprocess` rather than a document version bump, because the change is a
+ * pure widening: a survey used to be one file's fields at the top level, and
+ * that is exactly one source. Wrapping it costs nothing at read time and means
+ * a `.hyzer` written before this still opens — the pixels in IndexedDB are
+ * unchanged, so it opens *working* rather than merely parsing.
+ */
+export const siteSurveySchema = z.preprocess((value) => {
+  if (typeof value !== 'object' || value === null) return value;
+  const record = value as Record<string, unknown>;
+  if (Array.isArray(record['sources'])) return record;
+  if (typeof record['name'] !== 'string') return record;
+
+  const { maxZoom, minZoom, importedAt, bounds, resolutionMeters, ...source } = record;
+  return {
+    sources: [{ ...source, bounds, resolutionMeters }],
+    bounds,
+    resolutionMeters,
+    maxZoom,
+    minZoom,
+    importedAt,
+  };
+}, z.object(surveyFields));
 
 export type SiteSurvey = z.infer<typeof siteSurveySchema>;
+
+/** The smallest box containing both. Used to grow a survey as files are added. */
+export function unionBounds(a: Bounds, b: Bounds): Bounds {
+  return [
+    Math.min(a[0], b[0]),
+    Math.min(a[1], b[1]),
+    Math.max(a[2], b[2]),
+    Math.max(a[3], b[3]),
+  ];
+}
+
+/**
+ * Fold a newly imported file into a survey, or start one from it.
+ *
+ * The zoom range widens to hold every file: the deepest `maxZoom` so the finest
+ * file keeps its detail, and the shallowest `minZoom` so the whole survey stays
+ * visible when zoomed out to the property. Resolution reports the coarsest, for
+ * the reason on the field.
+ *
+ * A file re-imported under the same name replaces its entry rather than
+ * appearing twice — which is what a designer redoing an export means by it.
+ */
+export function addSurveySource(
+  existing: SiteSurvey | null,
+  source: SurveySource,
+  zooms: { minZoom: number; maxZoom: number },
+  importedAt: string,
+): SiteSurvey {
+  const sources = [...(existing?.sources ?? []).filter((s) => s.name !== source.name), source];
+
+  return {
+    sources,
+    bounds: sources.reduce<Bounds>((all, s) => unionBounds(all, s.bounds), source.bounds),
+    resolutionMeters: Math.max(...sources.map((s) => s.resolutionMeters)),
+    minZoom: existing ? Math.min(existing.minZoom, zooms.minZoom) : zooms.minZoom,
+    maxZoom: existing ? Math.max(existing.maxZoom, zooms.maxZoom) : zooms.maxZoom,
+    importedAt,
+  };
+}
+
+/** Drop one file from a survey. Null when it was the last one. */
+export function removeSurveySource(survey: SiteSurvey, name: string): SiteSurvey | null {
+  const sources = survey.sources.filter((s) => s.name !== name);
+  if (sources.length === 0) return null;
+  return {
+    ...survey,
+    sources,
+    bounds: sources.reduce<Bounds>((all, s) => unionBounds(all, s.bounds), sources[0]!.bounds),
+    resolutionMeters: Math.max(...sources.map((s) => s.resolutionMeters)),
+  };
+}
 
 /*
  * Web Mercator tile arithmetic.

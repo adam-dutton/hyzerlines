@@ -85,7 +85,7 @@ test.describe('site survey', () => {
 
     // The document records it, with the projection it arrived in.
     await expect
-      .poll(async () => (await course(page)).siteSurvey?.crs, {
+      .poll(async () => (await course(page)).siteSurvey?.sources[0]?.crs, {
         timeout: 20_000,
       })
       .toBe('EPSG:26915');
@@ -134,7 +134,9 @@ test.describe('site survey', () => {
     // only that something was read, where the name is a fact the designer can
     // check against the file they exported.
     await expect(page.getByText('NAD83 / UTM zone 15N')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Remove survey' })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Remove survey', exact: true }),
+    ).toBeVisible();
   });
 
   test('removing a survey puts the global terrain back', async ({ page }) => {
@@ -149,7 +151,7 @@ test.describe('site survey', () => {
       .toBe(true);
 
     await openLayers(page);
-    await page.getByRole('button', { name: 'Remove survey' }).click();
+    await page.getByRole('button', { name: 'Remove survey', exact: true }).click();
 
     await expect.poll(async () => (await course(page)).siteSurvey).toBeNull();
     await expect.poll(() => layerVisible(page, GLOBAL_HILLSHADE)).toBe(true);
@@ -168,7 +170,7 @@ test.describe('site survey', () => {
     await openEditor(page, { center: [-93.1, 44.9], zoom: 14 });
     await importSurvey(page);
     await expect
-      .poll(async () => (await course(page)).siteSurvey?.name, {
+      .poll(async () => (await course(page)).siteSurvey?.sources[0]?.name, {
         timeout: 20_000,
       })
       .toBe('survey-1m.tif');
@@ -215,13 +217,13 @@ test.describe('site survey', () => {
     });
 
     await expect
-      .poll(async () => (await course(page)).siteSurvey?.crs, { timeout: 20_000 })
+      .poll(async () => (await course(page)).siteSurvey?.sources[0]?.crs, { timeout: 20_000 })
       .toBe('EPSG:6428');
 
     const survey = (await course(page)).siteSurvey!;
     // The published name, not just the code — it is what a designer can check
     // against what they exported, and it says outright that this one is in feet.
-    expect(survey.crsName).toContain('Colorado Central');
+    expect(survey.sources[0]!.crsName).toContain('Colorado Central');
 
     /*
      * Landed in Colorado rather than somewhere the units got lost. Denver is
@@ -458,4 +460,172 @@ test.describe('survey overlay adjustments', () => {
       )
       .toContain('s=2');
   });
+});
+
+/**
+ * Several files in one survey.
+ *
+ * A course is routinely larger than one published LiDAR tile — county downloads
+ * arrive as a grid of them — so importing a second file has to extend the
+ * survey rather than replace it. Browser-only: the tiles live in IndexedDB, and
+ * "did the second import keep the first one's pixels" has no representation
+ * anywhere a unit test can reach.
+ */
+test.describe('surveys of several files', () => {
+  /** Two abutting tiles, as a county download supplies them. */
+  const westTile = () => fakeSurveyGeoTiff({ origin: [480_000, 4_975_000] });
+  const eastTile = () =>
+    // 128 samples at 8m is 1024m wide, so this starts exactly where that ends.
+    fakeSurveyGeoTiff({ origin: [481_024, 4_975_000] });
+
+  async function importFile(page: Page, name: string, buffer: Buffer): Promise<void> {
+    await openLayers(page);
+    await page.locator('input[type="file"]').setInputFiles({
+      name,
+      mimeType: 'image/tiff',
+      buffer,
+    });
+    await expect
+      .poll(async () => (await course(page)).siteSurvey?.sources.some((s) => s.name === name), {
+        timeout: 20_000,
+      })
+      .toBe(true);
+    // Close the popover, or it sits over the tool rail and swallows the clicks
+    // that draw a hole.
+    await page.keyboard.press('Escape');
+  }
+
+  test('a second file extends the survey rather than replacing it', async ({ page }) => {
+    await openEditor(page, { center: [-93.1, 44.9], zoom: 14 });
+
+    await importFile(page, 'west.tif', await westTile());
+    const west = (await course(page)).siteSurvey!.bounds;
+
+    await importFile(page, 'east.tif', await eastTile());
+    const both = (await course(page)).siteSurvey!.bounds;
+    // The survey now reaches further east, and has not lost its western edge.
+    expect(both[2]).toBeGreaterThan(west[2]);
+    expect(both[0]).toBeCloseTo(west[0], 6);
+
+    // Both files are named, and the panel says how many there are.
+    await openLayers(page);
+    await expect(page.getByText('west.tif')).toBeVisible();
+    await expect(page.getByText('east.tif')).toBeVisible();
+    await expect(page.getByText(/2 files/)).toBeVisible();
+  });
+
+  /*
+   * The first file's pixels have to survive the second import. This is the one
+   * that would have failed before: `storeTiles` cleared the store every time,
+   * so a second file left the first one's ground blank.
+   */
+  test('the first file keeps its tiles when a second arrives', async ({ page }) => {
+    await openEditor(page, { center: [-93.1, 44.9], zoom: 14 });
+
+    await importFile(page, 'west.tif', await westTile());
+    const before = await page.evaluate(
+      () => window.hyzerlinesStore!.getSnapshot().course.siteSurvey!.bounds,
+    );
+
+    await importFile(page, 'east.tif', await eastTile());
+
+    // Look at the middle of the *first* file and read its elevation back out of
+    // the store, through the same path the profile chart uses.
+    const westCentre: [number, number] = [
+      (before[0] + before[2]) / 2,
+      (before[1] + before[3]) / 2,
+    ];
+    await page.evaluate(
+      (center) => window.hyzerlinesMap!.jumpTo({ center, zoom: 16 }),
+      westCentre,
+    );
+    await page.waitForTimeout(500);
+
+    await place(page, 'Tee pad', 400, 300);
+    await place(page, 'Target', 700, 450);
+    await page.getByRole('button', { name: 'Add hole' }).click();
+
+    // A profile from the survey means the western tiles are still there.
+    await expect(page.getByText(/From your imported survey/)).toBeVisible({ timeout: 20_000 });
+  });
+
+  test('one file can be removed without taking the rest', async ({ page }) => {
+    await openEditor(page, { center: [-93.1, 44.9], zoom: 14 });
+    await importFile(page, 'west.tif', await westTile());
+    await importFile(page, 'east.tif', await eastTile());
+
+    await openLayers(page);
+    await page.getByRole('button', { name: 'Remove east.tif' }).click();
+
+    await expect.poll(async () => (await course(page)).siteSurvey?.sources.length).toBe(1);
+    await expect(page.getByText('west.tif')).toBeVisible();
+    await expect(page.getByText('east.tif')).toHaveCount(0);
+  });
+});
+
+/**
+ * Clipping, which is what the alpha channel is for.
+ *
+ * A survey's tiles do not stop at its edge — the outermost ones are half data
+ * and half nothing, and the ring beyond them exists purely so the contour
+ * generator has its 3×3 neighbourhood. Those pixels used to carry the survey's
+ * last real elevation copied outward, so the map drew long smears off the side
+ * of the data with contour lines extending straight out of them.
+ *
+ * They carry alpha 0 now, and the contour generator decodes that to NaN —
+ * which `maplibre-contour` skips. This is the browser-level check that it does,
+ * because the whole chain has to hold for it to work: the resampler writing the
+ * alpha, the PNG round trip preserving it, and our decoder being the one the
+ * generator actually calls.
+ */
+test('contours stop at the edge of the survey', async ({ page }) => {
+  await openEditor(page, { center: [-93.1, 44.9], zoom: 14 });
+  await importSurvey(page);
+  await expect
+    .poll(async () => (await course(page)).siteSurvey !== null, { timeout: 20_000 })
+    .toBe(true);
+  await lookAtSurvey(page);
+  await openLayers(page);
+  await setSwitch(page, 'Contours', true);
+  await page.keyboard.press('Escape');
+
+  await expect.poll(() => surveyContours(page), { timeout: 20_000 }).toBeGreaterThan(0);
+
+  const bounds = await page.evaluate(
+    () => window.hyzerlinesStore!.getSnapshot().course.siteSurvey!.bounds,
+  );
+
+  /*
+   * Every drawn contour vertex, in map coordinates. A line that ran off the
+   * data would put vertices well outside the survey — the smears reached a
+   * whole tile beyond it.
+   */
+  const outside = await page.evaluate((box) => {
+    const [west, south, east, north] = box;
+    // A tile's worth of slack: the generator works on a 3×3 neighbourhood and
+    // may legitimately place a vertex a hair past the bounds we recorded.
+    const pad = 0.002;
+    const features =
+      window.hyzerlinesMap?.querySourceFeatures('survey-contours', {
+        sourceLayer: 'contours',
+      }) ?? [];
+
+    let beyond = 0;
+    for (const feature of features) {
+      const geometry = feature.geometry;
+      if (geometry.type !== 'LineString' && geometry.type !== 'MultiLineString') continue;
+      const lines =
+        geometry.type === 'LineString' ? [geometry.coordinates] : geometry.coordinates;
+      for (const line of lines) {
+        for (const [lng, lat] of line as [number, number][]) {
+          if (lng < west - pad || lng > east + pad || lat < south - pad || lat > north + pad) {
+            beyond++;
+          }
+        }
+      }
+    }
+    return beyond;
+  }, bounds);
+
+  expect(outside).toBe(0);
 });

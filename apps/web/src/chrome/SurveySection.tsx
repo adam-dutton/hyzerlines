@@ -43,7 +43,7 @@ export function SurveySection({
   state: SurveyState;
   units: UnitSystem;
   onImport: (file: File) => void;
-  onRemove: () => void;
+  onRemove: (name?: string) => void;
   onDismissError: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -99,60 +99,112 @@ export function SurveySection({
 
       {state.status === 'ready' && (
         <div>
-          <p className="truncate text-xs text-text-primary" title={state.survey.name}>
-            {state.survey.name}
-          </p>
-          <p className="text-2xs text-text-muted">
-            {/* The resolution actually achieved, not the file's own. A large
-                file is tiled from a coarser overview to fit in memory, and
-                claiming its headline number would overstate the tiles. */}
-            {formatDistance(state.survey.resolutionMeters, units)} detail
-          </p>
-          {/* The projection's published name where we have it — it is the thing
-              a designer can check against what they exported, and it says
-              outright when a survey came in feet. The bare code is the fallback
-              for documents written before the name was recorded. */}
-          <p className="truncate text-2xs text-text-muted" title={state.survey.crsName}>
-            {state.survey.crsName || state.survey.crs}
-          </p>
           {/*
-            The vertical unit, and whether the file said so.
+            The survey as a whole, then the files it is made of.
 
-            Worth its own line because it is the one thing here that can be
-            wrong while everything else looks right. A GeoTIFF need not declare
-            `VerticalUnitsGeoKey` and most do not, so a file whose coordinates
-            are in feet has its heights read as feet — which is correct
-            essentially always, and is still an inference the designer should be
-            able to check against ground they know. Read as metres instead, a
-            6,700 ft Colorado course reports 22,000.
+            A course is routinely larger than one published LiDAR tile — county
+            downloads arrive as a grid — so this is a list rather than a line.
+            The summary above it is what is true of all of them together, which
+            is what the designer is actually measuring on.
           */}
-          <p className="truncate text-2xs text-text-muted">
-            Heights in {VERTICAL_UNIT_LABELS[state.survey.verticalUnit]}
-            {state.survey.verticalUnitDeclared ? '' : ', inferred from its coordinates'}
+          <p className="text-2xs text-text-muted">
+            {/* The resolution actually achieved, and the coarsest of them: a
+                survey is only as good as its worst tile where that tile is. */}
+            {formatDistance(state.survey.resolutionMeters, units)} detail
+            {state.survey.sources.length > 1 && ` · ${state.survey.sources.length} files`}
           </p>
-          <button
-            type="button"
-            onClick={onRemove}
-            className="mt-1 text-2xs text-text-muted underline-offset-2 hover:text-text-secondary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-          >
-            Remove survey
-          </button>
+
+          <ul className="mt-1 space-y-1.5">
+            {state.survey.sources.map((source) => (
+              <li key={source.name} className="border-l border-border-subtle pl-2">
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="truncate text-xs text-text-primary" title={source.name}>
+                    {source.name}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onRemove(source.name)}
+                    aria-label={`Remove ${source.name}`}
+                    className="shrink-0 text-2xs text-text-muted underline-offset-2 hover:text-text-secondary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  >
+                    Remove
+                  </button>
+                </div>
+                {/* The projection's published name where we have it — the thing
+                    a designer can check against what they exported, and it says
+                    outright when a survey came in feet. */}
+                <p className="truncate text-2xs text-text-muted" title={source.crsName}>
+                  {source.crsName || source.crs}
+                </p>
+                {/*
+                  The vertical unit, and whether the file said so.
+
+                  Worth its own line because it is the one thing here that can
+                  be wrong while everything else looks right. A GeoTIFF need not
+                  declare `VerticalUnitsGeoKey` and most do not, so a file whose
+                  coordinates are in feet has its heights read as feet — correct
+                  essentially always, and still an inference worth checking
+                  against ground you know. Read as metres instead, a 6,700 ft
+                  Colorado course reports 22,000.
+                */}
+                <p className="truncate text-2xs text-text-muted">
+                  Heights in {VERTICAL_UNIT_LABELS[source.verticalUnit]}
+                  {source.verticalUnitDeclared ? '' : ', inferred from its coordinates'}
+                </p>
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-1.5 flex items-center gap-3">
+            {/*
+              Adding is the primary action now, and removing everything is the
+              secondary one — a survey grows a file at a time, and the common
+              next step after importing one tile of a county grid is importing
+              the one next to it.
+            */}
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="text-2xs text-text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+            >
+              Add another GeoTIFF
+            </button>
+            <button
+              type="button"
+              onClick={() => onRemove()}
+              className="text-2xs text-text-muted underline-offset-2 hover:text-text-secondary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+            >
+              {state.survey.sources.length > 1 ? 'Remove all' : 'Remove survey'}
+            </button>
+          </div>
         </div>
       )}
 
       {state.status === 'absent' && (
         <div>
-          <p className="truncate text-xs text-text-disabled" title={state.survey.name}>
-            {state.survey.name}
-          </p>
+          {/* Named individually, because getting them back means finding them
+              again — and a survey of four county tiles is four downloads. */}
+          <ul className="space-y-0.5">
+            {state.survey.sources.map((source) => (
+              <li
+                key={source.name}
+                className="truncate text-xs text-text-disabled"
+                title={source.name}
+              >
+                {source.name}
+              </li>
+            ))}
+          </ul>
           {/*
             Not an error. A `.hyzer` carries the survey's metadata and not its
             pixels, so opening a course somebody sent you lands here every time
             — the right response is to say what is missing and how to supply it.
           */}
           <p className="mt-0.5 text-2xs leading-4 text-text-muted">
-            This course was designed against a survey that is not on this device. Import the
-            same file to see it again.
+            This course was designed against{' '}
+            {state.survey.sources.length > 1 ? 'surveys that are' : 'a survey that is'} not on
+            this device. Import the same {state.survey.sources.length > 1 ? 'files' : 'file'} to
+            see it again.
           </p>
           <button
             type="button"

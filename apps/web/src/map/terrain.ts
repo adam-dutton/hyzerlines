@@ -197,6 +197,17 @@ export function contourTilesUrl(units: UnitSystem, smoothing = 0): string {
 /** Visibility as MapLibre spells it. */
 const shown = (on: boolean) => (on ? ('visible' as const) : ('none' as const));
 
+/**
+ * How faint a minor contour is against an index one.
+ *
+ * The two were 0.45 and 0.7, so full strength was a 70%-opaque line over aerial
+ * imagery — legible on grass and nearly invisible over canopy, which is exactly
+ * where contours matter most. Full strength is a solid line now, and this is
+ * the ratio the minor ones keep, so the contrast that makes the labelled lines
+ * findable survives at every setting.
+ */
+export const MINOR_RATIO = 0.64;
+
 /** The shadow ink at a given strength. See the note in `hillshadeLayerSpec`. */
 export const shadowColor = (opacity: number): string =>
   `rgba(0, 0, 0, ${Math.max(0, Math.min(1, opacity))})`;
@@ -215,11 +226,20 @@ export const demZoomFor = (softness: number): number =>
  * `subsampleBelow`, per smoothing level.
  *
  * `maplibre-contour` upsamples its height grid until it is at least this wide
- * before tracing isolines. The combined 3×3 neighbourhood is 256 across, so
- * anything at or below that leaves the grid alone; 512 interpolates once and
- * 1024 twice, each halving the facet length of the drawn line.
+ * before tracing isolines. The 3×3 neighbourhood is 256 across, so 256 leaves
+ * the grid alone and 512 interpolates it once.
+ *
+ * **It stops at 512 deliberately.** The isoline pass is quadratic in grid
+ * width, so 1024 is sixteen times the work of 256, and tiles began exceeding
+ * their timeout and coming back empty — lines that appeared at one setting and
+ * vanished at another depending on what was already cached. One doubling is the
+ * most that can be asked for safely, so the top two levels are the same here.
+ *
+ * The survey does not use this at all: it owns its decoder, so it averages the
+ * elevation grid instead, which is linear rather than quadratic. See
+ * `SMOOTH_RADIUS` in `contourProtocol`.
  */
-const CONTOUR_SUBSAMPLE = [256, 512, 1024] as const;
+const CONTOUR_SUBSAMPLE = [256, 512, 512] as const;
 
 export const subsampleFor = (smoothing: number): number =>
   CONTOUR_SUBSAMPLE[Math.max(0, Math.min(2, Math.round(smoothing)))] ?? 256;
@@ -254,7 +274,14 @@ export function hillshadeLayerSpec(
        * like tree canopy and the relief arrives as a separate signal.
        */
       'hillshade-method': 'igor',
-      'hillshade-exaggeration': 0.5,
+      /*
+       * Full exaggeration, with the strength carried entirely by the opacity
+       * below. It used to sit at 0.5, which quietly capped how strong the
+       * shading could ever be — so the opacity control could only make an
+       * already-faint layer fainter. Now the top of the slider is the top of
+       * the range, and the old appearance is somewhere in the middle of it.
+       */
+      'hillshade-exaggeration': 1,
       /*
        * Opacity lives in the shadow's alpha, because there is nowhere else.
        *
@@ -298,7 +325,7 @@ export function contourLayerSpecs(
          * makes the labelled lines findable, and a flat opacity would throw it
          * away the moment somebody turned the lines down.
          */
-        'line-opacity': ['case', ['>', ['get', 'level'], 0], 0.7 * opacity, 0.45 * opacity],
+        'line-opacity': ['case', ['>', ['get', 'level'], 0], opacity, opacity * MINOR_RATIO],
       },
     },
     {

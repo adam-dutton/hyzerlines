@@ -53,7 +53,7 @@ async function importSurvey(page: Page): Promise<void> {
     buffer: tiff,
   });
   await expect
-    .poll(async () => (await course(page)).siteSurvey?.crs, { timeout: 20_000 })
+    .poll(async () => (await course(page)).siteSurvey?.sources[0]?.crs, { timeout: 20_000 })
     .toBe('EPSG:26915');
   await page.keyboard.press('Escape');
 }
@@ -185,7 +185,7 @@ test.describe('elevation profiles', () => {
     const withSurvey = await parFor(page);
 
     await openLayers(page);
-    await page.getByRole('button', { name: 'Remove survey' }).click();
+    await page.getByRole('button', { name: 'Remove survey', exact: true }).click();
 
     /*
      * Close the popover with its own trigger.

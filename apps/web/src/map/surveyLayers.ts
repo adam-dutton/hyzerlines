@@ -79,7 +79,7 @@ export function applySurveyLayers(
   registerSurveyProtocol();
   registerSurveyContourProtocol();
   setSurveyContourUnits(units);
-  prepareSurveyContours(survey.maxZoom);
+  prepareSurveyContours(survey.maxZoom, overlays.contourSmoothing);
 
   map.addSource(SURVEY_DEM_SOURCE, {
     type: 'raster-dem',

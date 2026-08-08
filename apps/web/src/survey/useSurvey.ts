@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Op, SiteSurvey } from '@hyzerlines/core';
+import {
+  addSurveySource,
+  removeSurveySource,
+  type Op,
+  type SiteSurvey,
+} from '@hyzerlines/core';
 
 import { SurveyImportError, importSurvey, type ImportProgress } from './importer';
 import { clearTiles, hasTiles, storeTiles } from './store';
@@ -58,6 +63,10 @@ export function useSurvey({
    */
   const importingRef = useRef(false);
 
+  /** The survey as the document currently has it, for the import to build on. */
+  const surveyRef = useRef<SiteSurvey | null>(survey);
+  surveyRef.current = survey;
+
   // Reconcile: does the document's survey actually have tiles behind it?
   useEffect(() => {
     if (importingRef.current) return;
@@ -87,9 +96,25 @@ export function useSurvey({
         );
 
         setState({ status: 'importing', progress: { phase: 'storing', ratio: null } });
-        await storeTiles(result.tiles);
 
-        const record: SiteSurvey = { ...result.survey, importedAt: new Date().toISOString() };
+        /*
+         * Added to whatever is already there, not swapped for it.
+         *
+         * A course can be larger than one published LiDAR tile, so importing a
+         * second file extends the survey. `existing` is read through the ref
+         * rather than closed over, because the import takes seconds and the
+         * document may have moved on — closing over it would silently drop a
+         * file imported while this one was still tiling.
+         */
+        const existing = surveyRef.current;
+        await storeTiles(result.tiles, { replace: existing === null });
+
+        const record = addSurveySource(
+          existing,
+          result.source,
+          result.zooms,
+          new Date().toISOString(),
+        );
         importingRef.current = false;
         onOp({ type: 'setSiteSurvey', survey: record });
         setState({ status: 'ready', survey: record });
@@ -115,11 +140,33 @@ export function useSurvey({
     [onOp],
   );
 
-  const remove = useCallback(async () => {
-    await clearTiles();
-    onOp({ type: 'setSiteSurvey', survey: null });
-    setState({ status: 'none' });
-  }, [onOp]);
+  /**
+   * Remove the whole survey, or one file from it.
+   *
+   * Dropping one file leaves its tiles in the store, and that is deliberate:
+   * the only way to remove them precisely would be to know which keys came from
+   * which file, and a survey's files overlap. The remaining files still cover
+   * their own ground, so what is left over is terrain outside the new bounds —
+   * which MapLibre never asks for, because the sources carry those bounds.
+   * Re-importing rewrites the same keys anyway.
+   */
+  const remove = useCallback(
+    async (name?: string) => {
+      const current = surveyRef.current;
+      const next = name && current ? removeSurveySource(current, name) : null;
+
+      if (next) {
+        onOp({ type: 'setSiteSurvey', survey: next });
+        setState({ status: 'ready', survey: next });
+        return;
+      }
+
+      await clearTiles();
+      onOp({ type: 'setSiteSurvey', survey: null });
+      setState({ status: 'none' });
+    },
+    [onOp],
+  );
 
   /** Dismiss a failure without touching the document. */
   const dismissError = useCallback(() => setState({ status: 'none' }), []);

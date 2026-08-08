@@ -1,4 +1,4 @@
-import { NODATA_THRESHOLD, TERRARIUM_NODATA, encodeTerrarium, tileBounds } from './survey.js';
+import { NODATA_THRESHOLD, encodeTerrarium, tileBounds } from './survey.js';
 import type { Bounds } from './measure.js';
 
 /**
@@ -85,6 +85,26 @@ export interface ResampleOptions {
    * and by nothing else.
    */
   allowFullyClamped?: boolean;
+
+  /**
+   * The elevation to write where the survey has nothing, in metres.
+   *
+   * Nothing downstream may treat this as a measurement — every pixel carrying
+   * it has its alpha zeroed, which is how the contour generator and the
+   * elevation profile know to ignore it. It exists for the one consumer that
+   * cannot be told: MapLibre's hillshade reads RGB and has no concept of
+   * nodata, so those pixels are going to be shaded whatever we put there.
+   *
+   * A single flat value is what makes them shade to *nothing*: relief shading
+   * is a function of slope, and a constant has none. The survey's own mean is
+   * the right constant because it also minimises the step at the boundary,
+   * which is the only place any shading can then appear.
+   *
+   * Sea level — the old behaviour — is exactly wrong for this. A survey of
+   * Colorado at 2,000m surrounded by zeroes is a two-kilometre cliff all the
+   * way round it.
+   */
+  fillMeters?: number;
 }
 
 /**
@@ -100,8 +120,9 @@ export function resampleTile(
   z: number,
   x: number,
   y: number,
-  { allowFullyClamped = false }: ResampleOptions = {},
+  { allowFullyClamped = false, fillMeters = 0 }: ResampleOptions = {},
 ): Uint8ClampedArray | null {
+  const fill = encodeTerrarium(fillMeters);
   const [tileWest, tileSouth, tileEast, tileNorth] = tileBounds(z, x, y);
   const [minX, minY, maxX, maxY] = grid.bbox;
 
@@ -139,21 +160,36 @@ export function resampleTile(
       const rawCol = Math.floor((sx - minX) * scaleX);
       const rawRow = Math.floor((maxY - sy) * scaleY);
 
-      const col = Math.max(0, Math.min(grid.width - 1, rawCol));
-      const row = Math.max(0, Math.min(grid.height - 1, rawRow));
-      if (col === rawCol && row === rawRow) inside++;
-
       const out = (py * TILE_SIZE + px) * 4;
-      const meters = grid.data[row * grid.width + col]!;
+
+      /*
+       * Outside the grid is not data, and is no longer pretended to be.
+       *
+       * This used to clamp to the nearest edge sample, which kept the hillshade
+       * continuous and produced the artifact that made it untenable: clamping
+       * repeats the edge column outward, so the terrain goes flat *across* the
+       * boundary while still varying *along* it — drawn as long horizontal
+       * smears running off the side of the survey, with contour lines extending
+       * straight out of them. It looked like measured ground and was the
+       * survey's outermost pixel copied a hundred times.
+       */
+      const outside = rawCol < 0 || rawCol >= grid.width || rawRow < 0 || rawRow >= grid.height;
+      if (outside) {
+        writeAbsent(rgba, out, fill);
+        continue;
+      }
+
+      inside++;
+      const meters = grid.data[rawRow * grid.width + rawCol]!;
 
       if (
         !Number.isFinite(meters) ||
         meters <= NODATA_THRESHOLD ||
         (grid.noDataValue !== null && meters === grid.noDataValue)
       ) {
-        writeNoData(rgba, out);
+        writeAbsent(rgba, out, fill);
         // An interior hole is not coverage, however far inside the grid it is.
-        if (col === rawCol && row === rawRow) inside--;
+        inside--;
         continue;
       }
 
@@ -169,20 +205,50 @@ export function resampleTile(
 }
 
 /*
- * A hole the survey genuinely has — a lake the LiDAR did not return from, a
- * gap between flight lines.
+ * Ground the survey does not describe: beyond its edge, or a hole inside it —
+ * a lake the LiDAR did not return from, a gap between flight lines.
  *
- * Sea level, with alpha zeroed. The alpha is documentation rather than
- * mechanism, since nothing downstream reads it (see the note above); it costs
- * nothing and it means a future consumer that *does* respect alpha gets the
- * right answer. Sea level is the least-wrong RGB: it is flat, so it hillshades
- * to nothing rather than to a feature that is not there.
+ * **Alpha zero is the mechanism now, not documentation.** Two of the three
+ * consumers read it and act on it: the contour generator decodes these pixels
+ * to NaN, and `maplibre-contour` skips every cell touching one, so no isoline
+ * is drawn across ground nobody measured. The elevation profile reads it as a
+ * gap for the same reason.
+ *
+ * MapLibre's hillshade is the third and cannot be told — it reads RGB and has
+ * no nodata — which is what `fill` is for. See `fillMeters`.
  */
-function writeNoData(rgba: Uint8ClampedArray, offset: number): void {
-  rgba[offset] = TERRARIUM_NODATA[0];
-  rgba[offset + 1] = TERRARIUM_NODATA[1];
-  rgba[offset + 2] = TERRARIUM_NODATA[2];
+function writeAbsent(
+  rgba: Uint8ClampedArray,
+  offset: number,
+  fill: readonly [number, number, number],
+): void {
+  rgba[offset] = fill[0];
+  rgba[offset + 1] = fill[1];
+  rgba[offset + 2] = fill[2];
   rgba[offset + 3] = 0;
+}
+
+/**
+ * A representative elevation for a grid: the mean of everything real in it.
+ *
+ * What the tiles are filled with where the survey says nothing — see
+ * `fillMeters`. The mean rather than the minimum or sea level, because the only
+ * thing this number can produce is the step at the survey's boundary, and the
+ * mean is what makes that step smallest.
+ *
+ * Zero when the grid is entirely nodata, which is the one case where it cannot
+ * matter: there is no boundary to step across.
+ */
+export function gridFillElevation(grid: SourceGrid): number {
+  let total = 0;
+  let count = 0;
+  for (const meters of grid.data) {
+    if (!Number.isFinite(meters) || meters <= NODATA_THRESHOLD) continue;
+    if (grid.noDataValue !== null && meters === grid.noDataValue) continue;
+    total += meters;
+    count++;
+  }
+  return count === 0 ? 0 : total / count;
 }
 
 /**

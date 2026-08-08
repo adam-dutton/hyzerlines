@@ -242,6 +242,18 @@ The panel says which unit was used and whether the file declared it, because
 that is the one thing about an import that can be wrong while everything else
 looks right.
 
+**A survey can be several files.** A course is routinely larger than one
+published LiDAR tile — county downloads arrive as a grid of them — so importing
+a second GeoTIFF extends the survey instead of replacing it, and the panel lists
+what went in. Where two files overlap they are combined pixel by pixel, so
+neither loses ground to the other's edge.
+
+The shading and the contours stop at the edge of the data. Tiles at the boundary
+are half survey and half nothing, and the part that is nothing is marked as such
+rather than filled with the last real elevation copied outward — which is what
+used to draw long smears off the side of a survey with contour lines running out
+of them into land nobody measured.
+
 The tiles live in your browser rather than in the `.hyzer` file, so sending
 someone a course sends the design and not forty megabytes of elevation — they
 are told which survey it was designed against and can import the same file.

@@ -23,8 +23,11 @@ import type { UnitSystem } from '../units';
  * computed. Flipping a switch must not do that, so visibility is its own effect
  * and appearance is another, and installation depends on neither.
  *
- * Softness is the exception that has to reinstall — it sets how deep a DEM the
- * shading reads, and a source's `maxzoom` is fixed at construction.
+ * Two settings are exceptions that have to reinstall. Softness sets how deep a
+ * DEM the shading reads, and a source's `maxzoom` is fixed at construction.
+ * Smoothing averages the elevation grid inside the contour generator's decoder,
+ * and the generator caches decoded tiles by url — so the manager it belongs to
+ * has to be rebuilt or the old, differently-smoothed grids would be retraced.
  */
 export function SurveyLayers({
   state,
@@ -54,7 +57,7 @@ export function SurveyLayers({
      * Listing it here would rebuild the contour source on every switch.
      */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, ready, units, overlays.hillshadeSoftness]);
+  }, [map, ready, units, overlays.hillshadeSoftness, overlays.contourSmoothing]);
 
   useEffect(() => {
     if (map && ready) applySurveyVisibility(map, overlays);

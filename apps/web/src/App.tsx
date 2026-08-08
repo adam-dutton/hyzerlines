@@ -178,7 +178,7 @@ function Shell() {
                   state: survey.state,
                   status: survey.state.status,
                   onImport: (file) => void survey.importFile(file),
-                  onRemove: () => void survey.remove(),
+                  onRemove: (name) => void survey.remove(name),
                   onDismissError: survey.dismissError,
                 }}
                 onBasemapChange={(basemapId) => dispatch({ type: 'setBasemap', basemapId })}

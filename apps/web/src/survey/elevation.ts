@@ -26,10 +26,12 @@ import { readTile } from './store';
 /** Where the numbers came from. Decides whether they may move a par. */
 export type ElevationSource = 'survey' | 'global';
 
+export type DecodedTile = { width: number; height: number; data: Float32Array };
+
 /** Terrarium tiles are 256px, whichever source produced them. */
 const TILE_SIZE = 256;
 
-type Decoded = { width: number; height: number; data: Float32Array } | null;
+type Decoded = DecodedTile | null;
 
 /**
  * Decode one tile to a grid of metres, or null where there is no tile.
@@ -47,7 +49,7 @@ async function loadTile(
   if (source === 'survey') {
     const blob = await readTile(z, x, y);
     if (!blob) return null;
-    return decodeBlob(blob);
+    return decodeSurveyTile(blob);
   }
 
   const { demSource } = await import('../map/terrain');
@@ -59,7 +61,15 @@ async function loadTile(
   }
 }
 
-async function decodeBlob(blob: Blob): Promise<Decoded> {
+/**
+ * Decode a survey tile to metres, with absent ground as NaN.
+ *
+ * Shared with the contour generator — see `contourProtocol` — so that "the
+ * survey does not describe this pixel" means the same thing to a chart and to
+ * an isoline. Two decoders would be two answers, and the one that drifted would
+ * be the one drawing lines across ground nobody measured.
+ */
+export async function decodeSurveyTile(blob: Blob): Promise<Decoded> {
   const bitmap = await createImageBitmap(blob);
   try {
     const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);

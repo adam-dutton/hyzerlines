@@ -450,6 +450,16 @@ data:
 The tiles live in IndexedDB, in their own database, keyed by `z/x/y`. A `.hyzer`
 is a document you email and forty megabytes of elevation is not.
 
+**A survey is a set of files.** `sources` carries one entry per GeoTIFF, each
+with its own name, bounds, projection and vertical unit — they genuinely can
+differ, and a designer who mixed a State Plane tile with a UTM one needs to see
+that rather than have it averaged away. The survey's own `bounds` is their union
+and its `resolutionMeters` is the _coarsest_ of them, because that is the only
+figure true of the whole thing. Older documents held one file's fields at the
+top level; a `z.preprocess` wraps them as a single source, which is a widening
+rather than a version bump — the tiles in IndexedDB are untouched, so such a
+course opens working rather than merely parsing.
+
 **The vertical unit is part of the record.** `verticalUnit` says what the file's
 elevations were read as and `verticalUnitDeclared` says whether the file stated
 it or whether it was taken from the unit its coordinates are in. Both are stored

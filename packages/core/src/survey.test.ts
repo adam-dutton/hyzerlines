@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  addSurveySource,
+  removeSurveySource,
+  surveySourceSchema,
   VERTICAL_UNITS,
   VERTICAL_UNIT_METERS,
   decodeTerrarium,
@@ -326,7 +329,216 @@ describe('vertical units', () => {
       maxZoom: 16,
       importedAt: new Date().toISOString(),
     });
-    expect(parsed.verticalUnit).toBe('meter');
-    expect(parsed.verticalUnitDeclared).toBe(true);
+    expect(parsed.sources[0]!.verticalUnit).toBe('meter');
+    expect(parsed.sources[0]!.verticalUnitDeclared).toBe(true);
+  });
+
+  /*
+   * A survey used to be one file's fields at the top level. That is exactly one
+   * source, so the widening is a preprocess rather than a document version —
+   * and the point of it is that the tiles in IndexedDB are untouched, so an
+   * older course opens working rather than merely parsing.
+   */
+  it('reads a single-file survey written before surveys held several', () => {
+    const parsed = siteSurveySchema.parse({
+      name: 'old.tif',
+      bounds: [-93.2, 44.8, -93.1, 44.9],
+      resolutionMeters: 1,
+      crs: 'EPSG:26915',
+      crsName: 'NAD83 / UTM zone 15N',
+      minZoom: 12,
+      maxZoom: 16,
+      importedAt: new Date().toISOString(),
+    });
+
+    expect(parsed.sources).toHaveLength(1);
+    expect(parsed.sources[0]!.name).toBe('old.tif');
+    expect(parsed.sources[0]!.crsName).toBe('NAD83 / UTM zone 15N');
+    // The whole-survey figures come from the one file it had.
+    expect(parsed.bounds).toEqual([-93.2, 44.8, -93.1, 44.9]);
+    expect(parsed.sources[0]!.bounds).toEqual([-93.2, 44.8, -93.1, 44.9]);
+    expect(parsed.resolutionMeters).toBe(1);
+  });
+});
+
+/**
+ * A survey made of several files.
+ *
+ * A course is routinely larger than one published LiDAR tile — county downloads
+ * arrive as a grid — so the survey has to be able to grow. What matters is that
+ * the whole-survey figures stay true of the whole survey: bounds that cover
+ * every file, and a resolution nobody can read as better than the worst tile
+ * they are about to measure on.
+ */
+describe('surveys of several files', () => {
+  const source = (
+    name: string,
+    bounds: [number, number, number, number],
+    resolutionMeters = 1,
+  ) =>
+    surveySourceSchema.parse({
+      name,
+      bounds,
+      resolutionMeters,
+      crs: 'EPSG:26915',
+      crsName: 'NAD83 / UTM zone 15N',
+    });
+
+  const at = new Date().toISOString();
+
+  it('starts a survey from the first file', () => {
+    const survey = addSurveySource(
+      null,
+      source('a.tif', [-93.2, 44.8, -93.1, 44.9]),
+      {
+        minZoom: 12,
+        maxZoom: 16,
+      },
+      at,
+    );
+
+    expect(survey.sources).toHaveLength(1);
+    expect(survey.bounds).toEqual([-93.2, 44.8, -93.1, 44.9]);
+    expect(survey.minZoom).toBe(12);
+    expect(survey.maxZoom).toBe(16);
+  });
+
+  it('grows the bounds to cover every file', () => {
+    const first = addSurveySource(
+      null,
+      source('a.tif', [-93.2, 44.8, -93.1, 44.9]),
+      {
+        minZoom: 12,
+        maxZoom: 16,
+      },
+      at,
+    );
+    // The tile immediately east, as a county download would supply it.
+    const both = addSurveySource(
+      first,
+      source('b.tif', [-93.1, 44.8, -93.0, 44.9]),
+      {
+        minZoom: 12,
+        maxZoom: 16,
+      },
+      at,
+    );
+
+    expect(both.sources).toHaveLength(2);
+    expect(both.bounds).toEqual([-93.2, 44.8, -93.0, 44.9]);
+  });
+
+  /*
+   * The deepest maxZoom and the shallowest minZoom, so the finest file keeps
+   * its detail and the whole survey still draws when zoomed out to the property.
+   */
+  it('widens the zoom range to hold every file', () => {
+    const first = addSurveySource(
+      null,
+      source('a.tif', [-93.2, 44.8, -93.1, 44.9]),
+      {
+        minZoom: 13,
+        maxZoom: 16,
+      },
+      at,
+    );
+    const both = addSurveySource(
+      first,
+      source('b.tif', [-93.1, 44.8, -93.0, 44.9]),
+      {
+        minZoom: 11,
+        maxZoom: 18,
+      },
+      at,
+    );
+
+    expect(both.minZoom).toBe(11);
+    expect(both.maxZoom).toBe(18);
+  });
+
+  /*
+   * The coarsest resolution wins. Quoting the best file's number for a survey
+   * that also holds a 10m tile would tell a designer they are measuring on 1m
+   * ground everywhere, which is the overstatement of precision this app exists
+   * to avoid.
+   */
+  it('reports the coarsest resolution, not the finest', () => {
+    const first = addSurveySource(
+      null,
+      source('fine.tif', [-93.2, 44.8, -93.1, 44.9], 1),
+      {
+        minZoom: 12,
+        maxZoom: 18,
+      },
+      at,
+    );
+    const both = addSurveySource(
+      first,
+      source('coarse.tif', [-93.1, 44.8, -93.0, 44.9], 10),
+      {
+        minZoom: 12,
+        maxZoom: 14,
+      },
+      at,
+    );
+
+    expect(both.resolutionMeters).toBe(10);
+  });
+
+  it('replaces a file imported again under the same name', () => {
+    const first = addSurveySource(
+      null,
+      source('a.tif', [-93.2, 44.8, -93.1, 44.9]),
+      {
+        minZoom: 12,
+        maxZoom: 16,
+      },
+      at,
+    );
+    const again = addSurveySource(
+      first,
+      source('a.tif', [-93.4, 44.8, -93.3, 44.9]),
+      {
+        minZoom: 12,
+        maxZoom: 16,
+      },
+      at,
+    );
+
+    expect(again.sources).toHaveLength(1);
+    // The bounds followed the corrected file rather than keeping the old ones.
+    expect(again.bounds).toEqual([-93.4, 44.8, -93.3, 44.9]);
+  });
+
+  describe('removeSurveySource', () => {
+    const both = addSurveySource(
+      addSurveySource(
+        null,
+        source('a.tif', [-93.2, 44.8, -93.1, 44.9]),
+        {
+          minZoom: 12,
+          maxZoom: 16,
+        },
+        at,
+      ),
+      source('b.tif', [-93.1, 44.8, -93.0, 44.9]),
+      { minZoom: 12, maxZoom: 16 },
+      at,
+    );
+
+    it('shrinks the bounds back to what is left', () => {
+      const one = removeSurveySource(both, 'b.tif')!;
+      expect(one.sources).toHaveLength(1);
+      expect(one.bounds).toEqual([-93.2, 44.8, -93.1, 44.9]);
+    });
+
+    it('is null when the last file goes', () => {
+      const one = removeSurveySource(both, 'b.tif')!;
+      expect(removeSurveySource(one, 'a.tif')).toBeNull();
+    });
+
+    it('ignores a name that is not in it', () => {
+      expect(removeSurveySource(both, 'nope.tif')!.sources).toHaveLength(2);
+    });
   });
 });

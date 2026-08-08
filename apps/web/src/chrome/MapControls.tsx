@@ -142,7 +142,7 @@ export function MapControls({
     state: SurveyState;
     status: SurveyState['status'];
     onImport: (file: File) => void;
-    onRemove: () => void;
+    onRemove: (name?: string) => void;
     onDismissError: () => void;
   };
   onBasemapChange: (id: string) => void;

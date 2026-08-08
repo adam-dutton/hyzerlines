@@ -11,6 +11,7 @@ import {
   HILLSHADE_LAYER,
   contourTilesUrl,
   demSourceSpec,
+  MINOR_RATIO,
   shadowColor,
   terrainLayers,
 } from './terrain';
@@ -181,8 +182,8 @@ export function setContourOpacity(
     map.setPaintProperty(lineId, 'line-opacity', [
       'case',
       ['>', ['get', 'level'], 0],
-      0.7 * opacity,
-      0.45 * opacity,
+      opacity,
+      opacity * MINOR_RATIO,
     ]);
   }
   /*

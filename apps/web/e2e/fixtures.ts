@@ -19,12 +19,27 @@ export interface TestCourse {
   }[];
   holes: { id: string; teeIds: string[]; targetIds: string[] }[];
   pairs: { teeId: string; targetId: string; fairwayId: string | null }[];
-  overlays: { hillshade: boolean; contours: boolean };
+  overlays: {
+    hillshade: boolean;
+    contours: boolean;
+    hillshadeOpacity: number;
+    hillshadeSoftness: number;
+    contourOpacity: number;
+    contourSmoothing: number;
+  };
   siteSurvey: {
-    name: string;
-    crs: string;
+    // A survey is a set of files: a course can be larger than one published
+    // LiDAR tile, and county downloads arrive as a grid of them.
+    sources: {
+      name: string;
+      crs: string;
+      crsName: string;
+      resolutionMeters: number;
+      bounds: [number, number, number, number];
+      verticalUnit: string;
+      verticalUnitDeclared: boolean;
+    }[];
     resolutionMeters: number;
-    crsName: string;
     bounds: [number, number, number, number];
   } | null;
 }
