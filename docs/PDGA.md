@@ -519,7 +519,8 @@ fairway the moment it has a tee and a target, the check works from the first hol
 rather than waiting for anyone to draw a route. "Far enough apart" and "too
 close to" are separation distances the document declines to put a number on, and
 this project does not supply numbers the PDGA has not published — least of all a
-safety one. Dispersion-based separation is PR 12's problem, and it will be built on
+safety one. Dispersion-based separation belongs to the **Safety** milestone, and
+will be built on
 a stated model rather than an invented constant.
 
 **Mandatories**, p5:
@@ -785,7 +786,8 @@ on it yet:
 
 ### The acreage chart, now that it is used — `[ACREAGE]`
 
-Transcribed in PR 4 and unused until PR 7, for one reason: it compares against
+Transcribed in **Holes and par** and unused until **Boundaries and acreage**, for
+one reason: it compares against
 the size of a property, and nothing in the document described a property. A drawn
 `boundary` is that thing.
 
@@ -810,7 +812,7 @@ zeroes. `acreageRange` returns null for it, and the caller has to notice.
 ## What is deliberately absent
 
 - **Safety separation distances between fairways.** No source document publishes
-  one. See PR 12.
+  one. See the **Safety** milestone in [`PLAN.md`](./PLAN.md).
 - **Par by Hole Length and Hole Difficulty charts** (`[PAR]` p11) and the
   **foliage-density par charts** (`[PAR]` p7). Both are images rather than tables
   and cannot be transcribed as figures.

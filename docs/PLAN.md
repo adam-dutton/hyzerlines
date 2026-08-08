@@ -33,55 +33,85 @@ current as PRs land.
 
 ## Roadmap
 
-| PR      | Scope                                                                              | Status    |
-| ------- | ---------------------------------------------------------------------------------- | --------- |
-| **0**   | Monorepo, design tokens + theming, app shell, MapLibre, keyboard registry, CI      | ✅ done   |
-| **1**   | Design system: Radix primitives, panel/inspector/tool patterns, component library  | ✅ done   |
-| **2**   | Document model, zod schemas, `applyOp` store, undo/redo, IndexedDB, `.hyzer` files | ✅ done   |
-| **3**   | Drawing engine, full feature palette, schema-driven inspector                      | ✅ done   |
-| **4**   | Hole workflow, distances, PDGA par and advisory checks                             | ✅ done   |
-| **4.5** | UI/UX: navigation, docked panels, layout, camera framing                           | ✅ done   |
-| **5**   | Document model v2: pairs, layouts, migration                                       | ✅ done   |
-| **6**   | Derived geometry: tee footprints, pair picker, fairway corridors, vertex editing   | ✅ done   |
-| **7**   | Boundaries and acreage                                                             | ✅ done   |
-| **8**   | UI/UX: the chrome rearranged (8a), the insides of the panels (8b)                  | ✅ done   |
-| **9**   | Map overlays: one style, hillshade, contours                                       | ✅ done   |
-| **10**  | Site surveys: import LiDAR GeoTIFFs, reproject and tile in-browser                 | ✅ done   |
-| **10b** | Elevation profiles per hole, and the PDGA elevation term in par                    | ✅ done   |
-| **10c** | Feature coordinates: shown, and typed in                                           | in review |
-| **11**  | **Multiple tees, pins and fairways as a first-class idea**                         | next      |
-| **12**  | Layouts and routing: named layouts, skip, repeat, reorder                          |           |
-| **13**  | Expanded palette: relief areas, noted areas, drop zones, invert, circles           |           |
-| **14**  | Terrain 2: 3D tilt, canopy height, slope shading                                   |           |
-| **15**  | Parametric flight model, shot editor, disc database                                |           |
-| **16**  | Safety: dispersion envelopes, overlap and proximity rules                          |           |
-| **17**  | Accounts, share links, published course pages (backend begins here)                |           |
-| **18**  | Exports: PDF/PNG maps, tee signs, punch lists                                      |           |
-| **19**  | KML/KMZ interop                                                                    |           |
-| **20**  | Offline/PWA, tile caching                                                          |           |
-| **21**  | Field mode: touch targets, GPS, geotagged photos                                   |           |
-| **22**  | Donations, public gallery, self-host via docker-compose                            |           |
+| Milestone                            | Scope                                                                         | Shipped in                                                      |
+| ------------------------------------ | ----------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| **Foundations**                      | Monorepo, design tokens + theming, app shell, MapLibre, keyboard registry, CI | [#1](https://github.com/adam-dutton/hyzerlines/pull/1)          |
+| **Design system**                    | Radix primitives, panel/inspector/tool patterns, component library            | [#2](https://github.com/adam-dutton/hyzerlines/pull/2)          |
+| **Document model**                   | zod schemas, `applyOp` store, undo/redo, IndexedDB, `.hyzer` files            | [#4](https://github.com/adam-dutton/hyzerlines/pull/4)          |
+| **Drawing**                          | Drawing engine, full feature palette, schema-driven inspector                 | [#5](https://github.com/adam-dutton/hyzerlines/pull/5)          |
+| **Holes and par**                    | Hole workflow, distances, PDGA par and advisory checks                        | [#6](https://github.com/adam-dutton/hyzerlines/pull/6)          |
+| **Navigation and panels**            | Navigation tools, docked panels, layout, camera framing                       | [#7](https://github.com/adam-dutton/hyzerlines/pull/7)          |
+| **Model v2**                         | Pairs, layouts, migration                                                     | [#8](https://github.com/adam-dutton/hyzerlines/pull/8)          |
+| **Derived geometry**                 | Tee footprints, pair picker, fairway corridors, vertex editing                | [#9](https://github.com/adam-dutton/hyzerlines/pull/9)          |
+| **Boundaries and acreage**           | Property boundary, PDGA acreage comparison                                    | [#10](https://github.com/adam-dutton/hyzerlines/pull/10)        |
+| **Chrome, rearranged**               | The outside of the panels                                                     | [#11](https://github.com/adam-dutton/hyzerlines/pull/11)        |
+| **Panel insides**                    | The inside of them                                                            | [#12](https://github.com/adam-dutton/hyzerlines/pull/12)        |
+| **Terrain overlays**                 | One style, hillshade, contours                                                | [#13](https://github.com/adam-dutton/hyzerlines/pull/13)        |
+| **Site surveys**                     | Import LiDAR GeoTIFFs, reproject and tile in-browser                          | [#13](https://github.com/adam-dutton/hyzerlines/pull/13)        |
+| **Elevation profiles**               | Per-hole ground profile, and the PDGA elevation term in par                   | [#13](https://github.com/adam-dutton/hyzerlines/pull/13)        |
+| **Feature coordinates**              | Shown on every feature, and typed in                                          | [#14](https://github.com/adam-dutton/hyzerlines/pull/14) — open |
+| **Multiple tees, pins and fairways** | The shot matrix as a first-class idea                                         | **next**                                                        |
+| **Layouts and routing**              | Named layouts, skip, repeat, reorder                                          |                                                                 |
+| **Expanded palette**                 | Relief areas, noted areas, drop zones, invert, circles                        |                                                                 |
+| **Terrain 2**                        | 3D tilt, canopy height, slope shading                                         |                                                                 |
+| **Flight model**                     | Parametric flight, shot editor, disc database                                 |                                                                 |
+| **Safety**                           | Dispersion envelopes, overlap and proximity rules                             |                                                                 |
+| **Accounts and sharing**             | Accounts, share links, published course pages (backend begins here)           |                                                                 |
+| **Exports**                          | PDF/PNG maps, tee signs, punch lists                                          |                                                                 |
+| **KML/KMZ interop**                  | Import and export                                                             |                                                                 |
+| **Offline and PWA**                  | Tile caching, installable                                                     |                                                                 |
+| **Field mode**                       | Touch targets, GPS, geotagged photos                                          |                                                                 |
+| **Donations and gallery**            | Open Collective, public gallery, self-host via docker-compose                 |                                                                 |
+
+### Why these are named rather than numbered
+
+They used to be "PR 0" through "PR 21", and the numbers were wrong in both
+directions.
+
+**They never matched the pull requests they were named for.** Roadmap "PR 1"
+shipped as [#2](https://github.com/adam-dutton/hyzerlines/pull/2), and it was
+off by one from there on, because [#1](https://github.com/adam-dutton/hyzerlines/pull/1)
+and [#3](https://github.com/adam-dutton/hyzerlines/pull/3) were fixes that no
+roadmap row predicted. By the end, three rows — overlays, surveys and elevation
+profiles — had all shipped inside
+[#13](https://github.com/adam-dutton/hyzerlines/pull/13), so the label "PR"
+identified nothing at all.
+
+**One row is not one pull request, and the scheme kept admitting it.** "4.5",
+"8a", "8b", "10b", "10c" were each invented at the moment reality refused to fit
+— a half number, two splits, two appendices. That is a naming scheme reporting
+its own failure five times.
+
+**Numbers that encode order break when the order changes.** Inserting the
+multi-tee work ahead of layouts renumbered ten rows and silently invalidated two
+cross-references in this document's own prose. A name has no position to
+invalidate.
+
+So: milestones have names, order is the order of this table, and the **Shipped
+in** column carries the real pull request — which is the number that was
+actually wanted whenever somebody went looking for one.
 
 Sharing sits mid-roadmap rather than at the end because a published, linkable
 course page is the growth loop — it is how a designer shows a parks department
 and how a club shows its players.
 
-PRs 5 through 9 are one piece of work split for reviewability: the document
-model the app should have had from the start. It came out of a design session
-with the hand-drawn model in `docs/MODEL.md`, and the model settled before any
-of it was written.
+**Model v2** through **Panel insides** are one piece of work split for
+reviewability: the document model the app should have had from the start. It
+came out of a design session with the hand-drawn model in `docs/MODEL.md`, and
+the model settled before any of it was written. That five-milestone run is also
+the clearest case of why one row was never one pull request.
 
 **11 and 12 were one row until an audit split them.** "Layouts and routing" was
 next, and it assumed multiple tees and pins already worked because the _model_
-supports them and has since PR 5. The interface does not: it presents a course
+supports them and has since **Model v2**. The interface does not: it presents a course
 as one tee and one pin with a picker bolted on, and a layout is a sequence of
 choices among shots the designer currently cannot see or compare. Building the
-routing on top of that would be building the second storey first. See PR 11
-below for what the audit actually found.
+routing on top of that would be building the second storey first. See
+**Multiple tees, pins and fairways** below for what the audit actually found.
 
 ---
 
-## PR 0 — what landed
+## Foundations — what landed
 
 **Monorepo.** pnpm workspaces, TypeScript strict (including
 `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`), ESLint, Prettier,
@@ -108,14 +138,14 @@ Notable decisions encoded there:
 keyless, so the app works on first load with no signup and no billing
 relationship. The map instance is created once and never torn down; basemap
 switches swapped the style in place so the camera and future editing state
-survived. (PR 9 went further and stopped swapping the style at all — every
+survived. (**Terrain overlays** went further and stopped swapping the style at all — every
 basemap is a source in one style now, and switching is a visibility change.)
 
 **Chrome.** Inline-editable course name, theme toggle, basemap segmented control,
 zoom and bearing controls, an adaptive scale bar, live coordinates, a units
 toggle, and attribution.
 
-The tool rail is deliberately absent until PR 3. Shipping a palette of disabled
+The tool rail is deliberately absent until **Drawing**. Shipping a palette of disabled
 buttons communicates a roadmap at the cost of making the product look broken; the
 tool _keys_ are reserved in the registry instead.
 
@@ -129,7 +159,7 @@ blocks.
 
 ---
 
-## PR 4.5 — what landed
+## Navigation and panels — what landed
 
 The first UI/UX pass over everything built so far.
 
@@ -183,7 +213,7 @@ is the only case where "where you were last looking" is the best guess
 available.
 
 `Zoom to fit` (⇧1) and `Zoom to selection` (⇧2) were reserved in the registry
-since PR 0 and run the same helper, so they are implemented now rather than
+since **Foundations** and run the same helper, so they are implemented now rather than
 left inert beside it.
 
 The framing lives in `CourseEditor`, keyed on a document epoch from
@@ -230,7 +260,7 @@ because the rail button that _draws_ a tee already owns that name.
 
 ---
 
-## PR 5 — what landed
+## Model v2 — what landed
 
 The document model, rewritten. Format version 2, and the project's first real
 migration. Deliberately invisible: the interface is unchanged, because
@@ -283,7 +313,7 @@ tidying away evidence of a problem.
 
 ---
 
-## PR 6 — what landed
+## Derived geometry — what landed
 
 Geometry the document does not store. A tee is a point but a tee is a pad; a
 fairway is a line but a fairway is ground you can land on. Both second shapes are
@@ -312,7 +342,7 @@ Sharp doglegs get a mitre limit, and a corridor that folds through itself is
 reported as a finding rather than quietly drawn, because a folded polygon has
 stopped describing ground.
 
-**The pair picker replaced a lie.** Since PR 5 the panels had been answering every
+**The pair picker replaced a lie.** Since **Model v2** the panels had been answering every
 question with the hole's first tee and first pin — correct for one of a two-pin
 hole's four throws and silently wrong for the rest. `representativePair` now takes
 the active layout's play when there is one, the hole panel lets the designer pick
@@ -440,13 +470,13 @@ case it does not cover.
 only. Other kinds carry a `holeId` too, but for them it is scope rather than
 membership — an OB line belonging to hole 4 is a different claim from a tee being
 one of hole 4's tees — and overloading one control with both meanings would make
-neither clear. PR 7 gives scope its own control.
+neither clear. **Boundaries and acreage** gives scope its own control.
 
 ---
 
-## PR 7 — what landed
+## Boundaries and acreage — what landed
 
-The acreage chart has been transcribed since PR 4 and unused, for exactly one
+The acreage chart has been transcribed since **Holes and par** and unused, for exactly one
 reason: it compares against the size of a property, and nothing in the document
 described a property. A drawn **boundary** is that thing, so this PR is mostly
 about making one drawable and then honestly comparable.
@@ -480,7 +510,7 @@ the boundary the designer sets, and with it unset the area is still measured and
 reported — only the comparison is withheld. Green has no row at all, so
 `acreageRange` returns null for it rather than a plausible set of zeroes.
 
-Also landed: the **scope control** deferred from PR 6. An OB line, a hazard or a
+Also landed: the **scope control** deferred from **Derived geometry**. An OB line, a hazard or a
 path can now say which hole it is about — scope, a different claim from a tee
 being one of hole 4's tees, which is why it is a separate control rather than the
 same one overloaded.
@@ -593,7 +623,7 @@ into it now read "color" rather than "colour".
 **Whether the course actually fits inside its boundary.** Geometrically easy, and
 a different question from acreage: a 30-acre site can be the wrong 30 acres. It
 needs point-in-polygon and a decision about what "outside" means for a corridor
-that clips a corner, and it belongs with the safety work at PR 16 where the same
+that clips a corner, and it belongs with **Safety**, where the same
 containment machinery is needed anyway.
 
 **Multiple boundaries with conflicting densities.** The largest one wins, which
@@ -602,7 +632,7 @@ asked. A park split by a road is the real case and it is usually one density.
 
 ---
 
-## PR 8a — the chrome, rearranged
+## Chrome, rearranged — what landed
 
 A layout pass, from using the thing on a real nine-hole course rather than on a
 two-feature fixture. Split from the panel-internals work that follows it,
@@ -689,7 +719,8 @@ cover it: the choice surviving a reload, and the course surviving the switch.
 
 **The inside of every panel.** Accordions in the course panel, the location and
 description fields, the parent-hole breadcrumb in the feature panel, and the
-reordering of the hole, tee, target and fairway inspectors. All of it is PR 8b.
+reordering of the hole, tee, target and fairway inspectors. All of it is
+**Panel insides**.
 The course panel is capped at 45% of its column and scrolls until then, which
 is what stops it pushing the hole list out of reach — a stopgap the accordions
 retire.
@@ -700,9 +731,10 @@ means the layouts PR does not also have to relitigate this panel's shape.
 
 ---
 
-## PR 8b — the insides of the panels
+## Panel insides — what landed
 
-The other half. PR 8a moved the panels; this rewrites what is in them.
+The other half. **Chrome, rearranged** moved the panels; this rewrites what is
+in them.
 
 ### Everything in the course panel folds
 
@@ -888,7 +920,7 @@ a real list is the multi-tee work, and it wants layouts first.
 
 ---
 
-## PR 9 — overlays, and reading the land
+## Terrain overlays — what landed
 
 Imagery answers what is growing there and where the paths already run. It cannot
 answer the question that decides half a course's routing: **which way does this
@@ -1013,7 +1045,7 @@ free.
 
 ---
 
-## PR 10 — site surveys: bring your own LiDAR
+## Site surveys — what landed
 
 The global overlay reads roughly 10m data and says so. At 10m you get a ridge
 and a fall line; you do not get the two-metre mound behind a green. **1m LiDAR
@@ -1136,12 +1168,12 @@ waits for the backend that arrives with accounts and sharing.
 
 ---
 
-## PR 10b — elevation profiles, and the corrections that followed
+## Elevation profiles — what landed, and the corrections that followed
 
 Selecting a hole draws the ground its shot is thrown over, sampled along the
 fairway that was actually routed rather than the straight line between the ends.
 
-**It also closed a gap PR 4 left open.** `effectiveLength` has carried an
+**It also closed a gap Holes and par left open.** `effectiveLength` has carried an
 `elevationGain` term since it was written and had always been handed a zero,
 with a comment reading "elevation waits on terrain". `[PAR]` p8 adds three times
 the rise from tee to target, which is the difference between a par 3 and a par 4
@@ -1192,13 +1224,13 @@ and CI disagreed.
 
 ---
 
-## PR 11 — multiple tees, pins and fairways
+## Multiple tees, pins and fairways — planned
 
 **Next.** The audit that split this from layouts, stated plainly.
 
 ### What the model already does
 
-Nothing in this PR needs a schema change. Since PR 5 the document has held
+Nothing here needs a schema change. Since **Model v2** the document has held
 `hole.teeIds[]` and `hole.targetIds[]`, sparse `Pair` records carrying a
 `fairwayId` and a `parOverride`, and ops for every one of them. Core answers
 `holePairings`, `pairView`, `representativePair` and `courseFairways` without
@@ -1222,7 +1254,7 @@ assuming a hole has one of anything.
 - **Tees are an unordered array.** A scorecard orders them by colour, because
   the colour is the skill level (`skillLevelOfTee`), and nothing surfaces that.
 
-The one-line version: **the model has been ready since PR 5 and the interface
+The one-line version: **the model has been ready since Model v2 and the interface
 still presents a course as one tee and one pin.**
 
 ### What this PR should do
@@ -1244,11 +1276,11 @@ still presents a course as one tee and one pin.**
 
 **Choosing which shot is "the" shot in the document.** That is what a layout is,
 and putting a per-hole default in the document as well would be two mechanisms
-answering one question. PR 12.
+answering one question. That is **Layouts and routing**.
 
 ---
 
-## PR 12 — layouts and routing
+## Layouts and routing — planned
 
 A layout is an **ordered sequence of plays**, not a per-hole selection map,
 because it can skip a hole and can play one twice — once to pin A, once to pin
@@ -1256,7 +1288,7 @@ B. Neither is expressible as "pick a tee and a pin for each hole". The number a
 player sees is the position in that list; `hole.number` stays the designer's
 name for the corridor, which is what the map labels.
 
-`layouts.ts` has carried all of this since PR 5 — `layoutPar`, `layoutLength`,
+`layouts.ts` has carried all of this since **Model v2** — `layoutPar`, `layoutLength`,
 `layoutSkillLevel`, `isLayoutPlayable`, `measureLayout` — and the ops exist.
 **Nothing in the web app dispatches one.** The Layouts tab renders a sentence
 saying the feature is coming.
@@ -1289,7 +1321,7 @@ so this survives the next person rearranging the chrome.
 
 ---
 
-## Design system (PR 1)
+## Design system — what landed
 
 ```
 packages/design/
@@ -1306,8 +1338,8 @@ Radix supplies focus traps, roving tabindex and ARIA wiring — the parts that a
 tedious to get right and unacceptable to get wrong. It ships no visual opinion,
 so there is nothing to fight.
 
-The `ShortcutsOverlay` in PR 0 hand-rolls focus and Escape handling; it moves to
-Radix `Dialog` in PR 1.
+The `ShortcutsOverlay` in **Foundations** hand-rolls focus and Escape handling; it
+moves to Radix `Dialog` in **Design system**.
 
 ### Delight, specifically
 
@@ -1333,7 +1365,7 @@ looks.
 
 ---
 
-## PDGA standards — what landed in PR 4
+## PDGA standards — what landed in Holes and par
 
 The five published PDGA course design documents are transcribed in
 [`packages/core/src/pdga.ts`](../packages/core/src/pdga.ts), with the full record —
@@ -1371,7 +1403,7 @@ the tool should not nag.
 one. `[ELEMENTS]` says fairways should be "far enough apart so errant throws
 aren't regularly in the wrong fairway" and puts no number on it. A plausible
 invented separation distance is the single most dangerous number this app could
-get wrong, so PR 16 will derive it from a stated dispersion model instead — a
+get wrong, so **Safety** will derive it from a stated dispersion model instead — a
 number the designer can see the reasoning for, not a constant attributed to a
 standard that does not contain it.
 
@@ -1382,7 +1414,7 @@ lookup), not a declarative predicate, and a data format invented before there is
 a second consumer would be a guess. Revisit when local rules are actually asked
 for; `Authority` already has a `'local'` case reserved.
 
-## Par — what landed in PR 4
+## Par — what landed in Holes and par
 
 `suggestPar(course, hole)` returns a par **with its reasoning**, which is what
 makes it trustworthy rather than magic.
@@ -1403,15 +1435,19 @@ the PDGA's, and is labelled as such in the code.
 level — or a later revision of the PDGA tables — never silently overwrites a
 deliberate decision.
 
-**Not yet fed into the formula**, because the inputs do not exist yet rather than
-because the model is simple: elevation waits on terrain (PR 5); the dogleg term
-needs the distance to a corner and the water term needs the detour a carry forces,
-neither of which the document model represents. Those terms are omitted rather
-than estimated, and `effectiveLength` is already shaped to take them.
+**Elevation has since been fed into the formula** — see **Elevation profiles**.
+This section read "elevation waits on terrain" for four milestones, which was
+true when written and stopped being true without the sentence noticing.
 
-PR 4 removed an earlier `+10 m per mando` par penalty. It was invented, it counted
-every mando on the course rather than the ones on the hole, and the PDGA formula
-has no mando term. A real version needs mandos assigned to holes — then a mando is
+The other two terms are still omitted, and still because the inputs do not exist
+rather than because the model is simple: the dogleg term needs the distance to a
+corner and the water term needs the detour a carry forces, neither of which the
+document model represents. Omitted rather than estimated, and `effectiveLength`
+is shaped to take them.
+
+**Holes and par** removed an earlier `+10 m per mando` par penalty. It was
+invented, it counted every mando on the course rather than the ones on the hole,
+and the PDGA formula has no mando term. A real version needs mandos assigned to holes — then a mando is
 a dogleg in the PDGA's sense and feeds the existing dogleg term with a citation.
 
 ---
@@ -1433,10 +1469,11 @@ previews.
 
 ## Open questions
 
-- **Yjs for collaboration.** Revisit at PR 17, when accounts and sharing make it
-  concrete. The narrow `applyOp()` API in PR 2 exists to keep that swap cheap.
-  (This said "PR 8" until the roadmap grew past it; the trigger was always
-  accounts, not a number.)
+- **Yjs for collaboration.** Revisit at **Accounts and sharing**, when the
+  problem becomes concrete. The narrow `applyOp()` API from **Document model**
+  exists to keep that swap cheap. (This named a PR number until the roadmap grew
+  past it twice — the trigger was always accounts, not a number, which is part of
+  why the numbers are gone.)
 - **Tile provider at scale.** Esri's imagery terms need review before the app is
   promoted widely; a self-hosted or commercially licensed source may be required.
   Still unresolved: their terms page blocks automated fetches, and the only
@@ -1444,7 +1481,7 @@ previews.
   the **default** basemap in a public app, so it is worth a human reading the
   real terms. USDA NAIP is public domain with no such ambiguity and would make a
   good US-only addition.
-- **Where the shot picker's state belongs.** PR 11 keeps it in the editor and PR
-  12 gives the document a layout. If a designer wants "hole 7 is normally played
+- **Where the shot picker's state belongs.** **Multiple tees, pins and fairways**
+  keeps it in the editor and **Layouts and routing** gives the document a layout. If a designer wants "hole 7 is normally played
   from the long tee" _without_ building a routing, that is a third thing and
   neither PR provides it. Worth waiting to see whether anyone asks.
