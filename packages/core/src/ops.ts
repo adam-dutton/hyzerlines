@@ -24,7 +24,11 @@ export type Op =
   | { type: 'setView'; view: View }
   | { type: 'setBasemap'; basemapId: string }
   | { type: 'setNotes'; notes: string }
-  | { type: 'setLocation'; location: string }
+  /**
+   * `seeded` marks a value the app worked out rather than one the designer
+   * typed — see `isUndoable`.
+   */
+  | { type: 'setLocation'; location: string; seeded?: boolean }
   | { type: 'setDescription'; description: string }
   | { type: 'addFeature'; feature: Feature }
   | { type: 'removeFeature'; id: string }
@@ -105,11 +109,24 @@ export interface ApplyResult {
  * a pan is not an edit. If it were undoable, ⌘Z after ten minutes of scrolling
  * would rewind the camera instead of the work — which is precisely the moment a
  * designer reaches for undo and is most alarmed to have it do the wrong thing.
+ *
+ * ## Seeded values are the same argument, arriving later
+ *
+ * A value the app worked out on the designer's behalf is not an edit either,
+ * and it is worse than a camera move because it lands *asynchronously*. The
+ * location seed reverse-geocodes the first thing you draw and returns a second
+ * or two afterwards — so the undo stack read: your drawing, then a location you
+ * never typed. Press ⌘Z expecting to take back the drawing and you took back an
+ * invisible field instead, and the drawing was still there.
+ *
+ * A designer typing in that field is a real edit and stays undoable; only the
+ * seed carries the flag. See `useAutoLocation`.
  */
 export function isUndoable(op: Op): boolean {
   // A batch is undoable if any part of it is — a batch that also moved the
   // camera should still be reversible for the edit it carried.
   if (op.type === 'batch') return op.ops.some(isUndoable);
+  if (op.type === 'setLocation' && op.seeded === true) return false;
   return op.type !== 'setView' && op.type !== 'setActiveLayout';
 }
 

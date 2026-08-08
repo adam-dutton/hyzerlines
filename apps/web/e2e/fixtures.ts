@@ -258,6 +258,27 @@ export async function openEditor(page: Page, options: OpenOptions = {}): Promise
   await page.route('**://s3.amazonaws.com/elevation-tiles-prod/**', (route) =>
     route.fulfill({ status: 200, contentType: 'image/png', body: dem }),
   );
+  /*
+   * The reverse geocoder, answered rather than left to the network.
+   *
+   * `useAutoLocation` fills the location field in from whatever is drawn first,
+   * and it is the one request in the app that fires without anyone asking. Left
+   * unstubbed it made the suite depend on photon.komoot.io being reachable —
+   * which is why two undo tests passed locally and failed in CI for weeks: the
+   * sandbox could not reach it, so the op never landed, so the bug it caused
+   * never showed. Stubbed to *succeed*, because that is the case that breaks
+   * things.
+   */
+  await page.route('**://photon.komoot.io/**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        features: [{ properties: { name: 'Test Park', city: 'Testville', state: 'MN' } }],
+      }),
+    }),
+  );
+
   await page.goto('/');
   await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
 

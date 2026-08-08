@@ -132,7 +132,13 @@ export function CoursePanel({
   useAutoLocation({
     location: course.location,
     hasFeatures: course.features.length > 0,
-    onResolved: (location) => onOp({ type: 'setLocation', location }),
+    /*
+     * `seeded`, so this never lands on the undo stack. It arrives a second or
+     * two after the first thing you draw, and without the flag ⌘Z would take
+     * back a field you never typed instead of the drawing you did. See
+     * `isUndoable`.
+     */
+    onResolved: (location) => onOp({ type: 'setLocation', location, seeded: true }),
   });
 
   return (
