@@ -50,7 +50,7 @@ current as PRs land.
 | **Site surveys**                     | Import LiDAR GeoTIFFs, reproject and tile in-browser                          | [#13](https://github.com/adam-dutton/hyzerlines/pull/13)        |
 | **Elevation profiles**               | Per-hole ground profile, and the PDGA elevation term in par                   | [#13](https://github.com/adam-dutton/hyzerlines/pull/13)        |
 | **Feature coordinates**              | Shown on every feature, and typed in                                          | [#14](https://github.com/adam-dutton/hyzerlines/pull/14) — open |
-| **Multiple tees, pins and fairways** | The shot matrix as a first-class idea                                         | **next**                                                        |
+| **Multiple tees, pins and fairways** | The shot matrix as a first-class idea                                         | on `claude/multiple-tees-and-pins`                              |
 | **Layouts and routing**              | Named layouts, skip, repeat, reorder                                          |                                                                 |
 | **Expanded palette**                 | Relief areas, noted areas, drop zones, invert, circles                        |                                                                 |
 | **Terrain 2**                        | 3D tilt, canopy height, slope shading                                         |                                                                 |
@@ -103,11 +103,12 @@ the clearest case of why one row was never one pull request.
 
 **11 and 12 were one row until an audit split them.** "Layouts and routing" was
 next, and it assumed multiple tees and pins already worked because the _model_
-supports them and has since **Model v2**. The interface does not: it presents a course
-as one tee and one pin with a picker bolted on, and a layout is a sequence of
-choices among shots the designer currently cannot see or compare. Building the
-routing on top of that would be building the second storey first. See
-**Multiple tees, pins and fairways** below for what the audit actually found.
+supports them and has since **Model v2**. The interface did not: it presented a
+course as one tee and one pin with a picker bolted on, and a layout is a sequence
+of choices among shots the designer could not see or compare. Building the
+routing on top of that would have been building the second storey first. See
+**Multiple tees, pins and fairways** below for what the audit found and what
+shipped in answer to it.
 
 ---
 
@@ -1224,59 +1225,81 @@ and CI disagreed.
 
 ---
 
-## Multiple tees, pins and fairways — planned
+## Multiple tees, pins and fairways — built
 
-**Next.** The audit that split this from layouts, stated plainly.
+**No schema change.** Since **Model v2** the document has held `hole.teeIds[]`
+and `hole.targetIds[]`, sparse `Pair` records carrying a `fairwayId` and a
+`parOverride`, and ops for every one of them. The model was ready and the
+interface presented a course of one tee and one pin. This is the interface
+catching up.
 
-### What the model already does
+### The scorecard
 
-Nothing here needs a schema change. Since **Model v2** the document has held
-`hole.teeIds[]` and `hole.targetIds[]`, sparse `Pair` records carrying a
-`fairwayId` and a `parOverride`, and ops for every one of them. Core answers
-`holePairings`, `pairView`, `representativePair` and `courseFairways` without
-assuming a hole has one of anything.
+`viewHoles` resolved every hole through `representativePair`, so a hole with
+three tees reported one length and the other two existed in the file and appeared
+nowhere. `scorecard` in core is the other reading: one row per hole, **one column
+per skill level**, every length at once.
 
-### What the interface does instead
+Columns key on the level rather than on the tee feature because that is what a
+tee's colour means — and because it is what lets a column span the course: hole
+3's blue tee and hole 4's blue tee are different features and the same column.
+Uncoloured tees share an `Unmarked` column, listed last, so a course nobody has
+classified produces exactly one column and keeps the plain list it always had.
 
-- **The scorecard shows one pair per hole.** `viewHoles` resolves through
-  `representativePair`, so a hole with three tees reports one length and one
-  par. The other two shots exist in the file and appear nowhere.
-- **The picker is editor state.** Which shot the panel describes lives in
-  `pairChoice` in `CourseEditor` and is cleared by `selectHole`, so it is lost
-  the moment you look at another hole and come back.
-- **One corridor is drawn per hole.** Deliberate — nine overlapping corridors
-  down one strip of land is unreadable — but it means the alternatives cannot be
-  compared, only cycled through one at a time.
-- **Adding a tee is a two-step.** Drawing one while a hole is selected joins it,
-  which works and is undiscoverable; otherwise it is "draw it loose, then claim
-  it from a dropdown". Removing one from a hole is only possible from the
-  _feature_ panel, which is the other end of the same relationship.
-- **Tees are an unordered array.** A scorecard orders them by colour, because
-  the colour is the skill level (`skillLevelOfTee`), and nothing surfaces that.
+Each column's total carries **how many holes it covers**, not just a sum. A red
+tee on six of eighteen holes totals six holes' length, and printing that under an
+eighteen-row card overstates the course by a factor of three; the panel says so
+in words when it is true.
 
-The one-line version: **the model has been ready since Model v2 and the interface
-still presents a course as one tee and one pin.**
+Cells are bare numbers with the unit stated once, the way a printed card works —
+`1476 ft` wraps in a 44px column and turns an eighteen-row card into thirty-six
+rows of half-numbers. A **Length/Par** control says which number the cells hold,
+because a real card carries both rows per hole and this panel has room for one.
 
-### What this PR should do
+### One resolution, four consumers
 
-1. **A scorecard with a column per tee**, ordered by skill level — Blue, White,
-   Red — which is the form every real course prints and the only one that shows
-   a designer what they have actually built. Totals per column.
-2. **Persist the shot choice per hole** for the session, so moving between holes
-   does not reset what you were looking at.
-3. **Show the alternatives on the map** without drawing nine corridors: the
-   chosen shot keeps its corridor, the rest draw as faint centrelines. Enough to
-   see that hole 7's long tee threads a different gap.
-4. **Add and remove a tee or pin from the hole panel**, with the button arming
-   the tool rather than requiring a loose feature first.
-5. **Per-pair par stays per-pair**, which it already is — but the scorecard has
-   to edit the _column's_ pair rather than the representative one.
+`chosenPair` is now the only place a hole's shot is decided: the designer's pick,
+else the active layout's play, else the first tee and first target. The map's
+corridor, the card's length, the hole panel's par and the ground the elevation
+chart samples all go through it, so they describe one throw by construction
+rather than by four functions agreeing.
 
-### Deliberately not in this PR
+The pick is **per hole and lasts the session**. It used to be one value for the
+whole editor, cleared on every hole change, so comparing hole 4's long pin
+against hole 5's could not be done in the app that stores them. It is still not
+in the document — that is what a layout is for.
+
+It is also **validated on read**. Nothing checks a pick on write and the document
+moves underneath it; delete the pin you were measuring to and the pick names a
+target the hole no longer has.
+
+### The shots not in play
+
+A hole draws one corridor — nine overlapping corridors down one strip of land is
+not a drawing of anything — but a second tee used to be a pad with no line
+leaving it, which reads as something the designer forgot.
+
+`alternativeShots` returns them as **a cross rather than a grid**: every tee to
+the pin in play, and every pin from the tee in play. Three tees and three pins is
+four alternatives instead of eight, each differing from the chosen shot at
+exactly one end. They draw half the width of a centreline, uncased, with a longer
+gap in the dash, and follow the same two switches as the centreline itself.
+
+### Building a hole from the hole
+
+The Features section lists every tee and every basket instead of showing one at a
+time behind a dropdown — the hole's shape is now the panel's shape, and the mark
+on each row is the picker. **Draw a tee** and **Draw a basket** arm the tool with
+the hole still selected, replacing "draw it loose, then claim it from a dropdown
+that only appears once a loose one exists". Removing an end takes it out of the
+hole and leaves the feature on the ground; deleting it is a different action and
+lives on the feature itself.
+
+### Deliberately not in this milestone
 
 **Choosing which shot is "the" shot in the document.** That is what a layout is,
 and putting a per-hole default in the document as well would be two mechanisms
-answering one question. That is **Layouts and routing**.
+answering one question. That is **Layouts and routing**, next.
 
 ---
 
