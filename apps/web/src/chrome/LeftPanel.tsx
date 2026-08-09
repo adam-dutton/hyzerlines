@@ -1,7 +1,9 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { IconButton, Panel, Tabs, cn, type TabDefinition } from '@hyzerlines/design';
 import {
+  hasMultipleTees,
   holeName,
+  scorecard,
   setPairPar,
   viewHoles,
   type Course,
@@ -14,6 +16,7 @@ import {
 import { formatDistance, type UnitSystem } from '../units';
 import { useProfiles } from '../survey/useProfiles';
 import { FindingsList } from './FindingsList';
+import { Scorecard } from './Scorecard';
 
 /**
  * The course: its holes, in order, and what is wrong with it.
@@ -158,6 +161,23 @@ export function LeftPanel({
     [course, holes, elevations],
   );
 
+  /*
+   * The card, which replaces the list only when there is more than one tee.
+   *
+   * A course nobody has classified has one column, and the plain list already
+   * showed that correctly — a table with a single column would be new machinery
+   * for an unchanged answer, and it would cost the inline par control, which is
+   * the fastest way to fix a par that exists.
+   *
+   * Asked before built, so the single-tee course does not pay for a card it
+   * will not draw.
+   */
+  const multipleTees = hasMultipleTees(course);
+  const card = useMemo(
+    () => (multipleTees ? scorecard(course, holes, { elevations }) : null),
+    [multipleTees, course, holes, elevations],
+  );
+
   const [tab, setTab] = useState('holes');
   const tabs = useMemo<TabDefinition[]>(
     () => [
@@ -224,6 +244,13 @@ export function LeftPanel({
                   Add a hole, then draw its tee and basket — anything you place while a hole is
                   selected joins it.
                 </p>
+              ) : card ? (
+                <Scorecard
+                  card={card}
+                  units={units}
+                  selectedHoleId={selectedHoleId}
+                  onSelectHole={onSelectHole}
+                />
               ) : (
                 <ul className="min-h-0 flex-1 overflow-y-auto">
                   {holes.map((hole) => {

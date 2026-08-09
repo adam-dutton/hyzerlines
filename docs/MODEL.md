@@ -351,6 +351,34 @@ whoever the course was sent to.
 
 ---
 
+## The scorecard: a column per skill level
+
+`representativePair` answers "one shot per hole", which is the right answer for a
+panel describing a hole and the wrong one for a course with more than one tee —
+the other shots are in the file and appear nowhere. `scorecard` is the other
+reading: one row per hole, one column per **skill level**, every length at once.
+
+Columns key on the level rather than on the tee feature, because that is what a
+tee's colour _means_ — `skillLevelOfTee` reads it and every PDGA figure is
+defined per level. It is also what lets a column span the course: hole 3's blue
+tee and hole 4's blue tee are different features and the same column. Tees with
+no colour set share an `Unmarked` column, listed last, so a course nobody has
+classified produces exactly one column and the interface can keep showing the
+plain list.
+
+A column's total carries **how many holes it covers**, not just a sum. A red tee
+on six of eighteen holes has a total that is not a course length, and printing it
+under an eighteen-row card without saying so overstates the course by a factor of
+three. `hasMultipleTees` is asked of the course rather than of a built card, so
+the single-tee case never pays to build one.
+
+Which _pin_ a row measures to still comes from `representativePair`, or from the
+caller's per-hole choice. The column decides the tee; something has to decide the
+target, and it must be the one the map is drawing — otherwise the card and the
+map are two answers to one question.
+
+---
+
 ## Drawing aids are part of the document
 
 ```ts

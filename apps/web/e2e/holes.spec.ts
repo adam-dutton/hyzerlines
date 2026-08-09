@@ -270,3 +270,50 @@ test.describe('holes', () => {
     await expect(page.getByText(/Add a hole, then draw its tee and basket/)).toBeVisible();
   });
 });
+
+/**
+ * The card, which is what a second tee turns the hole list into.
+ *
+ * The list resolved every hole through `representativePair`, so a hole with a
+ * gold tee and a red tee showed one length and the other was in the file and on
+ * screen nowhere. Browser-only because the question is whether the panel
+ * switches — the columns and totals themselves are unit-tested in core.
+ */
+test.describe('the scorecard', () => {
+  test('a second tee turns the hole list into a card with a column each', async ({ page }) => {
+    await openEditor(page, { zoom: 16 });
+    await place(page, 'Tee pad', 340, 500);
+    await place(page, 'Target', 740, 300);
+    await page.getByRole('button', { name: 'Add hole' }).click();
+
+    // One tee: a list, because a table with one column says nothing extra.
+    await expect(page.getByRole('table')).toHaveCount(0);
+
+    // Adding a hole selects it, so the next tee joins rather than landing loose.
+    await place(page, 'Tee pad', 460, 500);
+
+    // Still one column — both tees are unclassified, so both are Unmarked.
+    await expect(page.getByRole('table')).toHaveCount(0);
+
+    // Colour one of them, and the hole now has two levels to compare. Twice,
+    // because the first click on anything in a hole selects the hole.
+    await clickMap(page, 460, 500);
+    await clickMap(page, 460, 500);
+    await page.getByRole('combobox', { name: 'Skill color' }).selectOption('gold');
+
+    const card = page.getByRole('table');
+    await expect(card.getByRole('columnheader', { name: 'Gold' })).toBeVisible();
+    await expect(card.getByRole('columnheader', { name: 'Unmarked' })).toBeVisible();
+
+    // Two lengths on the row, and the shorter one under Gold: it is the tee
+    // that was placed further down the fairway.
+    const cells = card.getByRole('row').filter({ hasText: 'Hole 1' }).getByRole('cell');
+    const gold = Number((await cells.nth(2).innerText()).replace(/,/g, ''));
+    const unmarked = Number((await cells.nth(3).innerText()).replace(/,/g, ''));
+    expect(gold).toBeGreaterThan(0);
+    expect(gold).toBeLessThan(unmarked);
+
+    // The unit is stated once, on the total, rather than in every cell.
+    await expect(page.getByText(/^Total (ft|m)$/)).toBeVisible();
+  });
+});
