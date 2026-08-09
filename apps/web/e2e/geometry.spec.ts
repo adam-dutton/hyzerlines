@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 import {
   clickFeature,
+  clickMap as clickCanvas,
   course,
   openEditor,
   openSection,
@@ -71,6 +72,16 @@ async function setupHole(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Add hole' }).click();
   await expect(page.getByText('Hole 1').first()).toBeVisible();
 }
+
+/**
+ * The radio that says which end of the shot a hole is measured from or to.
+ *
+ * Scoped to its group and keyed by the feature's id, because two unnamed
+ * baskets render as two rows both reading "Target" — the id is the only thing
+ * that tells them apart, which is why the control carries it.
+ */
+const endChoice = (page: Page, group: 'Tees' | 'Baskets', id: string) =>
+  page.getByRole('radiogroup', { name: group }).locator(`input[value="${id}"]`);
 
 /**
  * Wait until a vertex handle is actually hit-testable at a point.
@@ -345,8 +356,10 @@ test.describe('assigning features to holes', () => {
     await claim.selectOption(value);
 
     await expect.poll(async () => (await course(page)).holes[0]!.targetIds.length).toBe(2);
-    // Claiming it makes the hole a two-pin hole, so the shot picker appears.
-    await expect(page.getByRole('combobox', { name: /Target for this hole/ })).toBeVisible();
+    // Claiming it makes the hole a two-pin hole, and the panel lists both.
+    await expect(
+      page.getByRole('radiogroup', { name: 'Baskets' }).getByRole('radio'),
+    ).toHaveCount(2);
 
     /*
      * And the reverse, from the feature's own panel. Both directions matter:
@@ -387,6 +400,69 @@ test.describe('assigning features to holes', () => {
   });
 });
 
+/**
+ * Building a hole from the hole, rather than from the map and hoping.
+ *
+ * Adding a tee used to mean one of two things: draw it while a hole happened to
+ * be selected — true, and discoverable by nobody — or draw it loose and claim it
+ * from a dropdown that only appeared once a loose one existed. Removing one from
+ * a hole was possible only from the *feature* panel, which is the other end of
+ * the same relationship.
+ */
+test.describe('building a hole from its panel', () => {
+  test('Draw a tee arms the tool, and the next click joins this hole', async ({ page }) => {
+    await openEditor(page, { zoom: 16 });
+    await setupHole(page);
+
+    await page.getByRole('button', { name: 'Draw a tee' }).click();
+    await clickCanvas(page, 520, 520);
+
+    await expect.poll(async () => (await course(page)).holes[0]!.teeIds.length).toBe(2);
+    // Both fields of the membership, not just the hole's array.
+    const added = (await course(page)).holes[0]!.teeIds[1]!;
+    expect((await course(page)).features.find((f) => f.id === added)?.holeId).toBe(
+      (await course(page)).holes[0]!.id,
+    );
+
+    // And the same for a basket, so the hole is built without leaving it.
+    await page.getByRole('button', { name: 'Draw a basket' }).click();
+    await clickCanvas(page, 900, 480);
+    await expect.poll(async () => (await course(page)).holes[0]!.targetIds.length).toBe(2);
+  });
+
+  /*
+   * Removal takes a tee out of the hole and leaves it on the ground. The
+   * feature is still somewhere a designer put it deliberately; deleting it is a
+   * different action and it lives on the feature itself.
+   */
+  test('removing a tee from the hole leaves the tee on the map', async ({ page }) => {
+    await openEditor(page, { zoom: 16 });
+    await setupHole(page);
+    await page.getByRole('button', { name: 'Draw a tee' }).click();
+    await clickCanvas(page, 520, 520);
+    await expect.poll(async () => (await course(page)).holes[0]!.teeIds.length).toBe(2);
+
+    const spare = (await course(page)).holes[0]!.teeIds[1]!;
+    await page
+      .getByRole('button', { name: /^Remove .* from this hole$/ })
+      .nth(1)
+      .click();
+
+    await expect
+      .poll(async () => (await course(page)).holes[0]!.teeIds)
+      .toEqual([(await course(page)).holes[0]!.teeIds[0]]);
+
+    const after = await course(page);
+    const feature = after.features.find((f) => f.id === spare);
+    expect(feature).toBeDefined();
+    expect(feature?.holeId).toBeNull();
+
+    // One undo puts it back, both fields together — it is one batch.
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect.poll(async () => (await course(page)).holes[0]!.teeIds.length).toBe(2);
+  });
+});
+
 test.describe('the pair picker', () => {
   test('choosing a different pin re-measures the hole and moves the fairway', async ({
     page,
@@ -401,8 +477,10 @@ test.describe('the pair picker', () => {
     const claim = page.getByRole('combobox', { name: 'Add a basket' });
     await claim.selectOption(await claim.locator('option').nth(1).getAttribute('value'));
 
-    const picker = page.getByRole('combobox', { name: /Target for this hole/ });
-    await expect(picker).toBeVisible();
+    const pins = (await course(page)).holes[0]!.targetIds;
+    await expect(
+      page.getByRole('radiogroup', { name: 'Baskets' }).getByRole('radio'),
+    ).toHaveCount(2);
 
     const readLength = () =>
       page
@@ -411,8 +489,7 @@ test.describe('the pair picker', () => {
         .then((text) => Number(text.replace(/[^\d]/g, '')));
 
     const first = await readLength();
-    const options = await picker.locator('option').all();
-    await picker.selectOption(await options[1]!.getAttribute('value'));
+    await endChoice(page, 'Baskets', pins[1]!).check();
 
     // The length changes — that is the entire point of measuring a pair rather
     // than a hole — and so does where the fairway runs.
@@ -465,13 +542,12 @@ test.describe('the pair picker', () => {
     const claim = page.getByRole('combobox', { name: 'Add a basket' });
     await claim.selectOption(await claim.locator('option').nth(1).getAttribute('value'));
 
-    const picker = page.getByRole('combobox', { name: /Target for this hole/ });
     const pinB = (await course(page)).holes[0]!.targetIds[1]!;
-    await picker.selectOption(pinB);
+    await endChoice(page, 'Baskets', pinB).check();
 
     // Let go of the hole entirely.
     await page.keyboard.press('Escape');
-    await expect(picker).toHaveCount(0);
+    await expect(page.getByRole('radiogroup', { name: 'Baskets' })).toHaveCount(0);
 
     // The corridor still runs to the pin that was picked, rather than snapping
     // back to the first target the moment nothing was selected.
@@ -492,9 +568,7 @@ test.describe('the pair picker', () => {
 
     // And coming back to the hole reopens on it.
     await page.getByRole('button', { name: 'Hole 1' }).first().click();
-    await expect(page.getByRole('combobox', { name: /Target for this hole/ })).toHaveValue(
-      pinB,
-    );
+    await expect(endChoice(page, 'Baskets', pinB)).toBeChecked();
   });
 
   /*
@@ -536,7 +610,7 @@ test.describe('the pair picker', () => {
     await expect.poll(() => drawn('alternative')).toEqual([expect.stringContaining(pinB!)]);
 
     // Picking the other pin swaps which is which.
-    await page.getByRole('combobox', { name: /Target for this hole/ }).selectOption(pinB!);
+    await endChoice(page, 'Baskets', pinB!).check();
     await expect.poll(() => drawn('centreline')).toEqual([expect.stringContaining(pinB!)]);
     await expect.poll(() => drawn('alternative')).toEqual([expect.stringContaining(pinA!)]);
 

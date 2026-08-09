@@ -13,6 +13,8 @@ export interface TestCourse {
   features: {
     id: string;
     kind: string;
+    /** Scope: the hole this belongs to, or null for course-level. */
+    holeId: string | null;
     geometry: { type: string; coordinates: unknown };
     /** Loosely typed here for the same reason it is in the document. */
     props: Record<string, string | number | boolean | undefined>;

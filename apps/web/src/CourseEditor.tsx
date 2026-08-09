@@ -637,6 +637,7 @@ export function CourseEditor({
             onSelectFeature={selectFeature}
             onSelectHole={selectHole}
             onSelectPair={choosePair}
+            onDrawFeature={setTool}
             onClearSelection={() => {
               setSelectedId(null);
               setSelectedHoleId(null);

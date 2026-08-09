@@ -170,6 +170,13 @@ The **first** tee and **first** target are the hole's representative pair until 
 layout routes it, so their order is meaningful rather than cosmetic. That is what
 `moveToFront` is for, and why the feature panel offers it as an explicit action.
 
+**Removing is not deleting.** Taking a tee out of a hole is `assignToHole(…,
+null)`: it leaves the feature on the ground, still drawn and still selectable,
+because it is still somewhere a designer put it deliberately. Deleting it is a
+different action and lives on the feature itself. The hole panel lists every tee
+and every basket with both — the mark that says which shot is being measured, and
+the control that takes an end out of the hole.
+
 ---
 
 ## Feature kinds
