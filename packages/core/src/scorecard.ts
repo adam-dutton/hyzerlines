@@ -3,9 +3,10 @@ import type { Hole } from './holes.js';
 import { SKILL_LEVELS, SKILL_LEVEL_INFO, type SkillLevel } from './pdga.js';
 import { skillLevelOfTee } from './pairs.js';
 import {
+  chosenPair,
   fallbackSkillLevel,
   pairView,
-  representativePair,
+  type FairwayChoices,
   type PairElevations,
   type PairView,
 } from './pairView.js';
@@ -76,9 +77,6 @@ export interface Scorecard {
 
 const UNMARKED: ScorecardColumn = { level: null, label: 'Unmarked' };
 
-/** Which target each hole is being presented as playing to. */
-export type TargetChoices = ReadonlyMap<string, string>;
-
 /**
  * The tee a hole offers at a given level.
  *
@@ -95,24 +93,6 @@ function teeAtLevel(
     if (skillLevelOfTee(featureById.get(id)) === level) return id;
   }
   return null;
-}
-
-/**
- * Which target a hole's row measures to.
- *
- * The column decides the tee; something has to decide the pin, and it is the
- * one the rest of the interface is presenting — the caller's choice, else the
- * representative pair. A card that measured to a different pin than the map was
- * drawing would be two answers to one question.
- */
-function targetFor(
-  course: Course,
-  hole: Hole,
-  targets: TargetChoices | undefined,
-): string | null {
-  const chosen = targets?.get(hole.id);
-  if (chosen && hole.targetIds.includes(chosen)) return chosen;
-  return representativePair(course, hole)?.targetId ?? null;
 }
 
 /** Every tee level the course actually has, in the published order. */
@@ -149,14 +129,21 @@ export function scorecardColumns(course: Course): ScorecardColumn[] {
 export function scorecard(
   course: Course,
   holes: readonly Hole[],
-  { elevations, targets }: { elevations?: PairElevations; targets?: TargetChoices } = {},
+  { elevations, choices }: { elevations?: PairElevations; choices?: FairwayChoices } = {},
 ): Scorecard {
   const columns = scorecardColumns(course);
   const featureById = featureIndex(course);
   const fallback = fallbackSkillLevel(course);
 
   const rows = holes.map((hole) => {
-    const targetId = targetFor(course, hole, targets);
+    /*
+     * The column decides the tee; `chosenPair` decides the pin.
+     *
+     * It has to be the same resolution the map and the hole panel use, or the
+     * card would measure to a different basket than the corridor on screen —
+     * two answers to one question, with nothing on either to say they differ.
+     */
+    const targetId = chosenPair(course, hole, choices)?.targetId ?? null;
 
     const cells = columns.map((column) => {
       const teeId = teeAtLevel(hole, column.level, featureById);

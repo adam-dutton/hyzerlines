@@ -334,20 +334,37 @@ The course does **not** carry one. A tee's colour _is_ its level:
 ## Which shot a hole is shown as
 
 A hole with two tees and two pins is four throws. A panel describing "this hole"
-has to pick one, and `representativePair` is the single place that choice is made:
+has to pick one, and `chosenPair` is the single place that resolution happens —
+the map's corridor, the card's length, the hole panel's par and the ground the
+elevation chart samples all go through it, so they describe one throw by
+construction rather than by four functions agreeing.
 
-1. **The active layout's play for that hole**, when it has one. That is the shot
-   a card would print and a player would throw.
-2. Otherwise the hole's **first tee and first target** — the best guess available
+It answers in this order:
+
+1. **The designer's pick** for that hole, when they have made one.
+2. **The active layout's play for that hole** — `representativePair`. That is the
+   shot a card would print and a player would throw.
+3. Otherwise the hole's **first tee and first target** — the best guess available
    for a corridor nobody has routed yet.
 
 A hole played twice in one layout resolves to its first play; the scorecard lists
 both, because it is a list of plays rather than a list of holes.
 
-The designer can override the choice in the hole panel. That selection is
-**interface state, not document state** — like which layer is selected in an
+### The pick is per hole, session-lived, and validated
+
+**Interface state, not document state** — like which layer is selected in an
 editor. Storing it would autosave it, land it on the undo stack, and travel to
-whoever the course was sent to.
+whoever the course was sent to. That also settles how long it lives: this
+session, and no longer.
+
+One pick **per hole**, not one for the editor. Comparing hole 4's long pin
+against hole 5's is an ordinary thing to do, and a single choice put hole 4 back
+on its representative pair the moment hole 5 was clicked.
+
+And it is **validated on read, not trusted**. Nothing checks a pick on write, and
+the document moves underneath it: delete the pin you were measuring to and the
+pick names a target the hole no longer has. `chosenPair` keeps a pick only while
+the hole still offers both ends, and otherwise falls back.
 
 ---
 

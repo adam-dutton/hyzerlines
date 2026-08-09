@@ -129,6 +129,36 @@ export function representativePair(
   return teeId && targetId ? { teeId, targetId } : null;
 }
 
+/**
+ * Which shot a hole is being shown as: the designer's pick, else the
+ * representative one.
+ *
+ * **The pick is validated, not trusted.** It is interface state and the
+ * document moves underneath it — delete the pin you were measuring to and the
+ * pick names a target the hole no longer has. Falling back is the only honest
+ * answer available; honouring it would leave the panel, the card and the map
+ * all describing a throw that does not exist.
+ *
+ * The one place that resolution happens, so the map's corridor, the card's
+ * length and the hole panel's par are the same shot by construction rather
+ * than by three functions agreeing.
+ */
+export function chosenPair(
+  course: Course,
+  hole: Hole,
+  choices?: FairwayChoices,
+): { teeId: string; targetId: string } | null {
+  const choice = choices?.get(hole.id);
+  if (
+    choice &&
+    hole.teeIds.includes(choice.teeId) &&
+    hole.targetIds.includes(choice.targetId)
+  ) {
+    return choice;
+  }
+  return representativePair(course, hole);
+}
+
 /** Every tee-and-target combination a hole offers. The shots it contains. */
 export function holePairings(hole: Hole): { teeId: string; targetId: string }[] {
   return hole.teeIds.flatMap((teeId) =>
@@ -136,15 +166,16 @@ export function holePairings(hole: Hole): { teeId: string; targetId: string }[] 
   );
 }
 
-/** The representative pair's view, or null when the hole has no measurable shot. */
+/** The chosen pair's view, or null when the hole has no measurable shot. */
 export function viewHole(
   course: Course,
   hole: Hole,
   featureById: ReadonlyMap<string, Feature> = featureIndex(course),
   fallback: SkillLevel = fallbackSkillLevel(course),
   elevations?: PairElevations,
+  choices?: FairwayChoices,
 ): PairView | null {
-  const chosen = representativePair(course, hole);
+  const chosen = chosenPair(course, hole, choices);
   if (!chosen) return null;
   return pairView(course, chosen.teeId, chosen.targetId, featureById, fallback, elevations);
 }
@@ -154,11 +185,15 @@ export function viewHoles(
   course: Course,
   holes: readonly Hole[],
   elevations?: PairElevations,
+  choices?: FairwayChoices,
 ): Map<string, PairView | null> {
   const featureById = featureIndex(course);
   const fallback = fallbackSkillLevel(course);
   return new Map(
-    holes.map((hole) => [hole.id, viewHole(course, hole, featureById, fallback, elevations)]),
+    holes.map((hole) => [
+      hole.id,
+      viewHole(course, hole, featureById, fallback, elevations, choices),
+    ]),
   );
 }
 
@@ -390,7 +425,7 @@ export function courseFairways(course: Course, choices?: FairwayChoices): HoleFa
     for (const pairing of holePairings(hole)) {
       holeOfPair.set(key(pairing.teeId, pairing.targetId), hole.id);
     }
-    const chosen = choices?.get(hole.id) ?? representativePair(course, hole);
+    const chosen = chosenPair(course, hole, choices);
     if (chosen) add(hole.id, chosen.teeId, chosen.targetId);
   }
 

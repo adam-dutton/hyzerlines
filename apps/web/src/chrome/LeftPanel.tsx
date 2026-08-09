@@ -7,6 +7,7 @@ import {
   setPairPar,
   viewHoles,
   type Course,
+  type FairwayChoices,
   type Finding,
   type Hole,
   type Op,
@@ -121,6 +122,7 @@ export function LeftPanel({
   course,
   units,
   findings,
+  choices,
   selectedHoleId,
   onSelectHole,
   onOp,
@@ -132,6 +134,14 @@ export function LeftPanel({
   course: Course;
   units: UnitSystem;
   findings: readonly Finding[];
+  /**
+   * Which shot each hole is being looked at as.
+   *
+   * Passed in rather than resolved here so that a length in this panel is the
+   * length of the corridor on the map. The two used to agree only for the
+   * selected hole.
+   */
+  choices: FairwayChoices;
   selectedHoleId: string | null;
   onSelectHole: (id: string | null) => void;
   onOp: (op: Op) => void;
@@ -157,8 +167,8 @@ export function LeftPanel({
   // a par that moved because of a hill moves in both places or in neither.
   const { elevations } = useProfiles();
   const views = useMemo(
-    () => viewHoles(course, holes, elevations),
-    [course, holes, elevations],
+    () => viewHoles(course, holes, elevations, choices),
+    [course, holes, elevations, choices],
   );
 
   /*
@@ -174,8 +184,8 @@ export function LeftPanel({
    */
   const multipleTees = hasMultipleTees(course);
   const card = useMemo(
-    () => (multipleTees ? scorecard(course, holes, { elevations }) : null),
-    [multipleTees, course, holes, elevations],
+    () => (multipleTees ? scorecard(course, holes, { elevations, choices }) : null),
+    [multipleTees, course, holes, elevations, choices],
   );
 
   const [tab, setTab] = useState('holes');

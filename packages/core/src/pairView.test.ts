@@ -9,6 +9,7 @@ import { applyOp } from './ops.js';
 import { createCourse, type Course } from './schema.js';
 import { CourseStore } from './store.js';
 import {
+  chosenPair,
   corridorWidthsFor,
   courseFairways,
   fairwayLine,
@@ -89,6 +90,74 @@ describe('representativePair', () => {
   it('enumerates every shot a hole contains', () => {
     const { hole } = twoPinHole();
     expect(holePairings(hole)).toHaveLength(2);
+  });
+});
+
+/**
+ * The designer's pick, and what happens when the document moves under it.
+ *
+ * A pick is interface state: it is not in the file, nothing validates it on
+ * write, and the features it names can be deleted while it is held. Everything
+ * that draws or measures a hole goes through here, so this is the one place
+ * that has to survive that.
+ */
+describe('chosenPair', () => {
+  it('prefers the designer’s pick over the representative pair', () => {
+    const { course, hole, tee, pinA, pinB } = twoPinHole();
+
+    expect(chosenPair(course, hole)).toEqual({ teeId: tee.id, targetId: pinA.id });
+    expect(
+      chosenPair(course, hole, new Map([[hole.id, { teeId: tee.id, targetId: pinB.id }]])),
+    ).toEqual({ teeId: tee.id, targetId: pinB.id });
+  });
+
+  /*
+   * The failure this guards: pick pin B, delete pin B. Honouring the pick would
+   * leave the panel, the card and the map all measuring to a basket that is no
+   * longer in the document.
+   */
+  it('falls back when the pick names a target the hole no longer has', () => {
+    const { course, hole, tee, pinA, pinB } = twoPinHole();
+    const without = {
+      ...course,
+      features: course.features.filter((f) => f.id !== pinB.id),
+      holes: [{ ...hole, targetIds: [pinA.id] }],
+    };
+
+    expect(
+      chosenPair(
+        without,
+        without.holes[0]!,
+        new Map([[hole.id, { teeId: tee.id, targetId: pinB.id }]]),
+      ),
+    ).toEqual({ teeId: tee.id, targetId: pinA.id });
+  });
+
+  it('falls back when the pick names a tee belonging to another hole', () => {
+    const { course, hole, tee, pinA } = twoPinHole();
+    const stranger = createFeature('tee', point(north(-400)));
+
+    expect(
+      chosenPair(course, hole, new Map([[hole.id, { teeId: stranger.id, targetId: pinA.id }]])),
+    ).toEqual({ teeId: tee.id, targetId: pinA.id });
+  });
+
+  /*
+   * One resolution, three consumers. The corridor on the map, the length in the
+   * panel and the ground the elevation chart samples all come from this — if
+   * they resolved separately they could disagree, and nothing on screen would
+   * say which was right.
+   */
+  it('is the resolution the fairways and the views both use', () => {
+    const { course, hole, tee, pinB } = twoPinHole();
+    const choices = new Map([[hole.id, { teeId: tee.id, targetId: pinB.id }]]);
+
+    const [fairway] = courseFairways(course, choices);
+    expect(fairway!.targetId).toBe(pinB.id);
+
+    expect(
+      viewHoles(course, [hole], undefined, choices).get(hole.id)?.measurement.straight,
+    ).toBeCloseTo(240, 0);
   });
 });
 

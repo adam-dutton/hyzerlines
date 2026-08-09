@@ -215,7 +215,7 @@ describe('scorecard', () => {
     expect(byDefault.rows[0]!.cells[0]!.measurement.straight).toBeCloseTo(90, 0);
 
     const chosen = scorecard(course, course.holes, {
-      targets: new Map([[hole.id, pinB.id]]),
+      choices: new Map([[hole.id, { teeId: blue.id, targetId: pinB.id }]]),
     });
     expect(chosen.rows[0]!.cells[0]!.measurement.straight).toBeCloseTo(200, 0);
   });
@@ -225,7 +225,7 @@ describe('scorecard', () => {
     const course = createCourse({ features, holes: [hole] });
 
     const card = scorecard(course, course.holes, {
-      targets: new Map([[hole.id, 'not-a-target']]),
+      choices: new Map([[hole.id, { teeId: 'not-a-tee', targetId: 'not-a-target' }]]),
     });
     expect(card.rows[0]!.cells[0]!.measurement.straight).toBeCloseTo(150, 0);
   });

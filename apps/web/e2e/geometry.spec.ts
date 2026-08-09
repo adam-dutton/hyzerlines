@@ -434,4 +434,58 @@ test.describe('the pair picker', () => {
       )
       .toEqual([expect.stringContaining(chosen)]);
   });
+
+  /*
+   * The pick is per hole and lasts the session.
+   *
+   * It used to be a single value cleared on every hole change, so choosing the
+   * long pin on hole 1 and then looking at hole 2 silently put hole 1 back on
+   * its short pin — the map redrew and nothing said why. Comparing two holes'
+   * long pins, which is most of the reason to have alternate pins at all, could
+   * not be done in the app that stores them.
+   *
+   * Browser-only: the choice is React state, and what is being asserted is that
+   * deselecting does not throw it away.
+   */
+  test('the chosen pin survives deselecting the hole', async ({ page }) => {
+    await openEditor(page, { zoom: 16 });
+    await setupHole(page);
+    await page.keyboard.press('Escape');
+    await place(page, 'Target', 950, 500);
+
+    await page.getByRole('button', { name: 'Hole 1' }).first().click();
+    const claim = page.getByRole('combobox', { name: 'Add a basket' });
+    await claim.selectOption(await claim.locator('option').nth(1).getAttribute('value'));
+
+    const picker = page.getByRole('combobox', { name: /Target for this hole/ });
+    const pinB = (await course(page)).holes[0]!.targetIds[1]!;
+    await picker.selectOption(pinB);
+
+    // Let go of the hole entirely.
+    await page.keyboard.press('Escape');
+    await expect(picker).toHaveCount(0);
+
+    // The corridor still runs to the pin that was picked, rather than snapping
+    // back to the first target the moment nothing was selected.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const rendered = window.hyzerlinesMap?.querySourceFeatures('derived-geometry') ?? [];
+          return [
+            ...new Set(
+              rendered
+                .filter((f) => f.properties?.['derived'] === 'centreline')
+                .map((f) => String(f.properties?.['pair'])),
+            ),
+          ];
+        }),
+      )
+      .toEqual([expect.stringContaining(pinB)]);
+
+    // And coming back to the hole reopens on it.
+    await page.getByRole('button', { name: 'Hole 1' }).first().click();
+    await expect(page.getByRole('combobox', { name: /Target for this hole/ })).toHaveValue(
+      pinB,
+    );
+  });
 });
