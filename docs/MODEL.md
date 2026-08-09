@@ -406,6 +406,15 @@ under an eighteen-row card without saying so overstates the course by a factor o
 three. `hasMultipleTees` is asked of the course rather than of a built card, so
 the single-tee case never pays to build one.
 
+### Length or par, one at a time
+
+A printed card carries a length row and a par row for every hole, which needs
+twice the width the panel has. So the cells hold one number and a control says
+which. Par is the mode you switch to when you are filling the card in rather
+than reading it, and every cell is then the editor for **that column's** pair —
+the only place a three-tee hole's three pars can be set, since the hole panel
+edits one shot at a time.
+
 Which _pin_ a row measures to still comes from `representativePair`, or from the
 caller's per-hole choice. The column decides the tee; something has to decide the
 target, and it must be the one the map is drawing — otherwise the card and the

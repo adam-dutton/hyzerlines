@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-import { clickMap, openEditor, place, waitForSave } from './fixtures';
+import { clickMap, course, openEditor, place, waitForSave } from './fixtures';
 
 /**
  * Holes, par and design checks, through the real UI.
@@ -315,5 +315,62 @@ test.describe('the scorecard', () => {
 
     // The unit is stated once, on the total, rather than in every cell.
     await expect(page.getByText(/^Total (ft|m)$/)).toBeVisible();
+  });
+
+  /*
+   * Par is a property of the shot, and the card is the only place a three-tee
+   * hole's three pars can be set — the hole panel edits one shot at a time.
+   * The failure this guards is the one the plan named: a control in the Red
+   * column writing par onto the representative pair, which is the Gold tee's.
+   */
+  test('the par column edits its own column’s pair', async ({ page }) => {
+    await openEditor(page, { zoom: 16 });
+    await place(page, 'Tee pad', 340, 500);
+    await place(page, 'Target', 740, 300);
+    await page.getByRole('button', { name: 'Add hole' }).click();
+    await place(page, 'Tee pad', 460, 500);
+
+    await clickMap(page, 460, 500);
+    await clickMap(page, 460, 500);
+    await page.getByRole('combobox', { name: 'Skill color' }).selectOption('gold');
+
+    // The gold tee is the one placed second, so the unmarked column is the
+    // first tee — the one `representativePair` resolves to.
+    const before = await course(page);
+    const [firstTee, goldTee] = before.holes[0]!.teeIds;
+    const target = before.holes[0]!.targetIds[0]!;
+
+    await page.getByRole('radio', { name: 'Par' }).click();
+
+    /*
+     * Anything other than what the column already suggests. Choosing the
+     * suggested value clears the override rather than pinning it, which is the
+     * right behaviour and would make this assert nothing.
+     */
+    const disagree = async (column: string) => {
+      const control = page.getByRole('combobox', { name: `Par for Hole 1, ${column}` });
+      const value = (await control.inputValue()) === '6' ? '2' : '6';
+      await control.selectOption(value);
+      return Number(value);
+    };
+
+    const unmarkedPar = await disagree('Unmarked');
+    await expect
+      .poll(async () =>
+        (await course(page)).pairs.map((p) => [p.teeId, p.targetId, p.parOverride]),
+      )
+      .toEqual([[firstTee, target, unmarkedPar]]);
+
+    // And the gold column writes to the gold tee's pair, not to the same one.
+    const goldPar = await disagree('Gold');
+    await expect
+      .poll(async () => {
+        const pairs = (await course(page)).pairs;
+        return [
+          pairs.find((p) => p.teeId === goldTee)?.parOverride,
+          pairs.find((p) => p.teeId === firstTee)?.parOverride,
+        ];
+      })
+      .toEqual([goldPar, unmarkedPar]);
   });
 });

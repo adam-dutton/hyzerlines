@@ -1,7 +1,11 @@
 import { cn } from '@hyzerlines/design';
-import { holeName, type Scorecard as Card } from '@hyzerlines/core';
+import { holeName, type Course, type Op, type Scorecard as Card } from '@hyzerlines/core';
 
 import { toFeet, type UnitSystem } from '../units';
+import { ParCell } from './ParCell';
+
+/** Which number the cells hold. */
+export type CardMode = 'length' | 'par';
 
 /**
  * The course as a card, when a course has more than one tee.
@@ -24,6 +28,15 @@ import { toFeet, type UnitSystem } from '../units';
  * eighteen-row card into thirty-six rows of half-numbers. The unit is stated
  * once, on the total.
  *
+ * ## Two cards, not one crowded one
+ *
+ * A printed scorecard has a length row and a par row per hole, which needs
+ * twice the width this panel has. So the cells hold one number and a control
+ * says which — and switching to par turns every cell into the editor for
+ * *that column's* pair, which is the only place a three-tee hole's three pars
+ * can be set. The hole panel edits one shot at a time; this edits the shot the
+ * column names, which is what makes a par table a thing you can fill in.
+ *
  * ## Only when it earns the space
  *
  * One column is one tee per hole, which the plain list already showed correctly.
@@ -32,15 +45,21 @@ import { toFeet, type UnitSystem } from '../units';
  * that says nothing.
  */
 export function Scorecard({
+  course,
   card,
   units,
+  mode,
   selectedHoleId,
   onSelectHole,
+  onOp,
 }: {
+  course: Course;
   card: Card;
   units: UnitSystem;
+  mode: CardMode;
   selectedHoleId: string | null;
   onSelectHole: (id: string | null) => void;
+  onOp: (op: Op) => void;
 }) {
   const cell = 'w-11 text-right font-mono text-2xs tabular-nums';
   const suffix = units === 'metric' ? 'm' : 'ft';
@@ -98,13 +117,28 @@ export function Scorecard({
                   <td
                     key={card.columns[index]!.label}
                     className={cn(cell, 'pr-2 text-text-secondary')}
+                    /* The par control is a select, and a click on it must not
+                       also select the row underneath — it would frame the hole
+                       every time somebody set a par. */
+                    onClick={mode === 'par' ? (e) => e.stopPropagation() : undefined}
                   >
                     {/* An em dash, not a blank: a hole with no tee at this level
                         is the normal shape of a real course — eighteen whites
                         and nine reds — and an empty cell reads as a bug. */}
-                    {view?.measurement.effective == null
-                      ? '—'
-                      : length(view.measurement.effective)}
+                    {mode === 'par' ? (
+                      <ParCell
+                        course={course}
+                        hole={hole}
+                        view={view}
+                        onOp={onOp}
+                        label={`Par for ${holeName(hole)}, ${card.columns[index]!.label}`}
+                        className="w-full"
+                      />
+                    ) : view?.measurement.effective == null ? (
+                      '—'
+                    ) : (
+                      length(view.measurement.effective)
+                    )}
                   </td>
                 ))}
               </tr>
@@ -115,25 +149,29 @@ export function Scorecard({
         <tfoot>
           <tr className="border-t border-border-default">
             <td className="pl-3" />
-            <td className="py-1.5 pr-1 text-2xs text-text-muted">Total {suffix}</td>
+            <td className="py-1.5 pr-1 text-2xs text-text-muted">
+              {mode === 'par' ? 'Total par' : `Total ${suffix}`}
+            </td>
             {card.totals.map((total, index) => (
               <td
                 key={card.columns[index]!.label}
                 className={cn(cell, 'pr-2 text-text-primary')}
               >
-                {total.holes === 0 ? '—' : length(total.length)}
+                {total.holes === 0 ? '—' : mode === 'par' ? total.par : length(total.length)}
               </td>
             ))}
           </tr>
           <tr>
             <td className="pl-3" />
-            <td className="pb-1.5 pr-1 text-2xs text-text-muted">Par</td>
+            <td className="pb-1.5 pr-1 text-2xs text-text-muted">
+              {mode === 'par' ? `Total ${suffix}` : 'Par'}
+            </td>
             {card.totals.map((total, index) => (
               <td
                 key={card.columns[index]!.label}
                 className={cn(cell, 'pb-1.5 pr-2 text-text-secondary')}
               >
-                {total.holes === 0 ? '—' : total.par}
+                {total.holes === 0 ? '—' : mode === 'par' ? length(total.length) : total.par}
               </td>
             ))}
           </tr>

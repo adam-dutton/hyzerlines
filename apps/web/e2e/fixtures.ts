@@ -18,7 +18,12 @@ export interface TestCourse {
     props: Record<string, string | number | boolean | undefined>;
   }[];
   holes: { id: string; teeIds: string[]; targetIds: string[] }[];
-  pairs: { teeId: string; targetId: string; fairwayId: string | null }[];
+  pairs: {
+    teeId: string;
+    targetId: string;
+    fairwayId: string | null;
+    parOverride: number | null;
+  }[];
   overlays: {
     hillshade: boolean;
     contours: boolean;

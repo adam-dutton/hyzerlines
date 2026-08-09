@@ -1,23 +1,21 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { IconButton, Panel, Tabs, cn, type TabDefinition } from '@hyzerlines/design';
+import { IconButton, Panel, Segmented, Tabs, cn, type TabDefinition } from '@hyzerlines/design';
 import {
   hasMultipleTees,
   holeName,
   scorecard,
-  setPairPar,
   viewHoles,
   type Course,
   type FairwayChoices,
   type Finding,
-  type Hole,
   type Op,
-  type PairView,
 } from '@hyzerlines/core';
 
 import { formatDistance, type UnitSystem } from '../units';
 import { useProfiles } from '../survey/useProfiles';
 import { FindingsList } from './FindingsList';
-import { Scorecard } from './Scorecard';
+import { ParCell } from './ParCell';
+import { Scorecard, type CardMode } from './Scorecard';
 
 /**
  * The course: its holes, in order, and what is wrong with it.
@@ -43,80 +41,6 @@ import { Scorecard } from './Scorecard';
  * It renders a sentence rather than being disabled. A disabled tab is a door
  * that does not open and does not say why.
  */
-
-function ParCell({
-  course,
-  hole,
-  view,
-  onOp,
-}: {
-  course: Course;
-  hole: Hole;
-  view: PairView | null;
-  onOp: (op: Op) => void;
-}) {
-  const { suggestion = null, par = null, overridden = false } = view ?? {};
-
-  if (view === null || par === null) {
-    return <span className="w-10 text-right text-2xs text-text-disabled">—</span>;
-  }
-
-  /*
-   * The reasoning is the point.
-   *
-   * A par number with no visible basis is either accepted blindly or ignored
-   * entirely; neither is useful. The tooltip carries why, and says plainly when
-   * the call is close enough to a band boundary to be arguable.
-   */
-  const why = suggestion
-    ? [
-        ...suggestion.factors.map((f) => f.label),
-        suggestion.borderline ? 'Close to a band boundary — could go either way' : null,
-        overridden ? `You set this to ${par}; suggested ${suggestion.par}` : null,
-      ]
-        .filter(Boolean)
-        .join('\n')
-    : undefined;
-
-  return (
-    <span className="flex w-10 items-center justify-end gap-1" {...(why ? { title: why } : {})}>
-      {suggestion?.borderline && !overridden && (
-        <span className="text-2xs text-text-muted" aria-hidden="true">
-          ~
-        </span>
-      )}
-      <select
-        aria-label={`Par for ${holeName(hole)}`}
-        value={par}
-        onChange={(e) => {
-          const value = Number(e.target.value);
-          // Choosing the suggested value clears the override rather than
-          // pinning it, so the pair keeps tracking the model unless the
-          // designer actually disagrees with it.
-          onOp(
-            setPairPar(
-              course,
-              view.teeId,
-              view.targetId,
-              value === suggestion?.par ? null : value,
-            ),
-          );
-        }}
-        className={cn(
-          'rounded bg-transparent px-1 py-0.5 font-mono text-xs tabular-nums',
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
-          overridden ? 'text-text-accent' : 'text-text-primary',
-        )}
-      >
-        {[2, 3, 4, 5, 6].map((value) => (
-          <option key={value} value={value}>
-            {value}
-          </option>
-        ))}
-      </select>
-    </span>
-  );
-}
 
 export function LeftPanel({
   course,
@@ -188,6 +112,16 @@ export function LeftPanel({
     [multipleTees, course, holes, elevations, choices],
   );
 
+  /*
+   * Which number the card's cells hold.
+   *
+   * A printed card carries a length row and a par row for every hole, which
+   * needs twice the width this panel has. One number per cell and a control to
+   * say which is the honest trade; par is the mode you switch to when you are
+   * filling the card in rather than reading it.
+   */
+  const [cardMode, setCardMode] = useState<CardMode>('length');
+
   const [tab, setTab] = useState('holes');
   const tabs = useMemo<TabDefinition[]>(
     () => [
@@ -237,6 +171,20 @@ export function LeftPanel({
                 <span className="text-2xs text-text-muted">
                   {holes.length === 0 ? 'None yet' : 'In playing order'}
                 </span>
+                {/* Only with the card, because the list has its par control in
+                    every row already — there is nothing to switch to. */}
+                {card && (
+                  <Segmented
+                    label="Card shows"
+                    value={cardMode}
+                    onChange={setCardMode}
+                    options={[
+                      { value: 'length', label: 'Length' },
+                      { value: 'par', label: 'Par' },
+                    ]}
+                    className="ml-auto mr-1"
+                  />
+                )}
                 <IconButton label="Add hole" size="sm" tooltipSide="right" onClick={onAddHole}>
                   <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
                     <path
@@ -256,10 +204,13 @@ export function LeftPanel({
                 </p>
               ) : card ? (
                 <Scorecard
+                  course={course}
                   card={card}
                   units={units}
+                  mode={cardMode}
                   selectedHoleId={selectedHoleId}
                   onSelectHole={onSelectHole}
+                  onOp={onOp}
                 />
               ) : (
                 <ul className="min-h-0 flex-1 overflow-y-auto">
