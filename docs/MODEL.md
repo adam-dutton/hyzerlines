@@ -350,6 +350,23 @@ It answers in this order:
 A hole played twice in one layout resolves to its first play; the scorecard lists
 both, because it is a list of plays rather than a list of holes.
 
+### The shots not in play are still drawn
+
+A hole draws one corridor — nine overlapping corridors down one strip of land is
+not a drawing of anything — but the shots it is _not_ being shown as still have
+to be visible, or a second tee is a pad on the ground with no line leaving it and
+reads as something the designer forgot.
+
+`alternativeShots` returns them, as **a cross rather than a grid**: every tee to
+the pin in play, and every pin from the tee in play. Three tees and three pins is
+four alternatives, not eight, and each differs from the chosen shot at exactly
+one end — which is how a designer compares them, one variable at a time. The tee
+half is the scorecard's row read onto the ground; the two agree because both
+resolve the pin through `chosenPair`.
+
+A shot whose fairway has been shaped is left out: `courseFairways` already
+returns it in full, with the corridor and width it was given.
+
 ### The pick is per hole, session-lived, and validated
 
 **Interface state, not document state** — like which layer is selected in an

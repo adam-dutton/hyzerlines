@@ -1,6 +1,14 @@
 import { test, expect, type Page } from '@playwright/test';
 
-import { clickFeature, course, openEditor, place, project } from './fixtures';
+import {
+  clickFeature,
+  course,
+  openEditor,
+  openSection,
+  place,
+  project,
+  setSwitch,
+} from './fixtures';
 
 /**
  * Derived geometry, vertex editing, hole assignment and the pair picker.
@@ -487,5 +495,57 @@ test.describe('the pair picker', () => {
     await expect(page.getByRole('combobox', { name: /Target for this hole/ })).toHaveValue(
       pinB,
     );
+  });
+
+  /*
+   * The shots the hole is not being drawn as still have to be on the map.
+   *
+   * A second pin used to be a basket with no line leaving it, which reads as
+   * something the designer forgot rather than as an option they created. The
+   * cross rule is unit-tested in core; what a browser has to answer is whether
+   * the lines survive the trip through the source and the layer filter, and
+   * whether turning fairway lines off takes them with it.
+   */
+  test('the shots not in play draw as faint lines', async ({ page }) => {
+    await openEditor(page, { zoom: 16 });
+    await setupHole(page);
+    await page.keyboard.press('Escape');
+    await place(page, 'Target', 950, 500);
+
+    await page.getByRole('button', { name: 'Hole 1' }).first().click();
+    const claim = page.getByRole('combobox', { name: 'Add a basket' });
+    await claim.selectOption(await claim.locator('option').nth(1).getAttribute('value'));
+
+    const drawn = (kind: string) =>
+      page.evaluate((derived) => {
+        const rendered = window.hyzerlinesMap?.querySourceFeatures('derived-geometry') ?? [];
+        return [
+          ...new Set(
+            rendered
+              .filter((f) => f.properties?.['derived'] === derived)
+              .map((f) => String(f.properties?.['pair'])),
+          ),
+        ];
+      }, kind);
+
+    const [pinA, pinB] = (await course(page)).holes[0]!.targetIds;
+
+    // One corridor, for the shot in play; one faint line, for the one that is
+    // not. Not two corridors down the same strip of land.
+    await expect.poll(() => drawn('centreline')).toEqual([expect.stringContaining(pinA!)]);
+    await expect.poll(() => drawn('alternative')).toEqual([expect.stringContaining(pinB!)]);
+
+    // Picking the other pin swaps which is which.
+    await page.getByRole('combobox', { name: /Target for this hole/ }).selectOption(pinB!);
+    await expect.poll(() => drawn('centreline')).toEqual([expect.stringContaining(pinB!)]);
+    await expect.poll(() => drawn('alternative')).toEqual([expect.stringContaining(pinA!)]);
+
+    // And they are fairway lines: turning those off takes the alternatives too,
+    // rather than leaving a thinner copy of an aid that was switched off.
+    await page.keyboard.press('Escape');
+    await openSection(page, 'Settings');
+    await setSwitch(page, 'Lines', false);
+    await expect.poll(() => drawn('alternative')).toEqual([]);
+    await expect.poll(() => drawn('centreline')).toEqual([]);
   });
 });

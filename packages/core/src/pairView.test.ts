@@ -9,6 +9,7 @@ import { applyOp } from './ops.js';
 import { createCourse, type Course } from './schema.js';
 import { CourseStore } from './store.js';
 import {
+  alternativeShots,
   chosenPair,
   corridorWidthsFor,
   courseFairways,
@@ -158,6 +159,79 @@ describe('chosenPair', () => {
     expect(
       viewHoles(course, [hole], undefined, choices).get(hole.id)?.measurement.straight,
     ).toBeCloseTo(240, 0);
+  });
+});
+
+/**
+ * The shots a hole holds but is not being drawn as.
+ *
+ * Multiple tees were in the file and invisible on the map: the corridor showed
+ * one shot and nothing said the other two existed. These are the lines that say
+ * so, and the interesting property is how *few* of them there are.
+ */
+describe('alternativeShots', () => {
+  it('draws every other pin from the tee in play', () => {
+    const { course, hole, tee, pinA, pinB } = twoPinHole();
+
+    const shots = alternativeShots(course, undefined);
+    expect(shots).toHaveLength(1);
+    expect(shots[0]).toMatchObject({ holeId: hole.id, teeId: tee.id, targetId: pinB.id });
+
+    // Pick pin B and the alternative becomes pin A — always the shots the hole
+    // is *not* being shown as.
+    const picked = alternativeShots(
+      course,
+      new Map([[hole.id, { teeId: tee.id, targetId: pinB.id }]]),
+    );
+    expect(picked.map((s) => s.targetId)).toEqual([pinA.id]);
+  });
+
+  /*
+   * The number that matters. Three tees and three pins is nine shots; drawing
+   * the eight that are not chosen is not a drawing of anything. Four — one per
+   * end that differs — is.
+   */
+  it('is a cross rather than a grid', () => {
+    const tees = [0, 1, 2].map(() => createFeature('tee', point(north(-100))));
+    const pins = [0, 1, 2].map((i) => createFeature('target', point(north(i * 10))));
+    const hole = createHole(1, {
+      teeIds: tees.map((t) => t.id),
+      targetIds: pins.map((p) => p.id),
+    });
+    const course = createCourse({ features: [...tees, ...pins], holes: [hole] });
+
+    const shots = alternativeShots(course);
+    expect(shots).toHaveLength(4);
+    // Each one differs from the chosen shot at exactly one end.
+    for (const shot of shots) {
+      const ends = Number(shot.teeId !== tees[0]!.id) + Number(shot.targetId !== pins[0]!.id);
+      expect(ends).toBe(1);
+    }
+  });
+
+  /*
+   * A shaped alternative is already on the map in full, with the corridor and
+   * width the designer gave it. Listing it here would draw a second, thinner
+   * copy of a line that is already there.
+   */
+  it('leaves out a shot whose fairway has been shaped', () => {
+    const { course, tee, pinB } = twoPinHole();
+    const shaped = applyOp(
+      course,
+      shapeFairway(course, tee.id, pinB.id, [AT, north(240)]),
+    ).course;
+
+    expect(alternativeShots(shaped)).toEqual([]);
+    expect(courseFairways(shaped).map((f) => f.targetId)).toContain(pinB.id);
+  });
+
+  it('has nothing to offer a hole with one shot', () => {
+    const tee = createFeature('tee', point(AT));
+    const target = createFeature('target', point(north(90)));
+    const hole = createHole(1, { teeIds: [tee.id], targetIds: [target.id] });
+    const course = createCourse({ features: [tee, target], holes: [hole] });
+
+    expect(alternativeShots(course)).toEqual([]);
   });
 });
 

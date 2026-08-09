@@ -439,6 +439,62 @@ export function courseFairways(course: Course, choices?: FairwayChoices): HoleFa
   return fairways;
 }
 
+/** A shot a hole offers but is not currently being shown as. */
+export interface AlternativeShot {
+  holeId: string;
+  teeId: string;
+  targetId: string;
+  /** The centreline, so it can be drawn without re-deriving it. */
+  line: Position[];
+}
+
+/**
+ * The shots a hole contains that it is not currently being drawn as.
+ *
+ * **A cross, not a grid.** A hole with three tees and three pins holds nine
+ * shots, and eight faint lines down one corridor of land is not a drawing of
+ * anything. What a designer is actually comparing is one variable at a time:
+ * every tee to the pin in play, and every pin from the tee in play. Three tees
+ * and three pins is four alternatives rather than eight, and each of them
+ * differs from the chosen shot in exactly one end.
+ *
+ * The tee half is also the scorecard's row read onto the ground — the card
+ * lists every tee measured to the same pin, and these are those measurements as
+ * lines. The two views agreeing is not a coincidence to be maintained; they
+ * resolve the pin through the same `chosenPair`.
+ *
+ * Shots with a fairway the designer has shaped are left out. `courseFairways`
+ * already returns those, in full, with the corridor and width they were given —
+ * drawing them again as a faint line would be a second, thinner copy of a line
+ * already on screen.
+ */
+export function alternativeShots(course: Course, choices?: FairwayChoices): AlternativeShot[] {
+  const featureById = featureIndex(course);
+  const shots: AlternativeShot[] = [];
+
+  for (const hole of course.holes) {
+    const chosen = chosenPair(course, hole, choices);
+    if (!chosen) continue;
+
+    const pairings = [
+      ...hole.teeIds
+        .filter((teeId) => teeId !== chosen.teeId)
+        .map((teeId) => ({ teeId, targetId: chosen.targetId })),
+      ...hole.targetIds
+        .filter((targetId) => targetId !== chosen.targetId)
+        .map((targetId) => ({ teeId: chosen.teeId, targetId })),
+    ];
+
+    for (const { teeId, targetId } of pairings) {
+      if (findPair(course.pairs, teeId, targetId)?.fairwayId) continue;
+      const line = fairwayLine(course, teeId, targetId, featureById);
+      if (line) shots.push({ holeId: hole.id, teeId, targetId, line });
+    }
+  }
+
+  return shots;
+}
+
 /**
  * Which way a tee faces by default: down the first leg of its fairway.
  *

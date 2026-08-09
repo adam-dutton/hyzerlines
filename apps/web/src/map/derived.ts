@@ -1,4 +1,5 @@
 import {
+  alternativeShots,
   anchorOf,
   bearing,
   circleRing,
@@ -12,6 +13,7 @@ import {
   showsFairwayAreas,
   showsFairwayLines,
   TARGET_CIRCLES,
+  type AlternativeShot,
   type Course,
   type FairwayChoices,
   type Feature,
@@ -51,11 +53,24 @@ export interface DerivedGeometry {
  * so this is a default that tracks the design rather than a rule that overrides
  * the designer.
  */
-function fairwayBearings(fairways: readonly HoleFairway[]): Map<string, number> {
+function fairwayBearings(
+  fairways: readonly HoleFairway[],
+  alternatives: readonly AlternativeShot[],
+): Map<string, number> {
   const bearings = new Map<string, number>();
-  for (const fairway of fairways) {
-    const [from, to] = fairway.line;
-    if (from && to) bearings.set(fairway.teeId, bearing(from, to));
+  /*
+   * Fairways first, and an alternative never overwrites one.
+   *
+   * A tee that is not the shot in play still throws somewhere, and before the
+   * alternatives existed it had no line to face down — it fell back to the
+   * hole's *first* target, which on a hole being shown at its long pin aimed
+   * every spare pad at a basket the panel was not measuring to. Now each pad
+   * faces down its own shot.
+   */
+  for (const { teeId, line } of [...fairways, ...alternatives]) {
+    if (bearings.has(teeId)) continue;
+    const [from, to] = line;
+    if (from && to) bearings.set(teeId, bearing(from, to));
   }
   return bearings;
 }
@@ -96,7 +111,8 @@ export function derivedGeometry(course: Course, choices?: FairwayChoices): Deriv
    * you were trying to see past.
    */
   const allFairways = courseFairways(course, choices);
-  const teeBearings = fairwayBearings(allFairways);
+  const alternatives = alternativeShots(course, choices);
+  const teeBearings = fairwayBearings(allFairways, alternatives);
 
   const holeById = new Map(course.holes.map((hole) => [hole.id, hole]));
   const fairways = allFairways.filter(
@@ -216,6 +232,34 @@ export function derivedGeometry(course: Course, choices?: FairwayChoices): Deriv
       },
       geometry: { type: 'LineString', coordinates: fairway.line },
     });
+  }
+
+  /*
+   * The shots the hole holds and is not being drawn as.
+   *
+   * Without these a three-tee hole draws one corridor and nothing says the
+   * other two tees throw anywhere — they are pads on the ground with no line
+   * leaving them, which reads as a mistake rather than as a design. The lines
+   * are what make the scorecard's extra columns legible on the map.
+   *
+   * Gated on the same two switches as the centreline they are alternatives to:
+   * the course-wide fairway-lines setting, and the hole's own `showFairway`.
+   * An aid you turned off must not come back thinner.
+   */
+  if (drawLines) {
+    for (const shot of alternatives) {
+      if (!(holeById.get(shot.holeId)?.showFairway ?? true)) continue;
+      features.push({
+        type: 'Feature',
+        properties: {
+          id: `${shot.teeId} ${shot.targetId}`,
+          pair: `${shot.teeId} ${shot.targetId}`,
+          kind: 'fairway',
+          derived: 'alternative',
+        },
+        geometry: { type: 'LineString', coordinates: shot.line },
+      });
+    }
   }
 
   /*
