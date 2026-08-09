@@ -298,6 +298,15 @@ good to roughly 10m vertically and the formula multiplies by three, so a par
 computed from it could be two strokes wrong from measurement error alone; it
 draws the chart and stops there, and the panel says which source you are on.
 
+Every feature shows its coordinates, and you can type them in. The map is the
+right tool for "about here" and the wrong one for "exactly here" — a basket
+surveyed with a handheld, a tee off a permit drawing. Latitude and longitude are
+listed the way people write them, latitude first, and the fields accept whatever
+you have: decimal degrees, degrees and decimal minutes the way a Garmin shows
+them, or degrees/minutes/seconds off a permit. Pasting a whole `44.9, -93.1`
+into either box fills in both, because that is what "copy coordinates" gives
+you. Setting the position on a line or an area moves the whole shape.
+
 Whatever you select opens top right. The tools are along the top, centred
 between the two columns, with undo and redo on the end of the rail; the camera
 controls — imagery, north, zoom — stack in the bottom right corner. Everything
