@@ -49,7 +49,7 @@ current as PRs land.
 | **Terrain overlays**                 | One style, hillshade, contours                                                | [#13](https://github.com/adam-dutton/hyzerlines/pull/13)        |
 | **Site surveys**                     | Import LiDAR GeoTIFFs, reproject and tile in-browser                          | [#13](https://github.com/adam-dutton/hyzerlines/pull/13)        |
 | **Elevation profiles**               | Per-hole ground profile, and the PDGA elevation term in par                   | [#13](https://github.com/adam-dutton/hyzerlines/pull/13)        |
-| **Feature coordinates**              | Shown on every feature, and typed in                                          | [#14](https://github.com/adam-dutton/hyzerlines/pull/14) — open |
+| **Feature coordinates**              | Shown on every feature, and typed in                                          | [#14](https://github.com/adam-dutton/hyzerlines/pull/14)        |
 | **Multiple tees, pins and fairways** | The shot matrix as a first-class idea                                         | [#15](https://github.com/adam-dutton/hyzerlines/pull/15) — open |
 | **Layouts and routing**              | Named layouts, skip, repeat, reorder                                          |                                                                 |
 | **Expanded palette**                 | Relief areas, noted areas, drop zones, invert, circles                        |                                                                 |
