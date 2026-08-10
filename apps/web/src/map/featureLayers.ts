@@ -133,6 +133,23 @@ const CENTRELINE_WIDTH = 2.5;
 const CENTRELINE_CASING_WIDTH = CENTRELINE_WIDTH * CASING_RATIO;
 
 /**
+ * The shots a hole offers but is not being drawn as.
+ *
+ * Half the width of a centreline, a third of its opacity, and **uncased**. The
+ * casing is what makes a centreline hold up against bright sand and dark
+ * canopy — legibility a line the designer is not currently working on does not
+ * need, and paying for it here would put the alternatives in the same visual
+ * register as the shot in play. They are supposed to lose that comparison.
+ *
+ * A longer gap than the centreline's, too, so the difference survives the two
+ * being parallel and a few metres apart, which is exactly how three tees to one
+ * basket end up drawn.
+ */
+const ALTERNATIVE_DASH = [2, 4] as const;
+const ALTERNATIVE_WIDTH = 1.25;
+const ALTERNATIVE_OPACITY = 0.45;
+
+/**
  * A property boundary is a note about the land, not a thing on it.
  *
  * So it gets the thinnest dotted line on the map and no fill at all. The fill
@@ -214,6 +231,27 @@ export function derivedLayers(): LayerSpecification[] {
   const isCentreline: ExpressionSpecification = ['==', ['get', 'derived'], 'centreline'];
 
   return [
+    /*
+     * The alternatives, first and therefore underneath everything.
+     *
+     * Not in the interactive list: at 1.25px these are a poor click target, and
+     * a click landing on hole 7's spare tee line instead of the corridor it
+     * runs down would be a worse answer than the one the corridor already
+     * gives. They are here to be read, not hit.
+     */
+    {
+      id: 'derived-alternative',
+      type: 'line',
+      source: DERIVED_SOURCE,
+      filter: ['==', ['get', 'derived'], 'alternative'],
+      layout: { 'line-join': 'round', 'line-cap': 'butt' },
+      paint: {
+        'line-color': selectableColor('stroke'),
+        'line-width': ALTERNATIVE_WIDTH,
+        'line-opacity': ALTERNATIVE_OPACITY,
+        'line-dasharray': [...ALTERNATIVE_DASH],
+      },
+    },
     /*
      * Putting circles, at their real size on the ground.
      *

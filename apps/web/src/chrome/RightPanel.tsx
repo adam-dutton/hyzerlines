@@ -51,6 +51,7 @@ export function RightPanel({
   onSelectHole,
   onSelectPair,
   onClearSelection,
+  onDrawFeature,
 }: {
   course: Course;
   units: UnitSystem;
@@ -65,6 +66,8 @@ export function RightPanel({
   onSelectHole: (id: string) => void;
   onSelectPair: (pair: SelectedPair) => void;
   onClearSelection: () => void;
+  /** Arm the tee or basket tool with the hole still selected. */
+  onDrawFeature: (kind: 'tee' | 'target') => void;
 }) {
   if (!feature && !hole) return null;
 
@@ -198,6 +201,7 @@ export function RightPanel({
               units={units}
               onOp={onOp}
               onSelectPair={onSelectPair}
+              onDrawFeature={onDrawFeature}
               onDelete={onDeleteHole}
               onRevealFeature={onSelectFeature}
             />

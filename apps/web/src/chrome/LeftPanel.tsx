@@ -1,19 +1,21 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { IconButton, Panel, Tabs, cn, type TabDefinition } from '@hyzerlines/design';
+import { IconButton, Panel, Segmented, Tabs, cn, type TabDefinition } from '@hyzerlines/design';
 import {
+  hasMultipleTees,
   holeName,
-  setPairPar,
+  scorecard,
   viewHoles,
   type Course,
+  type FairwayChoices,
   type Finding,
-  type Hole,
   type Op,
-  type PairView,
 } from '@hyzerlines/core';
 
 import { formatDistance, type UnitSystem } from '../units';
 import { useProfiles } from '../survey/useProfiles';
 import { FindingsList } from './FindingsList';
+import { ParCell } from './ParCell';
+import { Scorecard, type CardMode } from './Scorecard';
 
 /**
  * The course: its holes, in order, and what is wrong with it.
@@ -40,84 +42,11 @@ import { FindingsList } from './FindingsList';
  * that does not open and does not say why.
  */
 
-function ParCell({
-  course,
-  hole,
-  view,
-  onOp,
-}: {
-  course: Course;
-  hole: Hole;
-  view: PairView | null;
-  onOp: (op: Op) => void;
-}) {
-  const { suggestion = null, par = null, overridden = false } = view ?? {};
-
-  if (view === null || par === null) {
-    return <span className="w-10 text-right text-2xs text-text-disabled">—</span>;
-  }
-
-  /*
-   * The reasoning is the point.
-   *
-   * A par number with no visible basis is either accepted blindly or ignored
-   * entirely; neither is useful. The tooltip carries why, and says plainly when
-   * the call is close enough to a band boundary to be arguable.
-   */
-  const why = suggestion
-    ? [
-        ...suggestion.factors.map((f) => f.label),
-        suggestion.borderline ? 'Close to a band boundary — could go either way' : null,
-        overridden ? `You set this to ${par}; suggested ${suggestion.par}` : null,
-      ]
-        .filter(Boolean)
-        .join('\n')
-    : undefined;
-
-  return (
-    <span className="flex w-10 items-center justify-end gap-1" {...(why ? { title: why } : {})}>
-      {suggestion?.borderline && !overridden && (
-        <span className="text-2xs text-text-muted" aria-hidden="true">
-          ~
-        </span>
-      )}
-      <select
-        aria-label={`Par for ${holeName(hole)}`}
-        value={par}
-        onChange={(e) => {
-          const value = Number(e.target.value);
-          // Choosing the suggested value clears the override rather than
-          // pinning it, so the pair keeps tracking the model unless the
-          // designer actually disagrees with it.
-          onOp(
-            setPairPar(
-              course,
-              view.teeId,
-              view.targetId,
-              value === suggestion?.par ? null : value,
-            ),
-          );
-        }}
-        className={cn(
-          'rounded bg-transparent px-1 py-0.5 font-mono text-xs tabular-nums',
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
-          overridden ? 'text-text-accent' : 'text-text-primary',
-        )}
-      >
-        {[2, 3, 4, 5, 6].map((value) => (
-          <option key={value} value={value}>
-            {value}
-          </option>
-        ))}
-      </select>
-    </span>
-  );
-}
-
 export function LeftPanel({
   course,
   units,
   findings,
+  choices,
   selectedHoleId,
   onSelectHole,
   onOp,
@@ -129,6 +58,14 @@ export function LeftPanel({
   course: Course;
   units: UnitSystem;
   findings: readonly Finding[];
+  /**
+   * Which shot each hole is being looked at as.
+   *
+   * Passed in rather than resolved here so that a length in this panel is the
+   * length of the corridor on the map. The two used to agree only for the
+   * selected hole.
+   */
+  choices: FairwayChoices;
   selectedHoleId: string | null;
   onSelectHole: (id: string | null) => void;
   onOp: (op: Op) => void;
@@ -154,9 +91,36 @@ export function LeftPanel({
   // a par that moved because of a hill moves in both places or in neither.
   const { elevations } = useProfiles();
   const views = useMemo(
-    () => viewHoles(course, holes, elevations),
-    [course, holes, elevations],
+    () => viewHoles(course, holes, elevations, choices),
+    [course, holes, elevations, choices],
   );
+
+  /*
+   * The card, which replaces the list only when there is more than one tee.
+   *
+   * A course nobody has classified has one column, and the plain list already
+   * showed that correctly — a table with a single column would be new machinery
+   * for an unchanged answer, and it would cost the inline par control, which is
+   * the fastest way to fix a par that exists.
+   *
+   * Asked before built, so the single-tee course does not pay for a card it
+   * will not draw.
+   */
+  const multipleTees = hasMultipleTees(course);
+  const card = useMemo(
+    () => (multipleTees ? scorecard(course, holes, { elevations, choices }) : null),
+    [multipleTees, course, holes, elevations, choices],
+  );
+
+  /*
+   * Which number the card's cells hold.
+   *
+   * A printed card carries a length row and a par row for every hole, which
+   * needs twice the width this panel has. One number per cell and a control to
+   * say which is the honest trade; par is the mode you switch to when you are
+   * filling the card in rather than reading it.
+   */
+  const [cardMode, setCardMode] = useState<CardMode>('length');
 
   const [tab, setTab] = useState('holes');
   const tabs = useMemo<TabDefinition[]>(
@@ -207,6 +171,20 @@ export function LeftPanel({
                 <span className="text-2xs text-text-muted">
                   {holes.length === 0 ? 'None yet' : 'In playing order'}
                 </span>
+                {/* Only with the card, because the list has its par control in
+                    every row already — there is nothing to switch to. */}
+                {card && (
+                  <Segmented
+                    label="Card shows"
+                    value={cardMode}
+                    onChange={setCardMode}
+                    options={[
+                      { value: 'length', label: 'Length' },
+                      { value: 'par', label: 'Par' },
+                    ]}
+                    className="ml-auto mr-1"
+                  />
+                )}
                 <IconButton label="Add hole" size="sm" tooltipSide="right" onClick={onAddHole}>
                   <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
                     <path
@@ -224,6 +202,16 @@ export function LeftPanel({
                   Add a hole, then draw its tee and basket — anything you place while a hole is
                   selected joins it.
                 </p>
+              ) : card ? (
+                <Scorecard
+                  course={course}
+                  card={card}
+                  units={units}
+                  mode={cardMode}
+                  selectedHoleId={selectedHoleId}
+                  onSelectHole={onSelectHole}
+                  onOp={onOp}
+                />
               ) : (
                 <ul className="min-h-0 flex-1 overflow-y-auto">
                   {holes.map((hole) => {

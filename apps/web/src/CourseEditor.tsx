@@ -3,14 +3,15 @@ import {
   anchorOf,
   assignToHole,
   checkCourse,
+  chosenPair,
   createFeature,
   createHole,
   findPair,
   geometryMatchesKind,
   holeOfFeature,
   moveFeatureTo,
-  representativePair,
   shapeFairway,
+  type FairwayChoices,
   type Feature,
   type FeatureKind,
   type Finding,
@@ -36,6 +37,15 @@ import { LeftPanel } from './chrome/LeftPanel';
 import { useShortcuts } from './keyboard/useShortcuts';
 import type { UnitSystem } from './units';
 import { useCourse } from './document/CourseProvider';
+
+/**
+ * No hole picked yet, as one shared value.
+ *
+ * A fresh `new Map()` per render would give `derivedGeometry` a new argument
+ * every time and recompute every pad and corridor on the course for a course
+ * nobody has touched the picker on.
+ */
+const NO_CHOICES: FairwayChoices = new Map();
 
 /**
  * Drawing, selection and the inspector.
@@ -69,7 +79,22 @@ export function CourseEditor({
   const [tool, setTool] = useState<Tool>('select');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedHoleId, setSelectedHoleId] = useState<string | null>(null);
-  const [pairChoice, setPairChoice] = useState<SelectedPair | null>(null);
+  /*
+   * Which shot each hole is being looked at as, for the session.
+   *
+   * One entry per hole rather than one for the whole editor. Comparing hole 4's
+   * long pin against hole 5's is an ordinary thing to do, and with a single
+   * choice the first hole snapped back to its representative pair the moment
+   * you clicked the second — so the comparison could not be made in the app
+   * that exists to make it.
+   *
+   * Not in the document, for the reason the old single choice was not: which
+   * shot you are inspecting is a view of the course, like which layer is
+   * selected in an editor. Storing it would autosave it, land it on the undo
+   * stack, and travel to whoever you sent the course to. That also decides how
+   * long it lives — this session, and no longer.
+   */
+  const [pairChoices, setPairChoices] = useState<FairwayChoices>(NO_CHOICES);
 
   const selected = course.features.find((f) => f.id === selectedId) ?? null;
   const selectedHole = course.holes.find((h) => h.id === selectedHoleId) ?? null;
@@ -77,27 +102,31 @@ export function CourseEditor({
   /*
    * Which of the hole's shots the panels are describing.
    *
-   * Derived rather than stored in an effect, and self-healing: a choice is kept
-   * only while it is still a shot the hole offers, so deleting the pin you were
-   * measuring to falls back to the representative pair instead of leaving the
-   * panel describing a throw that no longer exists.
-   *
-   * Not in the document. Which shot you are inspecting is a view of the course,
-   * like which layer is selected in an editor — putting it in the file would
-   * autosave it, land it on the undo stack, and travel to whoever you sent the
-   * course to.
+   * Derived rather than stored in an effect, and resolved by `chosenPair` —
+   * the same function the map and the card go through, so all three describe
+   * one throw by construction. It is also self-healing: a pick survives only
+   * while it names a shot the hole still offers, so deleting the pin you were
+   * measuring to falls back rather than leaving the panel on a throw that no
+   * longer exists.
    */
-  const selectedPair = useMemo<SelectedPair | null>(() => {
-    if (!selectedHole) return null;
-    if (
-      pairChoice &&
-      selectedHole.teeIds.includes(pairChoice.teeId) &&
-      selectedHole.targetIds.includes(pairChoice.targetId)
-    ) {
-      return pairChoice;
-    }
-    return representativePair(course, selectedHole);
-  }, [course, selectedHole, pairChoice]);
+  const selectedPair = useMemo<SelectedPair | null>(
+    () => (selectedHole ? chosenPair(course, selectedHole, pairChoices) : null),
+    [course, selectedHole, pairChoices],
+  );
+
+  /**
+   * Record the designer's pick for the hole the panel is describing.
+   *
+   * Keyed by the selected hole because the picker is that hole's control — the
+   * panel showing it *is* the selection.
+   */
+  const choosePair = useCallback(
+    (pair: SelectedPair) => {
+      if (!selectedHoleId) return;
+      setPairChoices((previous) => new Map(previous).set(selectedHoleId, pair));
+    },
+    [selectedHoleId],
+  );
 
   const findings = useMemo(() => checkCourse(course, course.dismissedRules), [course]);
 
@@ -133,13 +162,12 @@ export function CourseEditor({
    */
   const derived = useMemo(
     () =>
-      derivedGeometry(
-        course,
-        // So the map shows the shot the panel is showing. Without this, picking
-        // pin B would re-measure the hole while the fairway stayed on pin A.
-        selectedHole && selectedPair ? new Map([[selectedHole.id, selectedPair]]) : undefined,
-      ),
-    [course, selectedHole, selectedPair],
+      // So the map shows the shots the panels are showing. Without this, picking
+      // pin B would re-measure the hole while the fairway stayed on pin A — and
+      // passing only the selected hole's choice snapped every other hole back
+      // the moment the selection moved.
+      derivedGeometry(course, pairChoices),
+    [course, pairChoices],
   );
 
   /**
@@ -188,9 +216,6 @@ export function CourseEditor({
   const selectHole = useCallback((id: string | null) => {
     setSelectedHoleId(id);
     if (id) setSelectedId(null);
-    // A new hole starts on its own representative shot rather than inheriting
-    // the last hole's tee, which would almost never be one of its own.
-    setPairChoice(null);
   }, []);
 
   /** Everything a hole is made of, for framing it. */
@@ -266,10 +291,7 @@ export function CourseEditor({
   /** Frame whatever a finding points at, so it can be seen rather than read. */
   const reveal = useCallback(
     (finding: Finding) => {
-      if (finding.holeId) {
-        setSelectedHoleId(finding.holeId);
-        setPairChoice(null);
-      }
+      if (finding.holeId) setSelectedHoleId(finding.holeId);
       if (finding.featureId) {
         setSelectedId(finding.featureId);
         const feature = course.features.find((f) => f.id === finding.featureId);
@@ -593,6 +615,7 @@ export function CourseEditor({
             course={course}
             units={units}
             findings={findings}
+            choices={pairChoices}
             selectedHoleId={selectedHoleId}
             onSelectHole={selectHoleFromList}
             onOp={handleOp}
@@ -613,7 +636,8 @@ export function CourseEditor({
             onDeleteHole={deleteSelectedHole}
             onSelectFeature={selectFeature}
             onSelectHole={selectHole}
-            onSelectPair={setPairChoice}
+            onSelectPair={choosePair}
+            onDrawFeature={setTool}
             onClearSelection={() => {
               setSelectedId(null);
               setSelectedHoleId(null);

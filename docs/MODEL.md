@@ -170,6 +170,13 @@ The **first** tee and **first** target are the hole's representative pair until 
 layout routes it, so their order is meaningful rather than cosmetic. That is what
 `moveToFront` is for, and why the feature panel offers it as an explicit action.
 
+**Removing is not deleting.** Taking a tee out of a hole is `assignToHole(…,
+null)`: it leaves the feature on the ground, still drawn and still selectable,
+because it is still somewhere a designer put it deliberately. Deleting it is a
+different action and lives on the feature itself. The hole panel lists every tee
+and every basket with both — the mark that says which shot is being measured, and
+the control that takes an end out of the hole.
+
 ---
 
 ## Feature kinds
@@ -334,20 +341,91 @@ The course does **not** carry one. A tee's colour _is_ its level:
 ## Which shot a hole is shown as
 
 A hole with two tees and two pins is four throws. A panel describing "this hole"
-has to pick one, and `representativePair` is the single place that choice is made:
+has to pick one, and `chosenPair` is the single place that resolution happens —
+the map's corridor, the card's length, the hole panel's par and the ground the
+elevation chart samples all go through it, so they describe one throw by
+construction rather than by four functions agreeing.
 
-1. **The active layout's play for that hole**, when it has one. That is the shot
-   a card would print and a player would throw.
-2. Otherwise the hole's **first tee and first target** — the best guess available
+It answers in this order:
+
+1. **The designer's pick** for that hole, when they have made one.
+2. **The active layout's play for that hole** — `representativePair`. That is the
+   shot a card would print and a player would throw.
+3. Otherwise the hole's **first tee and first target** — the best guess available
    for a corridor nobody has routed yet.
 
 A hole played twice in one layout resolves to its first play; the scorecard lists
 both, because it is a list of plays rather than a list of holes.
 
-The designer can override the choice in the hole panel. That selection is
-**interface state, not document state** — like which layer is selected in an
+### The shots not in play are still drawn
+
+A hole draws one corridor — nine overlapping corridors down one strip of land is
+not a drawing of anything — but the shots it is _not_ being shown as still have
+to be visible, or a second tee is a pad on the ground with no line leaving it and
+reads as something the designer forgot.
+
+`alternativeShots` returns them, as **a cross rather than a grid**: every tee to
+the pin in play, and every pin from the tee in play. Three tees and three pins is
+four alternatives, not eight, and each differs from the chosen shot at exactly
+one end — which is how a designer compares them, one variable at a time. The tee
+half is the scorecard's row read onto the ground; the two agree because both
+resolve the pin through `chosenPair`.
+
+A shot whose fairway has been shaped is left out: `courseFairways` already
+returns it in full, with the corridor and width it was given.
+
+### The pick is per hole, session-lived, and validated
+
+**Interface state, not document state** — like which layer is selected in an
 editor. Storing it would autosave it, land it on the undo stack, and travel to
-whoever the course was sent to.
+whoever the course was sent to. That also settles how long it lives: this
+session, and no longer.
+
+One pick **per hole**, not one for the editor. Comparing hole 4's long pin
+against hole 5's is an ordinary thing to do, and a single choice put hole 4 back
+on its representative pair the moment hole 5 was clicked.
+
+And it is **validated on read, not trusted**. Nothing checks a pick on write, and
+the document moves underneath it: delete the pin you were measuring to and the
+pick names a target the hole no longer has. `chosenPair` keeps a pick only while
+the hole still offers both ends, and otherwise falls back.
+
+---
+
+## The scorecard: a column per skill level
+
+`representativePair` answers "one shot per hole", which is the right answer for a
+panel describing a hole and the wrong one for a course with more than one tee —
+the other shots are in the file and appear nowhere. `scorecard` is the other
+reading: one row per hole, one column per **skill level**, every length at once.
+
+Columns key on the level rather than on the tee feature, because that is what a
+tee's colour _means_ — `skillLevelOfTee` reads it and every PDGA figure is
+defined per level. It is also what lets a column span the course: hole 3's blue
+tee and hole 4's blue tee are different features and the same column. Tees with
+no colour set share an `Unmarked` column, listed last, so a course nobody has
+classified produces exactly one column and the interface can keep showing the
+plain list.
+
+A column's total carries **how many holes it covers**, not just a sum. A red tee
+on six of eighteen holes has a total that is not a course length, and printing it
+under an eighteen-row card without saying so overstates the course by a factor of
+three. `hasMultipleTees` is asked of the course rather than of a built card, so
+the single-tee case never pays to build one.
+
+### Length or par, one at a time
+
+A printed card carries a length row and a par row for every hole, which needs
+twice the width the panel has. So the cells hold one number and a control says
+which. Par is the mode you switch to when you are filling the card in rather
+than reading it, and every cell is then the editor for **that column's** pair —
+the only place a three-tee hole's three pars can be set, since the hole panel
+edits one shot at a time.
+
+Which _pin_ a row measures to still comes from `representativePair`, or from the
+caller's per-hole choice. The column decides the tee; something has to decide the
+target, and it must be the one the map is drawing — otherwise the card and the
+map are two answers to one question.
 
 ---
 

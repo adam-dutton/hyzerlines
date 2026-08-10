@@ -213,6 +213,21 @@ test.describe('elevation profiles', () => {
    * reading it.
    */
   test('bending the fairway changes the profile', async ({ page }) => {
+    /*
+     * The longest test in the suite, and the only one that does a survey
+     * import *and* a drag.
+     *
+     * The import alone — reprojecting a GeoTIFF and tiling it in the browser —
+     * is most of a 30 second budget, which left the ten-step mouse move to
+     * finish in whatever was left. It did, at about 26 seconds, until the suite
+     * grew and a loaded machine tipped it over; the failure then lands on
+     * `mouse.move`, which reads as a broken drag rather than as a clock.
+     *
+     * `slow` rather than a bigger number: it says the test is expensive, which
+     * is the actual fact, instead of picking a figure that has to be revised
+     * every time the fixture grows.
+     */
+    test.slow();
     await openEditor(page, { center: [-93.1, 44.9], zoom: 16 });
     await importSurvey(page);
     await lookAtSurvey(page);
