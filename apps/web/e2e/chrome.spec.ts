@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-import { clickMap, openEditor, place, rail } from './fixtures';
+import { openEditor, place, rail } from './fixtures';
 
 /**
  * Where the chrome is, and what is reachable from it.
@@ -59,7 +59,9 @@ test.describe('chrome layout', () => {
     await place(page, 'Target', 800, 260);
     await page.getByRole('button', { name: 'Add hole' }).click();
 
-    const names = ['Course', 'Holes and layouts', 'Properties', 'Tools'];
+    // The left panel is named for the focus it is showing, which is Play by
+    // default. That is the point of the rename: the panel says what it is.
+    const names = ['Course', 'Play', 'Properties', 'Tools'];
     const boxes = await Promise.all(names.map((name) => box(page, name)));
 
     for (let i = 0; i < boxes.length; i++) {
@@ -77,20 +79,46 @@ test.describe('chrome layout', () => {
   });
 
   /*
-   * The rail is centred on the top edge, between the two columns.
+   * The rail is centred on the top edge, between the two columns, with the
+   * focus switcher stacked above it.
    *
    * "Centred" is the kind of claim that survives a refactor in the comment and
    * not in the CSS — it is one utility class, and the class that breaks it
    * (`left-4`, say) looks just as deliberate.
    */
-  test('the tool rail is centred on the top edge', async ({ page }) => {
+  test('the focus switcher and the tool rail are centred, and stacked', async ({ page }) => {
     await openEditor(page, { zoom: 16 });
 
     const tools = await box(page, 'Tools');
+    const focus = (await page.getByRole('radiogroup', { name: 'Focus' }).boundingBox())!;
     const viewport = page.viewportSize()!;
 
-    expect(tools.y).toBeLessThan(40);
-    expect(Math.abs(tools.x + tools.width / 2 - viewport.width / 2)).toBeLessThan(2);
+    expect(focus.y).toBeLessThan(40);
+    // Stacked, not overlapping: the switcher clears the rail entirely.
+    expect(focus.y + focus.height).toBeLessThanOrEqual(tools.y);
+
+    for (const rect of [tools, focus]) {
+      expect(Math.abs(rect.x + rect.width / 2 - viewport.width / 2)).toBeLessThan(2);
+    }
+  });
+
+  /*
+   * The recenter button stacks under the rail rather than choosing a `top` that
+   * happens to clear it. It used to pick 80px, which cleared a one-panel rail;
+   * the rail grew a second panel and landed on the button, leaving it visible
+   * and unclickable. This asserts the clearance rather than the number.
+   */
+  test('the recenter button clears the rail it sits under', async ({ page }) => {
+    await openEditor(page, { zoom: 16 });
+    await place(page, 'Tee pad', 480, 460);
+    await page.evaluate(() => window.hyzerlinesMap!.setZoom(9));
+
+    const recenter = page.getByRole('button', { name: 'Recenter on course' });
+    await expect(recenter).toBeVisible();
+
+    const tools = await box(page, 'Tools');
+    const rect = (await recenter.boundingBox())!;
+    expect(rect.y).toBeGreaterThanOrEqual(tools.y + tools.height);
   });
 
   /*
@@ -199,74 +227,9 @@ test.describe('finding the course again', () => {
   });
 });
 
-test.describe('holes and layouts', () => {
-  test('the tab badge counts holes, and layouts says it is coming', async ({ page }) => {
-    await openEditor(page, { zoom: 16 });
-
-    const holesTab = page.getByRole('tab', { name: /Holes/ });
-    await expect(holesTab).toHaveAttribute('aria-selected', 'true');
-
-    await page.getByRole('button', { name: 'Add hole' }).click();
-    await expect(holesTab).toContainText('1');
-
-    await page.getByRole('tab', { name: 'Layouts' }).click();
-    await expect(page.getByText(/order a course is played in/)).toBeVisible();
-    // The hole list is gone, not merely scrolled past.
-    await expect(page.getByRole('button', { name: 'Add hole' })).toBeHidden();
-  });
-
-  /*
-   * A hole could only ever be built by drawing both ends first and letting
-   * `Add hole` guess which loose pair you meant. That left the empty hole this
-   * panel can create with no way to be filled, and it is backwards for anyone
-   * who already knows what hole 4 is.
-   */
-  test('a tee drawn while a hole is selected joins that hole', async ({ page }) => {
-    await openEditor(page, { zoom: 16 });
-
-    await page.getByRole('button', { name: 'Add hole' }).click();
-    await expect(page.getByRole('textbox', { name: 'Hole name' })).toBeVisible();
-
-    /*
-     * Tool, click, tool, click — not the `place` helper, which presses Escape
-     * afterwards to shake off the selection a placement normally leaves. Here
-     * there is no such selection to shake off (the hole keeps it, which is the
-     * behaviour under test) and Escape would deselect the hole instead, so the
-     * helper would be testing a gesture nobody makes.
-     */
-    const draw = async (tool: string, x: number, y: number) => {
-      await rail(page).getByRole('button', { name: tool, exact: true }).click();
-      await clickMap(page, x, y);
-    };
-
-    await draw('Tee pad', 480, 460);
-    await draw('Target', 800, 260);
-
-    const hole = await page.evaluate(
-      () => window.hyzerlinesStore!.getSnapshot().course.holes[0]!,
-    );
-    expect(hole.teeIds).toHaveLength(1);
-    expect(hole.targetIds).toHaveLength(1);
-
-    // And the panel is still describing the hole, not the basket just placed.
-    await expect(page.getByRole('textbox', { name: 'Hole name' })).toBeVisible();
-  });
-
-  /*
-   * The other half of that: nothing is claimed when nothing is selected, or
-   * every stray practice basket would be adopted by whichever hole was last
-   * looked at.
-   */
-  test('a tee drawn with nothing selected stays loose', async ({ page }) => {
-    await openEditor(page, { zoom: 16 });
-
-    await page.getByRole('button', { name: 'Add hole' }).click();
-    await page.keyboard.press('Escape');
-    await place(page, 'Tee pad', 480, 460);
-
-    const hole = await page.evaluate(
-      () => window.hyzerlinesStore!.getSnapshot().course.holes[0]!,
-    );
-    expect(hole.teeIds).toHaveLength(0);
-  });
-});
+/*
+ * The Holes and Layouts tabs are gone; the focus does that job now, and does
+ * more of it — the same switch changes the palette and what wins a click, which
+ * a tab could never do. What that strip asserted lives in `focus.spec.ts`: the
+ * panel swaps, and a focus with nothing behind it says so.
+ */

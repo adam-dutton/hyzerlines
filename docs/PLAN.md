@@ -59,7 +59,7 @@ change cannot undo.
 | **Feature coordinates**              | Shown on every feature, and typed in                                          | [#14](https://github.com/adam-dutton/hyzerlines/pull/14) |
 | **Multiple tees, pins and fairways** | The shot matrix as a first-class idea                                         | [#15](https://github.com/adam-dutton/hyzerlines/pull/15) |
 | **Layouts and routing**              | Named layouts, skip, repeat, reorder                                          | **next**                                                 |
-| **Workspaces and focuses**           | Two workspaces, four focuses, analysis as an overlay                          |                                                          |
+| **Workspaces and focuses**           | Four focuses inside Design; workspaces wait for Produce                       |                                                          |
 | **Expanded palette**                 | The Land focus: trees, water, paths, roads, buildings, ground types           |                                                          |
 | **Terrain 2**                        | 3D tilt, canopy height, slope shading                                         |                                                          |
 | **Styles**                           | Named styles in the document; features reference them                         |                                                          |

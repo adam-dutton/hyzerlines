@@ -4,6 +4,7 @@ import {
   assignToHole,
   checkCourse,
   chosenPair,
+  focusOf,
   createFeature,
   createHole,
   findPair,
@@ -12,6 +13,7 @@ import {
   moveFeatureTo,
   shapeFairway,
   type FairwayChoices,
+  type Focus,
   type Feature,
   type FeatureKind,
   type Finding,
@@ -37,6 +39,7 @@ import { LeftPanel } from './chrome/LeftPanel';
 import { useShortcuts } from './keyboard/useShortcuts';
 import type { UnitSystem } from './units';
 import { useCourse } from './document/CourseProvider';
+import { getStoredFocus, storeFocus } from './prefs';
 
 /**
  * No hole picked yet, as one shared value.
@@ -77,6 +80,42 @@ export function CourseEditor({
   const { course, dispatch, documentEpoch, undo, redo, canUndo, canRedo } = useCourse();
 
   const [tool, setTool] = useState<Tool>('select');
+  const [focus, setFocus] = useState<Focus>(getStoredFocus);
+
+  /*
+   * Leaving a focus must not leave a tool armed from it.
+   *
+   * Otherwise switching to Land with the basket tool held would put the next
+   * click's basket on a palette that no longer offers one — a tool the
+   * interface has stopped admitting to, which is exactly the kind of hidden
+   * state a focus is supposed to remove.
+   */
+  const changeFocus = useCallback((next: Focus) => {
+    setFocus(next);
+    storeFocus(next);
+    setTool('select');
+  }, []);
+
+  /**
+   * Arm a drawing tool, moving to the focus that offers it.
+   *
+   * Buttons elsewhere in the interface arm tools — "Draw a tee" in the hole
+   * panel, "Draw a property boundary" in Analysis — and they cannot assume the
+   * rail is currently showing that tool. Setting the tool alone would leave the
+   * map armed with something the palette has stopped admitting to, which is
+   * precisely the hidden state a focus exists to remove.
+   *
+   * Not `changeFocus`, which disarms on purpose. Here the arming *is* the
+   * request, so the focus moves under it rather than cancelling it.
+   */
+  const armKind = useCallback((kind: FeatureKind) => {
+    const owner = focusOf(kind);
+    if (owner) {
+      setFocus(owner);
+      storeFocus(owner);
+    }
+    setTool(kind);
+  }, []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedHoleId, setSelectedHoleId] = useState<string | null>(null);
   /*
@@ -578,6 +617,7 @@ export function CourseEditor({
         derived={derived}
         handles={editing.handles}
         selectable={nav.effective === 'select'}
+        focus={focus}
       />
 
       {/* The zoom region, drawn over the canvas in screen space. Not a map
@@ -599,16 +639,19 @@ export function CourseEditor({
 
       {!hidden && (
         <>
-          <RecenterButton features={course.features} onRecenter={() => frameCourse()} />
-
           <ToolRail
             tool={nav.effective}
             invertZoom={nav.invertZoom}
+            focus={focus}
+            onFocusChange={changeFocus}
             onToolChange={setTool}
             canUndo={canUndo}
             canRedo={canRedo}
             onUndo={undo}
             onRedo={redo}
+            below={
+              <RecenterButton features={course.features} onRecenter={() => frameCourse()} />
+            }
           />
 
           <LeftPanel
@@ -616,13 +659,16 @@ export function CourseEditor({
             units={units}
             findings={findings}
             choices={pairChoices}
+            focus={focus}
+            selectedFeatureId={selectedId}
+            onSelectFeature={selectFeature}
             selectedHoleId={selectedHoleId}
             onSelectHole={selectHoleFromList}
             onOp={handleOp}
             onAddHole={addHole}
             onRevealFinding={reveal}
             onDismissRule={dismissRule}
-            header={coursePanel({ drawBoundary: () => setTool('boundary') })}
+            header={coursePanel({ drawBoundary: () => armKind('boundary') })}
           />
 
           <RightPanel
@@ -637,7 +683,7 @@ export function CourseEditor({
             onSelectFeature={selectFeature}
             onSelectHole={selectHole}
             onSelectPair={choosePair}
-            onDrawFeature={setTool}
+            onDrawFeature={armKind}
             onClearSelection={() => {
               setSelectedId(null);
               setSelectedHoleId(null);

@@ -429,6 +429,33 @@ map are two answers to one question.
 
 ---
 
+## Focus is not in the document
+
+Which kind of work the editor is set up for — `play`, `land`, `routing`,
+`simulate` — is a fact about the person, not about the course, so it lives in
+`localStorage` beside units and chart smoothing rather than in the file. A
+`.hyzer` you send somebody should not arrive with your palette.
+
+It survives a reload for the same reason it is stored at all: somebody who spent
+the afternoon tracing a tree line opens the tab again to keep tracing it.
+
+`FOCUS_DEFINITIONS` in core is the taxonomy — every kind belongs to exactly one
+focus, except `fairway`, which belongs to none because no palette draws one. A
+test asserts that rather than a comment claiming it, so adding a kind without
+placing it fails the build.
+
+A focus changes three things and no more: the tools on the rail, the panel in
+the left column, and which feature answers a click where two overlap. That last
+one is `byFocus`, and it **reorders without filtering** — the losing feature is
+still under the cursor, still selectable, still on the map.
+
+**A focus never hides a feature.** In `land` you see every tee and can click
+one; the palette simply does not offer to draw another. That single rule is the
+difference between a focus and a mode you have to escape to do ordinary work,
+and the browser tests assert it directly.
+
+---
+
 ## Drawing aids are part of the document
 
 ```ts

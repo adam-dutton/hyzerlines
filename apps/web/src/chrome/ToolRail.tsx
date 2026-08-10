@@ -1,5 +1,12 @@
-import { IconButton, Panel } from '@hyzerlines/design';
-import { KIND_DEFINITIONS, type FeatureKind } from '@hyzerlines/core';
+import type { ReactNode } from 'react';
+import { IconButton, Panel, Segmented } from '@hyzerlines/design';
+import {
+  FOCUSES,
+  FOCUS_DEFINITIONS,
+  KIND_DEFINITIONS,
+  type FeatureKind,
+  type Focus,
+} from '@hyzerlines/core';
 
 import type { Tool } from '../map/tools';
 
@@ -210,26 +217,52 @@ function RedoIcon() {
  * `path` takes the slot. It is the other line a course has — the walk from one
  * green to the next tee — and unlike a fairway it genuinely has to be drawn.
  */
+/**
+ * Every kind that has an icon, in the order it should appear.
+ *
+ * The focus decides which of these are shown; this list only decides what can
+ * be shown at all. A kind with no entry here has no tool yet — that is the
+ * expanded-palette milestone, and it is deliberately an exercise in drawing
+ * icons rather than a second argument about which focus owns a drop zone.
+ */
 const TOOLS: { kind: FeatureKind; icon: () => React.ReactElement }[] = [
   { kind: 'tee', icon: TeeIcon },
   { kind: 'target', icon: BasketIcon },
-  { kind: 'path', icon: PathIcon },
   { kind: 'mando', icon: MandoIcon },
   { kind: 'ob', icon: ObIcon },
   { kind: 'boundary', icon: BoundaryIcon },
+  { kind: 'path', icon: PathIcon },
 ];
+
+const FOCUS_OPTIONS = FOCUSES.map((focus) => ({
+  value: focus,
+  label: FOCUS_DEFINITIONS[focus].label,
+  hint: FOCUS_DEFINITIONS[focus].summary,
+}));
 
 const Divider = () => <span className="mx-1 h-7 w-px bg-border-subtle" aria-hidden="true" />;
 
 export function ToolRail({
   tool,
+  focus,
+  onFocusChange,
   invertZoom,
   onToolChange,
   canUndo,
   canRedo,
   onUndo,
   onRedo,
+  below,
 }: {
+  /**
+   * Which kind of work the editor is set up for.
+   *
+   * The switcher lives here, at the left of the palette it governs, because
+   * the palette is the most visible thing it changes. Putting it in the left
+   * column would separate the control from its largest effect.
+   */
+  focus: Focus;
+  onFocusChange: (focus: Focus) => void;
   /**
    * The *effective* tool, not the chosen one.
    *
@@ -245,12 +278,47 @@ export function ToolRail({
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
+  /**
+   * Chrome that stacks beneath the rail, in the same centred column.
+   *
+   * The recenter button lives here rather than positioning itself. It used to
+   * pick a `top` that cleared a one-panel rail, and when the rail grew a second
+   * panel it landed on the button — visible, and no longer clickable. Anything
+   * that has to sit under the rail belongs in the rail's own column, where the
+   * clearance is a fact of the layout rather than a number two files agree on.
+   */
+  below?: ReactNode;
 }) {
+  const kinds = FOCUS_DEFINITIONS[focus].kinds;
+  const tools = TOOLS.filter(({ kind }) => kinds.includes(kind));
+
   return (
     <div
-      className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2"
+      className="pointer-events-none absolute left-1/2 top-4 flex -translate-x-1/2 flex-col items-center gap-2"
       style={{ zIndex: 'var(--hz-z-chrome)' }}
     >
+      {/*
+        The focus switcher is its own panel, above the rail it governs.
+        Not inside it.
+
+        Both panels are centred, and the rail's width changes with the focus —
+        Play offers four tools, Routing none. A switcher sharing that panel
+        would slide sideways every time it was used: click Land, the row
+        shrinks and re-centres, and Routing is no longer where you were about
+        to click. A control must not move because you used it.
+
+        Stacking also says the right thing. The focus governs the tools, so it
+        sits above them.
+      */}
+      <Panel className="flex items-center p-1">
+        <Segmented
+          label="Focus"
+          value={focus}
+          onChange={onFocusChange}
+          options={FOCUS_OPTIONS}
+        />
+      </Panel>
+
       <Panel className="flex items-center gap-0.5" role="toolbar" aria-label="Tools">
         <IconButton
           label="Select"
@@ -274,9 +342,16 @@ export function ToolRail({
           <ZoomIcon out={tool === 'zoom' && invertZoom} />
         </IconButton>
 
-        <Divider />
+        {/*
+          Only the kinds this focus is responsible for.
 
-        {TOOLS.map(({ kind, icon: Icon }) => (
+          The divider goes with them: a focus that draws nothing — routing and
+          simulation, so far — should not leave a rule floating against a gap
+          where its tools would have been.
+        */}
+        {tools.length > 0 && <Divider />}
+
+        {tools.map(({ kind, icon: Icon }) => (
           <IconButton
             key={kind}
             label={KIND_DEFINITIONS[kind].label}
@@ -315,6 +390,8 @@ export function ToolRail({
           <RedoIcon />
         </IconButton>
       </Panel>
+
+      {below}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-import { clickMap, openEditor, rail, waitForSave } from './fixtures';
+import { armTool, clickMap, openEditor, rail, waitForSave } from './fixtures';
 
 /**
  * Drawing, selection and the inspector, through the real UI.
@@ -25,7 +25,7 @@ test.describe('drawing', () => {
   test('places a point feature and opens the inspector on it', async ({ page }) => {
     await openEditor(page);
 
-    await rail(page).getByRole('button', { name: 'Target' }).click();
+    await armTool(page, 'Target');
     await clickMap(page, 500, 400);
 
     // Selecting what was just drawn is the behaviour under test: the next thing
@@ -55,7 +55,7 @@ test.describe('drawing', () => {
     // Path, not Fairway: a fairway is derived from its tee and target and has
     // no tool any more. A path is the other line a course has, and it is the
     // one that still has to be drawn by hand.
-    await rail(page).getByRole('button', { name: 'Path' }).click();
+    await armTool(page, 'Path');
     await clickMap(page, 400, 300);
     await clickMap(page, 500, 350);
     await clickMap(page, 600, 320);
@@ -75,7 +75,7 @@ test.describe('drawing', () => {
   }) => {
     await openEditor(page);
 
-    await rail(page).getByRole('button', { name: 'Out of bounds' }).click();
+    await armTool(page, 'Out of bounds');
     await clickMap(page, 400, 300);
     await clickMap(page, 500, 350);
     await expect(page.getByText(/2 points/)).toBeVisible();
@@ -89,7 +89,7 @@ test.describe('drawing', () => {
   test('a drawn feature is undoable and survives a reload', async ({ page }) => {
     await openEditor(page);
 
-    await rail(page).getByRole('button', { name: 'Target' }).click();
+    await armTool(page, 'Target');
     await clickMap(page, 520, 380);
 
     const undo = page.getByRole('button', { name: 'Undo' });
@@ -141,7 +141,7 @@ test.describe('drawing', () => {
   test('inspector edits are undoable', async ({ page }) => {
     await openEditor(page);
 
-    await rail(page).getByRole('button', { name: 'Target' }).click();
+    await armTool(page, 'Target');
     await clickMap(page, 500, 400);
 
     const name = page.getByRole('textbox', { name: 'Feature name' });
@@ -181,7 +181,7 @@ test.describe('drawing', () => {
   test('a selected feature is actually flagged selected on the map', async ({ page }) => {
     await openEditor(page);
 
-    await rail(page).getByRole('button', { name: 'Target' }).click();
+    await armTool(page, 'Target');
     await clickMap(page, 500, 400);
     await expect(page.getByRole('textbox', { name: 'Feature name' })).toBeVisible();
 
@@ -207,7 +207,7 @@ test.describe('drawing', () => {
   test('deleting removes the feature and closes the inspector', async ({ page }) => {
     await openEditor(page);
 
-    await rail(page).getByRole('button', { name: 'Target' }).click();
+    await armTool(page, 'Target');
     await clickMap(page, 500, 400);
     await expect(page.getByRole('textbox', { name: 'Feature name' })).toBeVisible();
 

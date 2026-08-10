@@ -1,4 +1,4 @@
-import type { Smoothing } from '@hyzerlines/core';
+import { DEFAULT_FOCUS, FOCUSES, type Focus, type Smoothing } from '@hyzerlines/core';
 
 /**
  * Reading preferences: facts about the reader, not about the course.
@@ -53,3 +53,33 @@ export const SMOOTHING_OPTIONS: readonly { value: Smoothing; label: string }[] =
   { value: 'medium', label: 'Medium — 25 m' },
   { value: 'strong', label: 'Strong — 50 m' },
 ];
+
+const FOCUS_KEY = 'hyzerlines.focus';
+
+/**
+ * The focus survives a reload, because the work does.
+ *
+ * A designer who spent the afternoon drawing the tree line closes the tab and
+ * opens it again to keep drawing the tree line. Coming back to the tee palette
+ * every time would be the tool forgetting what you were doing — and unlike the
+ * document, which shot you were inspecting or which units you read in, this
+ * costs nothing to remember and is wrong to guess.
+ *
+ * A preference, not document state: it describes the person, not the course.
+ */
+export function getStoredFocus(): Focus {
+  try {
+    const raw = localStorage.getItem(FOCUS_KEY);
+    return FOCUSES.find((focus) => focus === raw) ?? DEFAULT_FOCUS;
+  } catch {
+    return DEFAULT_FOCUS;
+  }
+}
+
+export function storeFocus(value: Focus): void {
+  try {
+    localStorage.setItem(FOCUS_KEY, value);
+  } catch {
+    /* non-fatal — see units.ts */
+  }
+}

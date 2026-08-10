@@ -1,6 +1,15 @@
 import { test, expect, type Page } from '@playwright/test';
 
-import { clickMap, course, dragCanvas, openEditor, openSection, place, rail } from './fixtures';
+import {
+  armTool,
+  clickMap,
+  course,
+  dragCanvas,
+  openEditor,
+  openSection,
+  place,
+  rail,
+} from './fixtures';
 
 /**
  * Boundaries and acreage, through the real UI.
@@ -13,7 +22,7 @@ import { clickMap, course, dragCanvas, openEditor, openSection, place, rail } fr
 
 /** Draw a rectangular property boundary, leaving it selected. */
 async function drawBoundary(page: Page): Promise<void> {
-  await rail(page).getByRole('button', { name: 'Property boundary', exact: true }).click();
+  await armTool(page, 'Property boundary');
   await clickMap(page, 330, 560);
   await clickMap(page, 900, 560);
   await clickMap(page, 900, 200);
