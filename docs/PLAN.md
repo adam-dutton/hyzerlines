@@ -67,7 +67,7 @@ change cannot undo.
 | **Flight model**                     | The Simulate focus: parametric flight, shot editor, disc database             |                                                          |
 | **Safety**                           | Dispersion envelopes, overlap and proximity rules                             |                                                          |
 | **KML/KMZ interop**                  | Import and export                                                             |                                                          |
-| **Offline and PWA**                  | Tile caching, installable                                                     |                                                          |
+| **Offline and PWA**                  | Installable; tile caching needs a supplier that permits it                    |                                                          |
 | **Field mode**                       | Touch targets, GPS, geotagged photos                                          |                                                          |
 | **Accounts and subscription**        | Accounts, sync, sharing, billing (backend begins here)                        |                                                          |
 | **Engineering packages**             | Deliverables for parks departments and contractors                            | **blocked** — see below                                  |
