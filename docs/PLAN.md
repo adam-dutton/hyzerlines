@@ -1467,9 +1467,63 @@ hobby project is an ordinary user of them; a paid subscription product is a
 different kind of user entirely. The Esri question was already logged as an open
 item in this document — a paid product promotes it from a note to a blocker.
 
-Nobody has read the current terms. **That must happen before money changes
-hands**, and it needs a human: the terms pages block automated fetching. Budget
-for a commercial tile host and a commercial geocoder as a recurring cost.
+### What Esri's terms actually say
+
+Read from Esri's **Master Agreement, Products and Services** (revised 1 August 2025) and the **Product-Specific Terms of Use** (13 November 2025). Two other
+documents — the Master Agreement for Services and the Professional Services
+Agreement — cover Esri performing consulting work and do not apply.
+
+**Commercial use is permitted, and authentication is mandatory.** E300 footnote
+89, which governs ArcGIS Location Platform:
+
+> Customer may distribute directly, or through its sales channels,
+> revenue-generating Value-Added Applications / Customer Application, that access
+> ArcGIS Location Platform through Authentication, to third parties. **All
+> revenue-generating Value-Added Applications / Customer Application are required
+> to use Authentication when accessing ArcGIS Location Platform.**
+
+Master Agreement 1.1 grants rights "in consideration of Customer's payment of all
+applicable fees … as set forth in the Specifications and applicable Ordering
+Documents". There is no subscription and no Ordering Document today, so there is
+no grant today. **The current build is already outside the terms**, before any
+price is charged, and 3.3.a forbids using Data "in any unauthorized service or
+product". The fix is a subscription and an API key on every request.
+
+**Exported maps are permitted — the Produce workspace survives.** Section 3.2.b
+allows representations of Data "in hard-copy or static, electronic format (e.g.,
+PDF, GIF, JPEG, HTML)" and allows including them in "other reports or documents
+containing map images" delivered to third parties, provided an attribution
+statement is affixed. Section 3.2.d restricts _geocoded_ results to
+"noncommercial/non-revenue generating" use; 3.2.b carries no such limit, and the
+drafters added that restriction where they wanted it.
+
+The attribution obligation attaches to the representation, not only to the
+screen. **Every exported file must carry it.** That is a rule of the Produce
+workspace, not a setting in it.
+
+**Offline caching of Esri imagery is prohibited.** Section 3.2.c permits taking
+basemaps offline only through Esri Content Packages, and only "for use with
+licensed ArcGIS Runtime applications and ArcGIS Desktop" — this app is neither.
+It then says plainly: "Customer may not otherwise scrape, download, or store
+Data." E300 footnote 10 repeats it for tiles.
+
+**This changes the Offline and PWA milestone.** Either it ships without a
+basemap, or it ships with a different supplier's imagery. It cannot cache Esri's.
+
+**Cost is consumption-based.** E300 footnote 103 describes pre-paid units, with
+suspension at 100 percent of the allocation and optional billed overages. Basemap
+cost is therefore variable and scales with use, which the price model must
+absorb.
+
+Two items remain open. Section 3.4 flows down additional terms from individual
+data suppliers at `esri.com/legal/third-party-data`; the aerial imagery credited
+on screen — Maxar and Earthstar Geographics — has not been checked there. And
+3.3.h forbids using the Data to train machine-learning systems, which is worth
+knowing before anyone proposes a feature that would.
+
+The other three services — OpenStreetMap tiles, Photon and the OpenMapTiles glyph
+server — have not been read. Budget for a commercial tile host and a commercial
+geocoder as a recurring cost.
 
 ### Where the free line falls
 
