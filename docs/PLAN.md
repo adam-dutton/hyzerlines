@@ -1,10 +1,15 @@
 # Hyzerlines — plan
 
-A public, open-source web app for designing disc golf courses on real terrain.
-Free to use, no account required, funded by donations.
+A web app for designing disc golf courses on real terrain. Free to start, no
+account required to draw.
 
 This document is the roadmap and the record of decisions behind it. It is kept
 current as PRs land.
+
+**Licensing is changing.** The project shipped under AGPL-3.0 through #15 and is
+moving to a proprietary licence for future versions. See
+[Licence and business model](#licence-and-business-model) — including what that
+change cannot undo.
 
 ---
 
@@ -24,7 +29,9 @@ current as PRs land.
 5. **Keyboard first.** One registry declares every shortcut. Displayed keys and
    fired keys cannot diverge.
 6. **Anonymous first.** Land on the URL and start working within seconds. Accounts
-   exist only for sync, sharing and publishing.
+   exist only for sync, sharing and publishing. This survives the move to a paid
+   product: a designer standing in a field with no signal is a real user, and the
+   local-first document is an advantage to keep rather than a gap to close.
 7. **Advisory, never prescriptive.** PDGA checks and par suggestions inform the
    designer. Every one of them is overridable, and overrides are never
    silently reverted.
@@ -33,35 +40,37 @@ current as PRs land.
 
 ## Roadmap
 
-| Milestone                            | Scope                                                                         | Shipped in                                                      |
-| ------------------------------------ | ----------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| **Foundations**                      | Monorepo, design tokens + theming, app shell, MapLibre, keyboard registry, CI | [#1](https://github.com/adam-dutton/hyzerlines/pull/1)          |
-| **Design system**                    | Radix primitives, panel/inspector/tool patterns, component library            | [#2](https://github.com/adam-dutton/hyzerlines/pull/2)          |
-| **Document model**                   | zod schemas, `applyOp` store, undo/redo, IndexedDB, `.hyzer` files            | [#4](https://github.com/adam-dutton/hyzerlines/pull/4)          |
-| **Drawing**                          | Drawing engine, full feature palette, schema-driven inspector                 | [#5](https://github.com/adam-dutton/hyzerlines/pull/5)          |
-| **Holes and par**                    | Hole workflow, distances, PDGA par and advisory checks                        | [#6](https://github.com/adam-dutton/hyzerlines/pull/6)          |
-| **Navigation and panels**            | Navigation tools, docked panels, layout, camera framing                       | [#7](https://github.com/adam-dutton/hyzerlines/pull/7)          |
-| **Model v2**                         | Pairs, layouts, migration                                                     | [#8](https://github.com/adam-dutton/hyzerlines/pull/8)          |
-| **Derived geometry**                 | Tee footprints, pair picker, fairway corridors, vertex editing                | [#9](https://github.com/adam-dutton/hyzerlines/pull/9)          |
-| **Boundaries and acreage**           | Property boundary, PDGA acreage comparison                                    | [#10](https://github.com/adam-dutton/hyzerlines/pull/10)        |
-| **Chrome, rearranged**               | The outside of the panels                                                     | [#11](https://github.com/adam-dutton/hyzerlines/pull/11)        |
-| **Panel insides**                    | The inside of them                                                            | [#12](https://github.com/adam-dutton/hyzerlines/pull/12)        |
-| **Terrain overlays**                 | One style, hillshade, contours                                                | [#13](https://github.com/adam-dutton/hyzerlines/pull/13)        |
-| **Site surveys**                     | Import LiDAR GeoTIFFs, reproject and tile in-browser                          | [#13](https://github.com/adam-dutton/hyzerlines/pull/13)        |
-| **Elevation profiles**               | Per-hole ground profile, and the PDGA elevation term in par                   | [#13](https://github.com/adam-dutton/hyzerlines/pull/13)        |
-| **Feature coordinates**              | Shown on every feature, and typed in                                          | [#14](https://github.com/adam-dutton/hyzerlines/pull/14)        |
-| **Multiple tees, pins and fairways** | The shot matrix as a first-class idea                                         | [#15](https://github.com/adam-dutton/hyzerlines/pull/15) — open |
-| **Layouts and routing**              | Named layouts, skip, repeat, reorder                                          |                                                                 |
-| **Expanded palette**                 | Relief areas, noted areas, drop zones, invert, circles                        |                                                                 |
-| **Terrain 2**                        | 3D tilt, canopy height, slope shading                                         |                                                                 |
-| **Flight model**                     | Parametric flight, shot editor, disc database                                 |                                                                 |
-| **Safety**                           | Dispersion envelopes, overlap and proximity rules                             |                                                                 |
-| **Accounts and sharing**             | Accounts, share links, published course pages (backend begins here)           |                                                                 |
-| **Exports**                          | PDF/PNG maps, tee signs, punch lists                                          |                                                                 |
-| **KML/KMZ interop**                  | Import and export                                                             |                                                                 |
-| **Offline and PWA**                  | Tile caching, installable                                                     |                                                                 |
-| **Field mode**                       | Touch targets, GPS, geotagged photos                                          |                                                                 |
-| **Donations and gallery**            | Open Collective, public gallery, self-host via docker-compose                 |                                                                 |
+| Milestone                            | Scope                                                                         | Shipped in                                               |
+| ------------------------------------ | ----------------------------------------------------------------------------- | -------------------------------------------------------- |
+| **Foundations**                      | Monorepo, design tokens + theming, app shell, MapLibre, keyboard registry, CI | [#1](https://github.com/adam-dutton/hyzerlines/pull/1)   |
+| **Design system**                    | Radix primitives, panel/inspector/tool patterns, component library            | [#2](https://github.com/adam-dutton/hyzerlines/pull/2)   |
+| **Document model**                   | zod schemas, `applyOp` store, undo/redo, IndexedDB, `.hyzer` files            | [#4](https://github.com/adam-dutton/hyzerlines/pull/4)   |
+| **Drawing**                          | Drawing engine, full feature palette, schema-driven inspector                 | [#5](https://github.com/adam-dutton/hyzerlines/pull/5)   |
+| **Holes and par**                    | Hole workflow, distances, PDGA par and advisory checks                        | [#6](https://github.com/adam-dutton/hyzerlines/pull/6)   |
+| **Navigation and panels**            | Navigation tools, docked panels, layout, camera framing                       | [#7](https://github.com/adam-dutton/hyzerlines/pull/7)   |
+| **Model v2**                         | Pairs, layouts, migration                                                     | [#8](https://github.com/adam-dutton/hyzerlines/pull/8)   |
+| **Derived geometry**                 | Tee footprints, pair picker, fairway corridors, vertex editing                | [#9](https://github.com/adam-dutton/hyzerlines/pull/9)   |
+| **Boundaries and acreage**           | Property boundary, PDGA acreage comparison                                    | [#10](https://github.com/adam-dutton/hyzerlines/pull/10) |
+| **Chrome, rearranged**               | The outside of the panels                                                     | [#11](https://github.com/adam-dutton/hyzerlines/pull/11) |
+| **Panel insides**                    | The inside of them                                                            | [#12](https://github.com/adam-dutton/hyzerlines/pull/12) |
+| **Terrain overlays**                 | One style, hillshade, contours                                                | [#13](https://github.com/adam-dutton/hyzerlines/pull/13) |
+| **Site surveys**                     | Import LiDAR GeoTIFFs, reproject and tile in-browser                          | [#13](https://github.com/adam-dutton/hyzerlines/pull/13) |
+| **Elevation profiles**               | Per-hole ground profile, and the PDGA elevation term in par                   | [#13](https://github.com/adam-dutton/hyzerlines/pull/13) |
+| **Feature coordinates**              | Shown on every feature, and typed in                                          | [#14](https://github.com/adam-dutton/hyzerlines/pull/14) |
+| **Multiple tees, pins and fairways** | The shot matrix as a first-class idea                                         | [#15](https://github.com/adam-dutton/hyzerlines/pull/15) |
+| **Layouts and routing**              | Named layouts, skip, repeat, reorder                                          | **next**                                                 |
+| **Workspaces and focuses**           | Two workspaces, four focuses, analysis as an overlay                          |                                                          |
+| **Expanded palette**                 | The Land focus: trees, water, paths, roads, buildings, ground types           |                                                          |
+| **Terrain 2**                        | 3D tilt, canopy height, slope shading                                         |                                                          |
+| **Styles**                           | Named styles in the document; features reference them                         |                                                          |
+| **Produce: maps and signs**          | Course maps, tee signs, print and export                                      |                                                          |
+| **Flight model**                     | The Simulate focus: parametric flight, shot editor, disc database             |                                                          |
+| **Safety**                           | Dispersion envelopes, overlap and proximity rules                             |                                                          |
+| **KML/KMZ interop**                  | Import and export                                                             |                                                          |
+| **Offline and PWA**                  | Tile caching, installable                                                     |                                                          |
+| **Field mode**                       | Touch targets, GPS, geotagged photos                                          |                                                          |
+| **Accounts and subscription**        | Accounts, sync, sharing, billing (backend begins here)                        |                                                          |
+| **Engineering packages**             | Deliverables for parks departments and contractors                            | **blocked** — see below                                  |
 
 ### Why these are named rather than numbered
 
@@ -1300,6 +1309,185 @@ lives on the feature itself.
 **Choosing which shot is "the" shot in the document.** That is what a layout is,
 and putting a per-hole default in the document as well would be two mechanisms
 answering one question. That is **Layouts and routing**, next.
+
+---
+
+## Workspaces and focuses — planned
+
+The interface has grown past what one undifferentiated map editor can hold. The
+palette is fifteen kinds and will roughly double; the left panel is already three
+different panels wearing one hat; and the work still to come — routing, shot
+simulation, printed maps, engineering deliverables — is not more of the same
+editing, it is different _kinds_ of work on one document.
+
+The tempting answer is a mode per activity. That is the wrong shape, and the
+reason is worth writing down.
+
+### Four levels were hiding in one list
+
+The activities that seemed like peers are not peers:
+
+| Level            | What it does                  | Examples                          |
+| ---------------- | ----------------------------- | --------------------------------- |
+| **The document** | Holds everything              | The course                        |
+| **Editors**      | Change the document           | Holes, terrain, layouts           |
+| **Analyses**     | Read it and report            | PDGA checks, shot simulation      |
+| **Outputs**      | Read it and produce artifacts | Maps, signs, engineering packages |
+| **Settings**     | Change how you see it         | Basemap, styles, display options  |
+
+"The course" is not a mode. A mode that edits a name, a location and some notes
+is a properties panel, and it already exists.
+
+Nor are "holes and features" and "terrain and environment" two editors. A tee and
+a tree are both a `Feature`; only `kind` differs. The difference between them is a
+filter on the palette, not a different program.
+
+### The test is whether the work interleaves
+
+A mode you leave and re-enter several times a minute is not a mode, it is an
+obstacle. Sorting the work by that test gives a clean split:
+
+| Pair                    | Interleaves?                                                  |
+| ----------------------- | ------------------------------------------------------------- |
+| Holes ↔ terrain         | Constantly — you place a basket, then draw the tree behind it |
+| Holes ↔ simulation      | Constantly — simulate, move the pin, simulate again           |
+| Holes ↔ layouts         | Sometimes                                                     |
+| Design ↔ maps and signs | No — a separate session, at the end                           |
+| Design ↔ engineering    | No                                                            |
+
+So there are **two hard modes, not seven**.
+
+### Two axes
+
+**Workspace** — changed rarely, replaces the screen.
+
+- **Design** — the map editor.
+- **Produce** — maps, signs and engineering packages.
+
+**Focus** — changed constantly, inside Design. Keeps the map, the camera and the
+selection.
+
+- **Play** — tees, baskets, fairways, mandos, drop zones, OB.
+- **Land** — trees, water, paths, roads, buildings, ground types.
+- **Routing** — layouts and plays.
+- **Simulate** — the shot model.
+
+A focus changes exactly three things: which tools the rail offers, which panel
+the left column shows, and which map layers accept a click.
+
+**A focus never hides a feature.** In Land you still see every tee, and you can
+still click one; the palette simply does not offer to draw another. That is the
+whole difference between a mode that helps and a mode that fights you, and it is
+the single rule this milestone must not break.
+
+The left panel is the strongest argument for focus, stronger than the tool rail:
+a scorecard and a play list are genuinely different panels, and today they would
+have to share one.
+
+### Analysis is a switch, not a focus
+
+PDGA checks are a spell checker. They apply to every focus, so they are an
+overlay with a toggle — findings highlighting the geometry that provoked them,
+rather than a list you read beside the map. Most of the machinery exists:
+`checkCourse` produces the findings and `onRevealFinding` already frames them.
+
+### Styles are the mechanism, not decoration
+
+Per-feature styling in `props` would put two hundred copies of one style in a
+course with two hundred trees. The document gets a **style sheet** instead: named
+styles, referenced by features, the way CSS works.
+
+That buys something less obvious than customisation:
+
+> A tee sign and a construction drawing are the same geometry with a different
+> style sheet.
+
+Styles are therefore what makes the Produce workspace possible at all, which is
+why they sit immediately before it in the roadmap rather than among the
+nice-to-haves. It is a schema change and needs a v3 migration.
+
+### The simulator must show what it does not know
+
+A flight model draws a smooth curve, a smooth curve reads as exact, and a
+designer moves a basket because of it. If the model is a guess, the tool has
+given confident bad advice — the same failure as the survey that reported 22,000
+feet of elevation, and the same principle applies: _numbers must be true_. Where
+the honest answer is a wide area, the simulator draws a wide area, not a line.
+
+### Engineering is blocked, not scheduled
+
+Every other milestone is a view of data the document already holds. This one is
+not. A parks department package needs quantities and dimensions the model has no
+field for — pad thickness and material, path width and surface, the diameter of
+a tree marked for removal.
+
+Worse, nobody here knows what such a package actually contains. Designing it from
+imagination would produce a plausible document that no contractor can build from,
+which is precisely the class of output this project refuses to ship. It stays
+blocked until a real drawing set from a built course is in hand.
+
+---
+
+## Licence and business model
+
+The project shipped under AGPL-3.0 from the first commit through
+[#15](https://github.com/adam-dutton/hyzerlines/pull/15). Future versions move to
+a proprietary licence, with a free tier and a paid subscription.
+
+### What the change can and cannot do
+
+**It can** cover everything from here. The repository has two commit authors —
+the owner, and Claude as co-author on his commits. There are no third-party
+contributors, so there is no copyright to clear and no CLA to chase.
+
+**Dependencies do not block it.** All 297 packages in the tree were checked: 288
+are MIT, ISC, Apache-2.0, BSD, 0BSD or CC0; two are MPL-2.0 (`lightningcss`,
+whose files are not modified); the only AGPL entries are this project's own three
+workspaces. Their attribution notices must still ship with a proprietary build.
+
+**It cannot un-publish what is published.** Everyone holding an AGPL copy keeps
+AGPL rights to that copy, permanently, and may fork from the last AGPL commit.
+Making the repository private changes nothing about that. This is the accepted
+cost, not a problem to solve.
+
+### The real constraint is the map services, not the licence
+
+The application calls five external services:
+
+| Service                                 | Role                                             |
+| --------------------------------------- | ------------------------------------------------ |
+| `server.arcgisonline.com` (Esri)        | The **default** basemap, and the topographic one |
+| `tile.openstreetmap.org`                | A basemap                                        |
+| `photon.komoot.io`                      | Location search                                  |
+| `fonts.openmaptiles.org`                | Map label glyphs                                 |
+| `s3.amazonaws.com/elevation-tiles-prod` | Terrain elevation (open data)                    |
+
+Four of those are free community infrastructure. A free, open, donation-funded
+hobby project is an ordinary user of them; a paid subscription product is a
+different kind of user entirely. The Esri question was already logged as an open
+item in this document — a paid product promotes it from a note to a blocker.
+
+Nobody has read the current terms. **That must happen before money changes
+hands**, and it needs a human: the terms pages block automated fetching. Budget
+for a commercial tile host and a commercial geocoder as a recurring cost.
+
+### Where the free line falls
+
+The mode architecture draws it without any special pleading:
+
+- **Free — the Design workspace.** Play, Land, Routing, Simulate. Local-first, on
+  IndexedDB and `.hyzer` files. A free user costs almost nothing to serve.
+- **Paid — the Produce workspace.** Maps, tee signs, engineering packages. The
+  artifact is the thing worth paying for.
+- **Paid — styles**, because styles are what Produce runs on.
+- **Paid — accounts, sync and sharing**, where the server begins.
+
+Gating follows the architecture instead of fighting it.
+
+**The consequence of keeping the backend late** — a deliberate choice — is that
+the subscription cannot start until that milestone lands. Produce can ship
+earlier, but selling it needs either accounts or some lighter licensing
+mechanism, and that decision is still open.
 
 ---
 
