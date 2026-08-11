@@ -20,17 +20,26 @@ type PanelProps<T extends ElementType> = {
   /**
    * `float` sits directly on imagery — tighter shadow, heavier border.
    * `raised` is for larger surfaces that carry their own content weight.
+   * `solid` is opaque and unblurred, for the one surface that has to win against
+   * imagery at any brightness: the tool palette.
    */
-  elevation?: 'float' | 'raised';
+  elevation?: 'float' | 'raised' | 'solid';
   /** Default padding suits an icon row; set `none` when children own it. */
   padding?: 'none' | 'tight' | 'comfortable';
   className?: string;
   children?: ReactNode;
 } & Omit<ComponentPropsWithoutRef<T>, 'as' | 'className' | 'children'>;
 
+/*
+ * The surface is part of the elevation rather than a fixed base, because `solid`
+ * has to *replace* the translucent fill rather than sit on top of it. Two `bg-*`
+ * utilities on one element is a coin toss decided by CSS source order, not by the
+ * order they appear in the class string.
+ */
 const elevations = {
-  float: 'shadow-float border-border-default',
-  raised: 'shadow-lg border-border-default',
+  float: 'bg-surface-overlay backdrop-blur-md shadow-float border-border-default',
+  raised: 'bg-surface-overlay backdrop-blur-md shadow-lg border-border-default',
+  solid: 'bg-surface-inset shadow-lifted border-transparent',
 } as const;
 
 const paddings = {
@@ -52,7 +61,7 @@ export function Panel<T extends ElementType = 'div'>({
   return (
     <Component
       className={cn(
-        'pointer-events-auto rounded-lg border bg-surface-overlay backdrop-blur-md',
+        'pointer-events-auto rounded-lg border',
         elevations[elevation],
         paddings[padding],
         className,
@@ -74,15 +83,25 @@ export function Panel<T extends ElementType = 'div'>({
  */
 export function ChromeLayer({
   className,
+  style,
   children,
 }: {
   className?: string;
+  /**
+   * Positioning that comes from a shared metric rather than a utility class.
+   *
+   * The shell's insets are derived from panel width and gutter — see the web
+   * app's `layout.ts` — and those are numbers, not Tailwind steps. Merged after
+   * the z-index so a caller can override placement but not the stacking order,
+   * which is centralised for a reason.
+   */
+  style?: React.CSSProperties;
   children: ReactNode;
 }) {
   return (
     <div
       className={cn('pointer-events-none absolute', className)}
-      style={{ zIndex: 'var(--hz-z-chrome)' }}
+      style={{ zIndex: 'var(--hz-z-chrome)', ...style }}
     >
       {children}
     </div>

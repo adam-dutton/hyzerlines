@@ -4,47 +4,154 @@ import {
   FOCUS_DEFINITIONS,
   hasMultipleTees,
   holeName,
+  holeOfFeature,
   scorecard,
   viewHoles,
   type Course,
   type FairwayChoices,
+  type Feature,
   type Finding,
   type Focus,
+  type Hole,
   type Op,
 } from '@hyzerlines/core';
 
-import { formatDistance, type UnitSystem } from '../units';
+import type { UnitSystem } from '../units';
 import { useProfiles } from '../survey/useProfiles';
 import { FindingsList } from './FindingsList';
-import { ParCell } from './ParCell';
-import { LandPanel } from './LandPanel';
+import { FeatureList } from './FeatureList';
+import { HolesGrid } from './HolesGrid';
 import { Scorecard, type CardMode } from './Scorecard';
+import {
+  GAP,
+  GUTTER,
+  HOLES_GRID_MAX_HEIGHT,
+  PANEL_BOTTOM,
+  PANEL_TOP,
+  PANEL_WIDTH,
+} from './layout';
 
 /**
- * The course: its holes, in order, and what is wrong with it.
+ * The course, and what is in whichever part of it you are looking at.
  *
- * A course is a sequence, not a bag of shapes, and this is the only place that
- * reads as one. It doubles as navigation — selecting a hole frames it, which is
- * how you move around a course once there are eighteen of them.
+ * Two sections under one roof, split by a hairline, in Figma's pages-over-layers
+ * arrangement: the holes on top choose a context, and the features below show
+ * what is in it. That is the whole structure, and it replaces a tab strip that
+ * was making one column mean three different things.
  *
- * Docked to the left edge as a single column rather than two floating cards.
- * The findings used to sit in the bottom-right corner, which put them next to
- * the zoom controls and nowhere near the holes they were about; here they are
- * beneath the list they annotate, and the count is readable without opening
- * anything.
+ * ## The scope
  *
- * ## The focus decides what this panel is
+ * A hole selected in the grid scopes the features to that hole. No hole selected
+ * scopes them to the course, which is a real place features live — a property
+ * line, a road running past four holes, a practice basket — and the model has
+ * always said so: `holeId` is nullable, and null means course-level.
  *
- * It used to be a tab strip: Holes and Layouts, two readings of one course. The
- * focus does that job now and does it better, because the same switch also
- * changes the palette and what wins a click — a tab that changed only the panel
- * was solving a third of the problem.
+ * The scope is stated as a pill in the Features header rather than left implicit
+ * in which chip happens to be lit. There was briefly a "Whole course" row above
+ * the holes to get back out, which became redundant the moment the pill could
+ * clear itself: two controls for one piece of state, and the row was costing a
+ * line of a panel that needed the room.
  *
- * A focus with nothing behind it still renders, and says so in a sentence. That
- * is inherited from the empty Layouts tab and the reasoning has not changed: a
- * control that vanishes until its milestone lands leaves the structure
- * invisible exactly when somebody is trying to learn it.
+ * ## What the focus changes here
+ *
+ * Everything. `play` is holes and their features. `land` has no holes to show — a
+ * pond and forty trees are not a sequence — so it drops the grid and the feature
+ * list becomes the whole panel. That is the strongest argument for the focus
+ * mechanism: a scorecard and an inventory are different answers, and without a
+ * focus they would have to share one column.
+ *
+ * A focus with nothing behind it renders a frame that names itself, inherited
+ * from the empty Layouts tab this replaced. A control that vanishes until its
+ * milestone lands leaves the structure invisible exactly when somebody is trying
+ * to learn it.
  */
+
+/**
+ * Which hole a feature is in, by either of the two routes the model has.
+ *
+ * A hole owns its tees and targets by *listing* them — `hole.teeIds`,
+ * `hole.targetIds` — and `holeOfFeature` resolves that, fairways included, by
+ * looking through the pairs. Everything else carries its own `holeId`, which is
+ * scope rather than membership: an OB line belonging to hole 4 is a different
+ * claim from a tee being one of hole 4's tees.
+ *
+ * Both have to be consulted, and reading only one is a wrong answer rather than a
+ * partial one. `addHole` claims a loose tee and basket by putting their ids in the
+ * hole's arrays and never touches `holeId`, so a `holeId`-only filter shows a
+ * freshly built hole as empty *and* files its tee under the whole course — the
+ * feature list contradicting the hole panel about the same two shapes.
+ */
+const holeIdOf = (course: Course, feature: Feature): string | null =>
+  holeOfFeature(course, feature.id)?.id ?? feature.holeId;
+
+/** A section heading inside the panel: a title, a count, and an action. */
+function SectionHeader({
+  title,
+  count,
+  children,
+  action,
+}: {
+  title: string;
+  count?: number;
+  /** Sits after the count — the scope pill, in practice. */
+  children?: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex h-9 shrink-0 items-center gap-2 pl-2.5 pr-1.5">
+      <h2 className="shrink-0 text-xs font-semibold text-text-primary">{title}</h2>
+      {count !== undefined && (
+        <span className="shrink-0 text-xs tabular-nums text-text-muted">{count}</span>
+      )}
+      {children}
+      {action && <span className="ml-auto flex shrink-0 items-center gap-1">{action}</span>}
+    </div>
+  );
+}
+
+/**
+ * Which scope the features below are in, and the way back out of it.
+ *
+ * Reads as a value rather than as a button, because that is what it is: a
+ * statement of where you are, carrying an affordance to leave. The ✕ exists only
+ * when there is somewhere to go — in course scope the pill is a plain label, and
+ * a clear button that clears nothing is a control lying about being live.
+ */
+function ScopePill({ hole, onClear }: { hole: Hole | null; onClear: () => void }) {
+  if (!hole) {
+    return (
+      <span className="flex h-5 min-w-0 items-center rounded-full bg-surface-field px-2 text-2xs text-text-muted">
+        Whole course
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex h-5 min-w-0 items-center gap-0.5 rounded-full bg-accent-soft pl-2 pr-0.5 text-2xs text-text-accent">
+      <span className="min-w-0 truncate">{holeName(hole)}</span>
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label="Show the whole course"
+        title="Show the whole course"
+        className={cn(
+          'grid h-4 w-4 shrink-0 place-items-center rounded-full',
+          'transition-colors duration-fast hover:bg-surface-hover hover:text-text-primary',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+        )}
+      >
+        <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden="true">
+          <path
+            d="M1 1l6 6M7 1L1 7"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
+    </span>
+  );
+}
 
 export function LeftPanel({
   course,
@@ -52,15 +159,16 @@ export function LeftPanel({
   findings,
   choices,
   focus,
+  hiddenIds,
   selectedFeatureId,
   onSelectFeature,
+  onToggleHidden,
   selectedHoleId,
   onSelectHole,
   onOp,
   onAddHole,
   onRevealFinding,
   onDismissRule,
-  header,
 }: {
   course: Course;
   units: UnitSystem;
@@ -75,22 +183,17 @@ export function LeftPanel({
   choices: FairwayChoices;
   /** Which kind of work the editor is set up for. Decides this panel's content. */
   focus: Focus;
+  /** Features the designer has hidden for this session. See `FeatureList`. */
+  hiddenIds: ReadonlySet<string>;
   selectedFeatureId: string | null;
   onSelectFeature: (id: string) => void;
+  onToggleHidden: (id: string) => void;
   selectedHoleId: string | null;
   onSelectHole: (id: string | null) => void;
   onOp: (op: Op) => void;
   onAddHole: () => void;
   onRevealFinding: (finding: Finding) => void;
   onDismissRule: (ruleId: string) => void;
-  /**
-   * The course panel, stacked above the holes.
-   *
-   * Passed in rather than rendered here so that this column owns the layout —
-   * the two panels have to share a width and a gap, and that is a fact about
-   * the column, not about either card.
-   */
-  header: ReactNode;
 }) {
   // Playing order, not creation order.
   const holes = useMemo(
@@ -98,178 +201,216 @@ export function LeftPanel({
     [course.holes],
   );
 
-  // Elevation reaches the scorecard the same way it reaches the hole panel, so
-  // a par that moved because of a hill moves in both places or in neither.
+  // Elevation reaches the grid the same way it reaches the hole panel, so a par
+  // that moved because of a hill moves in both places or in neither.
   const { elevations } = useProfiles();
   const views = useMemo(
     () => viewHoles(course, holes, elevations, choices),
     [course, holes, elevations, choices],
   );
 
-  /*
-   * The card, which replaces the list only when there is more than one tee.
-   *
-   * A course nobody has classified has one column, and the plain list already
-   * showed that correctly — a table with a single column would be new machinery
-   * for an unchanged answer, and it would cost the inline par control, which is
-   * the fastest way to fix a par that exists.
-   *
-   * Asked before built, so the single-tee course does not pay for a card it
-   * will not draw.
-   */
   const definition = FOCUS_DEFINITIONS[focus];
+  const scopedHole = holes.find((hole) => hole.id === selectedHoleId) ?? null;
+
+  /*
+   * The card, which the grid gives way to only when there is more than one tee.
+   *
+   * A three-tee hole is three different lengths and a chip has room for one
+   * number, so the grid would have to pick one and be silently wrong about the
+   * other two — which is the exact failure the card exists to fix. On a
+   * multi-tee course the card replaces the grid rather than sitting beside it.
+   *
+   * Asked before built, so a single-tee course does not pay for a card it will
+   * not draw.
+   */
   const multipleTees = hasMultipleTees(course);
   const card = useMemo(
     () => (multipleTees ? scorecard(course, holes, { elevations, choices }) : null),
     [multipleTees, course, holes, elevations, choices],
   );
 
-  /*
-   * Which number the card's cells hold.
-   *
-   * A printed card carries a length row and a par row for every hole, which
-   * needs twice the width this panel has. One number per cell and a control to
-   * say which is the honest trade; par is the mode you switch to when you are
-   * filling the card in rather than reading it.
-   */
   const [cardMode, setCardMode] = useState<CardMode>('length');
+
+  /*
+   * What the feature list holds, and in what order the groups come.
+   *
+   * Scoped by hole when one is selected and by the course otherwise, then
+   * narrowed to the kinds this focus is responsible for. Both halves matter: the
+   * scope answers "which part of the course" and the focus answers "which kind
+   * of work" — a pond belongs to the land whether or not hole 4 is selected.
+   */
+  /*
+   * The kinds the list shows, and the order its groups come in.
+   *
+   * The focus's own kinds, plus `fairway` in Play — which is not in any focus
+   * because no palette draws one, and that is a statement about *tools* rather
+   * than about what a hole contains. A shaped fairway is a real feature with real
+   * properties, and leaving it out of the inventory would make the list disagree
+   * with the hole panel, which has always listed it. Last, because it is the thing
+   * between the two ends above it.
+   */
+  const order = useMemo(
+    () => (focus === 'play' ? [...definition.kinds, 'fairway' as const] : definition.kinds),
+    [focus, definition.kinds],
+  );
+
+  const scopedFeatures = useMemo<readonly Feature[]>(() => {
+    const wanted = scopedHole?.id ?? null;
+    return course.features.filter(
+      (feature) => holeIdOf(course, feature) === wanted && order.includes(feature.kind),
+    );
+  }, [course, scopedHole, order]);
+
+  const showHoles = focus === 'play';
 
   return (
     <div
-      /*
-       * Bounded to the viewport and scrolling internally, so a 27-hole course
-       * cannot push the findings off the bottom of the screen. The gap at the
-       * bottom clears the attribution line.
-       */
-      className="pointer-events-none absolute bottom-10 left-4 top-4 flex w-72 flex-col gap-2 overflow-hidden"
-      style={{ zIndex: 'var(--hz-z-chrome)' }}
+      className="pointer-events-none absolute flex flex-col overflow-hidden"
+      style={{
+        top: PANEL_TOP,
+        left: GUTTER,
+        /*
+         * Full height. The tool bar and the readouts sit in the channel between
+         * the two columns, so there is nothing down here to clear — and the
+         * column needs every pixel, because eighteen holes and their features
+         * share it.
+         *
+         * Bounded rather than sized to content, so a course with more features
+         * than fit scrolls inside its panel instead of running off the screen.
+         */
+        bottom: PANEL_BOTTOM,
+        width: PANEL_WIDTH,
+        gap: GAP,
+        zIndex: 'var(--hz-z-chrome)',
+      }}
     >
-      {header}
-
       <Panel
         as="section"
         elevation="raised"
         padding="none"
-        /*
-         * Sized to its content, not to the column.
-         *
-         * It used to take every pixel the course panel and findings did not,
-         * which left a one-hole course with a card of empty space below its
-         * single row. `min-h-0` without `flex-1` lets it shrink when a 27-hole
-         * course needs more room than there is — the list scrolls inside it —
-         * while never growing past what it actually holds.
-         */
         className="flex min-h-0 flex-col overflow-hidden"
         aria-label={definition.label}
       >
-        <h2 className="flex shrink-0 items-center gap-2 border-b border-border-subtle px-3 py-1.5 text-2xs font-medium uppercase tracking-wide text-text-muted">
-          {definition.label}
-        </h2>
-
-        {/*
-          A focus that has no milestone behind it says so, in its own words.
-          Hiding it until the work lands would leave the structure invisible
-          exactly when somebody is trying to learn it — the same reasoning that
-          stood the Layouts tab up empty, which this replaces.
-        */}
         {!definition.ready ? (
-          <p className="px-3 py-3 text-2xs leading-4 text-text-muted">
-            {definition.summary} Coming in a later release.
-          </p>
-        ) : focus === 'land' ? (
-          <LandPanel
-            course={course}
-            selectedId={selectedFeatureId}
-            onSelectFeature={onSelectFeature}
-          />
+          <>
+            <SectionHeader title={definition.label} />
+            <p className="px-2.5 pb-3 text-2xs leading-4 text-text-muted">
+              {definition.summary} Coming in a later release.
+            </p>
+          </>
         ) : (
           <>
-            <div className="flex shrink-0 items-center justify-between px-3 py-1.5">
-              <span className="text-2xs text-text-muted">
-                {holes.length === 0 ? 'None yet' : 'In playing order'}
-              </span>
-              {/* Only with the card, because the list has its par control in
-                    every row already — there is nothing to switch to. */}
-              {card && (
-                <Segmented
-                  label="Card shows"
-                  value={cardMode}
-                  onChange={setCardMode}
-                  options={[
-                    { value: 'length', label: 'Length' },
-                    { value: 'par', label: 'Par' },
-                  ]}
-                  className="ml-auto mr-1"
-                />
-              )}
-              <IconButton label="Add hole" size="sm" tooltipSide="right" onClick={onAddHole}>
-                <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-                  <path
-                    d="M6 2v8M2 6h8"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </IconButton>
-            </div>
-
-            {holes.length === 0 ? (
-              <p className="px-3 pb-3 text-2xs leading-4 text-text-muted">
-                Add a hole, then draw its tee and basket — anything you place while a hole is
-                selected joins it.
-              </p>
-            ) : card ? (
-              <Scorecard
-                course={course}
-                card={card}
-                units={units}
-                mode={cardMode}
-                selectedHoleId={selectedHoleId}
-                onSelectHole={onSelectHole}
-                onOp={onOp}
-              />
-            ) : (
-              <ul className="min-h-0 flex-1 overflow-y-auto">
-                {holes.map((hole) => {
-                  const view = views.get(hole.id) ?? null;
-                  const selected = hole.id === selectedHoleId;
-                  return (
-                    <li
-                      key={hole.id}
-                      className={cn(
-                        'flex items-center gap-2 border-t border-border-subtle pr-2',
-                        'transition-colors duration-fast hover:bg-surface-hover',
-                        selected && 'bg-surface-selected',
+            {showHoles && (
+              <>
+                <SectionHeader
+                  title="Holes"
+                  count={holes.length}
+                  action={
+                    <>
+                      {/* Only with the card, because the grid has no second
+                          number to switch to — it prints par and length at
+                          once. */}
+                      {card && (
+                        <Segmented
+                          label="Card shows"
+                          value={cardMode}
+                          onChange={setCardMode}
+                          options={[
+                            { value: 'length', label: 'Length' },
+                            { value: 'par', label: 'Par' },
+                          ]}
+                        />
                       )}
-                    >
-                      {/* The row selects; the par control inside it must not,
-                            so they are siblings rather than nested — a select
-                            inside a button is invalid and swallows its own
-                            clicks. */}
-                      <button
-                        type="button"
-                        onClick={() => onSelectHole(selected ? null : hole.id)}
-                        className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                      <IconButton
+                        label="Add hole"
+                        size="sm"
+                        tooltipSide="right"
+                        onClick={onAddHole}
                       >
-                        <span className="w-5 shrink-0 font-mono text-2xs tabular-nums text-text-muted">
-                          {hole.number}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-xs text-text-primary">
-                          {holeName(hole)}
-                        </span>
-                        <span className="shrink-0 font-mono text-2xs tabular-nums text-text-secondary">
-                          {view?.measurement.effective == null
-                            ? '—'
-                            : formatDistance(view.measurement.effective, units)}
-                        </span>
-                      </button>
-                      <ParCell course={course} hole={hole} view={view} onOp={onOp} />
-                    </li>
-                  );
-                })}
-              </ul>
+                        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                          <path
+                            d="M6 2v8M2 6h8"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      </IconButton>
+                    </>
+                  }
+                />
+
+                {holes.length === 0 ? (
+                  <p className="px-2.5 pb-3 text-2xs leading-4 text-text-muted">
+                    Add a hole, then draw its tee and basket — anything you place while a hole
+                    is selected joins it.
+                  </p>
+                ) : card ? (
+                  <Scorecard
+                    course={course}
+                    card={card}
+                    units={units}
+                    mode={cardMode}
+                    selectedHoleId={selectedHoleId}
+                    onSelectHole={onSelectHole}
+                    onOp={onOp}
+                  />
+                ) : (
+                  /*
+                   * Its own height, up to six rows, and it does not give it up.
+                   *
+                   * `shrink-0` is load-bearing: without it the features list
+                   * below — which is `flex-1`, because it should take whatever is
+                   * left — wins the flex negotiation and squeezes the grid. The
+                   * cap is `HOLES_GRID_MAX_HEIGHT`, in pixels, for the reason
+                   * recorded there: a percentage could not work against a panel
+                   * the grid is itself sizing.
+                   */
+                  <div
+                    className="flex min-h-0 shrink-0 flex-col"
+                    style={{ maxHeight: HOLES_GRID_MAX_HEIGHT }}
+                  >
+                    <HolesGrid
+                      holes={holes}
+                      views={views}
+                      units={units}
+                      selectedHoleId={selectedHoleId}
+                      onSelectHole={onSelectHole}
+                    />
+                  </div>
+                )}
+
+                <div className="mx-2.5 h-px shrink-0 bg-border-subtle" aria-hidden="true" />
+              </>
             )}
+
+            {/*
+              No add button on this header, and the design's one is deliberately
+              dropped. A feature is drawn rather than created — there is no
+              default position for a basket — so "add" has no meaning that does
+              not reduce to "arm a tool", which is what the palette is. A + that
+              only pointed at the tool bar would be a second, worse tool bar.
+            */}
+            <SectionHeader title="Features">
+              <ScopePill hole={scopedHole} onClear={() => onSelectHole(null)} />
+            </SectionHeader>
+
+            <FeatureList
+              features={scopedFeatures}
+              order={order}
+              units={units}
+              selectedId={selectedFeatureId}
+              hiddenIds={hiddenIds}
+              onSelect={onSelectFeature}
+              onToggleHidden={onToggleHidden}
+              empty={
+                scopedHole
+                  ? `Nothing on ${holeName(scopedHole)} yet. Draw a tee and a basket — anything placed while a hole is selected joins it.`
+                  : focus === 'land'
+                    ? 'Nothing traced yet. Draw the property line first — it is what the acreage check and the site analysis measure against.'
+                    : 'Nothing at the course level. A feature drawn with no hole selected lands here.'
+              }
+            />
           </>
         )}
       </Panel>

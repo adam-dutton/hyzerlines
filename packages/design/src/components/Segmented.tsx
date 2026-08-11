@@ -13,6 +13,19 @@ interface SegmentedProps<T extends string> {
   onChange: (value: T) => void;
   /** Required: the group needs an accessible name of its own. */
   label: string;
+  /**
+   * `ghost` tints the selected option and leaves the rest bare. `solid` sets the
+   * whole group in a recessed track and fills the selected option.
+   *
+   * The distinction is how much of the interface the choice governs. A control
+   * that switches which number a cell holds is incidental, and `ghost` keeps it
+   * quiet. The focus switcher changes the palette, the left panel and what wins
+   * a click — it is the most consequential control on screen, and in the top bar
+   * it has to hold its own against a solid `Share` button two columns over.
+   */
+  variant?: 'ghost' | 'solid';
+  /** `md` is for the top bar, where the segments are a primary target. */
+  size?: 'sm' | 'md';
   className?: string;
 }
 
@@ -32,13 +45,21 @@ export function Segmented<T extends string>({
   value,
   onChange,
   label,
+  variant = 'ghost',
+  size = 'sm',
   className,
 }: SegmentedProps<T>) {
   return (
     <div
       role="radiogroup"
       aria-label={label}
-      className={cn('flex items-center gap-0.5', className)}
+      className={cn(
+        'flex items-center',
+        // The track is what makes a solid group read as one control rather than
+        // as a row of buttons that happen to be adjacent.
+        variant === 'solid' ? 'gap-0.5 rounded-lg bg-surface-hover p-0.5' : 'gap-0.5',
+        className,
+      )}
     >
       {options.map((option) => {
         const selected = option.value === value;
@@ -71,11 +92,16 @@ export function Segmented<T extends string>({
               if (sibling instanceof HTMLElement) sibling.focus();
             }}
             className={cn(
-              'rounded-md px-2.5 py-1 text-2xs font-medium',
-              'transition-colors duration-fast',
+              'rounded-md transition-colors duration-fast',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+              size === 'md' ? 'px-3 py-1 text-xs' : 'px-2.5 py-1 text-2xs',
+              // Weight carries the selection as well as colour does, so the
+              // control still reads as chosen in a screenshot printed in grey.
+              selected ? 'font-semibold' : 'font-medium',
               selected
-                ? 'bg-accent-soft text-text-accent'
+                ? variant === 'solid'
+                  ? 'bg-accent-solid text-accent-text-on-solid'
+                  : 'bg-accent-soft text-text-accent'
                 : 'text-text-muted hover:bg-surface-hover hover:text-text-primary',
             )}
           >

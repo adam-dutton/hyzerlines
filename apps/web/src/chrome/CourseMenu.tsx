@@ -3,17 +3,19 @@ import { IconButton, Menu, MenuItem, MenuSeparator, type ThemeName } from '@hyze
 import { SOURCE_URL } from './Attribution';
 
 /**
- * Everything that used to be scattered across the top bar's three cards.
+ * What has nowhere better to be.
  *
- * The theme toggle, the shortcuts overlay, and open and save — islands of
- * chrome spanning the top of the screen, none of them used more than a few
- * times a session, all of them permanently on top of the land. One button on
- * the course panel's header holds the lot.
+ * That is the whole membership rule, and it is why this keeps shrinking. Undo and
+ * redo left for the top bar's own row, because they are used constantly and
+ * mid-gesture. Units and elevation smoothing left for Settings, next to the other
+ * display preferences, because that is what they are. Open and save left most
+ * recently: they are `Import` and `Export` in the bar now, named as buttons
+ * because a designer reaches for them by name rather than hunting a menu.
  *
- * What is here is what has nowhere better to be. Undo and redo went into the
- * tool rail, because they are used constantly and mid-gesture. Units went into
- * the Settings section below, next to the other display preferences, because
- * that is what they are.
+ * What is left is a theme toggle, the shortcuts overlay and the source link —
+ * three things used a few times a session, which is exactly what a menu is for.
+ * When one of them earns a button it should take one, and this should get smaller
+ * again.
  */
 
 function MenuIcon() {
@@ -74,36 +76,6 @@ function KeyboardIcon() {
   );
 }
 
-function DownloadIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 15 15" aria-hidden="true">
-      <path
-        d="M7.5 1.8v7.4M4.6 6.4l2.9 2.9 2.9-2.9M2.5 12.2h10"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function OpenIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 15 15" aria-hidden="true">
-      <path
-        d="M7.5 9.4V2M4.6 4.8 7.5 2l2.9 2.8M2.5 12.2h10"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function SourceIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 15 15" aria-hidden="true">
@@ -123,34 +95,21 @@ export function CourseMenu({
   theme,
   onToggleTheme,
   onShowShortcuts,
-  onOpen,
-  onSave,
 }: {
   theme: ThemeName;
   onToggleTheme: () => void;
   onShowShortcuts: () => void;
-  onOpen: () => void;
-  onSave: () => void;
 }) {
   return (
     <Menu
       label="Course menu"
       align="end"
       trigger={
-        <IconButton label="Menu" size="sm" tooltipSide="bottom">
+        <IconButton label="Menu" tooltipSide="bottom">
           <MenuIcon />
         </IconButton>
       }
     >
-      <MenuItem onSelect={onOpen} icon={<OpenIcon />}>
-        Open a course file
-      </MenuItem>
-      <MenuItem onSelect={onSave} icon={<DownloadIcon />}>
-        Save to a file
-      </MenuItem>
-
-      <MenuSeparator />
-
       <MenuItem
         onSelect={onToggleTheme}
         command="view.toggleTheme"

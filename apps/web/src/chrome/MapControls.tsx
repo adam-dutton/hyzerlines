@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { IconButton, Panel, Popover, Slider, Switch, cn } from '@hyzerlines/design';
 import type { OverlayAmount, Overlays, OverlaySwitch } from '@hyzerlines/core';
 
@@ -7,14 +8,23 @@ import { OVERLAY_DEFINITIONS } from '../map/terrain';
 import { SurveySection } from './SurveySection';
 import type { SurveyState } from '../survey/useSurvey';
 import type { UnitSystem } from '../units';
+import { COLUMN, READOUT_BOTTOM } from './layout';
 
 /**
  * Camera controls, and the choice of what is under them.
  *
- * Vertical, in the corner, in the order the eye reads them: which imagery,
- * then which way is up, then how close. Horizontal versions of this cost a
- * strip of the map's widest dimension for no reason — a corner is dead space
- * either way, and stacking uses it.
+ * A row at the bottom right of the free channel, in the order the eye reads
+ * them: which imagery, then which way is up, then how close.
+ *
+ * It was a vertical stack in the corner, on the argument that a corner is dead
+ * space either way and stacking uses it. The corner is not dead space any more —
+ * the panel columns run the full height of the viewport — so a stack there would
+ * be a stack underneath the inspector. What is genuinely free is the channel
+ * between the columns, and that channel is wide and short, which is a row.
+ *
+ * Horizontal also matches the tool bar directly above it: two clusters on the
+ * same axis in the same channel read as one band of map controls rather than as
+ * unrelated cards.
  *
  * The zoom level readout is gone. `z16.4` is a number about the tile pyramid,
  * not about the land: it cannot be compared to anything a designer cares
@@ -128,10 +138,21 @@ export function MapControls({
   survey,
   onBasemapChange,
   onOverlaysChange,
+  recenter,
 }: {
   basemapId: string;
   overlays: Overlays;
   units: UnitSystem;
+  /**
+   * The recenter affordance, which appears only when the course is off screen.
+   *
+   * Passed in rather than positioned by itself. It used to pick a `top` that
+   * cleared a tool rail one panel tall, and when the rail grew a second panel it
+   * landed on the button — visible, and no longer clickable. Anything that has to
+   * share this cluster's line belongs inside the cluster, where the clearance is
+   * a fact of the layout rather than a number two files agree on.
+   */
+  recenter?: ReactNode;
   /**
    * The imported-elevation controls, passed whole.
    *
@@ -152,9 +173,15 @@ export function MapControls({
 
   return (
     <div
-      className="pointer-events-none absolute bottom-4 right-4 flex flex-col items-end gap-2"
-      style={{ zIndex: 'var(--hz-z-chrome)' }}
+      className="pointer-events-none absolute flex items-center gap-2"
+      style={{
+        right: COLUMN,
+        bottom: READOUT_BOTTOM,
+        zIndex: 'var(--hz-z-chrome)',
+      }}
     >
+      {recenter}
+
       {/* Its own panel, deliberately: what you are looking at and where the
           camera is pointed are different questions, and a shared card would
           make the layers button read as a third zoom control. */}
@@ -169,7 +196,7 @@ export function MapControls({
         <Popover
           label="Layers"
           trigger={
-            <IconButton label="Layers" command="view.toggleBasemap" tooltipSide="left">
+            <IconButton label="Layers" command="view.toggleBasemap" tooltipSide="top">
               <LayersIcon />
             </IconButton>
           }
@@ -301,11 +328,11 @@ export function MapControls({
         </Popover>
       </Panel>
 
-      <Panel className="flex flex-col items-center gap-0.5">
+      <Panel className="flex items-center gap-0.5">
         {/* Reset north. Disabled when already north-up, so it reads as state. */}
         <IconButton
           label="Reset bearing to north"
-          tooltipSide="left"
+          tooltipSide="top"
           disabled={view.bearing === 0 && view.pitch === 0}
           onClick={() => map?.easeTo({ bearing: 0, pitch: 0, duration: 300 })}
         >
@@ -320,12 +347,26 @@ export function MapControls({
           </svg>
         </IconButton>
 
-        <span className="my-0.5 h-px w-5 bg-border-subtle" aria-hidden="true" />
+        <span className="mx-0.5 h-5 w-px bg-border-subtle" aria-hidden="true" />
+
+        {/* Out before in, reading left to right as a scale that grows rightwards.
+            The vertical stack had them the other way round, where downwards was
+            the direction of "less". */}
+        <IconButton
+          label="Zoom out"
+          command="view.zoomOut"
+          tooltipSide="top"
+          onClick={() => map?.zoomOut()}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+            <path d="M2 7h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </IconButton>
 
         <IconButton
           label="Zoom in"
           command="view.zoomIn"
-          tooltipSide="left"
+          tooltipSide="top"
           onClick={() => map?.zoomIn()}
         >
           <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
@@ -335,17 +376,6 @@ export function MapControls({
               strokeWidth="1.5"
               strokeLinecap="round"
             />
-          </svg>
-        </IconButton>
-
-        <IconButton
-          label="Zoom out"
-          command="view.zoomOut"
-          tooltipSide="left"
-          onClick={() => map?.zoomOut()}
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
-            <path d="M2 7h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
         </IconButton>
       </Panel>

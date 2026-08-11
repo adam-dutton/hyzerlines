@@ -84,7 +84,7 @@ export function ParCell({
           );
         }}
         className={cn(
-          'rounded bg-transparent px-1 py-0.5 font-mono text-xs tabular-nums',
+          'rounded bg-transparent px-1 py-0.5 text-xs tabular-nums',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
           overridden ? 'text-text-accent' : 'text-text-primary',
         )}

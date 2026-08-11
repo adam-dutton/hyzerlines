@@ -61,7 +61,7 @@ export function Scorecard({
   onSelectHole: (id: string | null) => void;
   onOp: (op: Op) => void;
 }) {
-  const cell = 'w-11 text-right font-mono text-2xs tabular-nums';
+  const cell = 'w-11 text-right text-2xs tabular-nums';
   const suffix = units === 'metric' ? 'm' : 'ft';
 
   /** Bare, because the unit is on the total. See the note above. */
@@ -107,7 +107,7 @@ export function Scorecard({
                   selected && 'bg-surface-selected',
                 )}
               >
-                <td className="w-5 py-1.5 pl-3 font-mono text-2xs tabular-nums text-text-muted">
+                <td className="w-5 py-1.5 pl-3 text-2xs tabular-nums text-text-muted">
                   {hole.number}
                 </td>
                 <td className="max-w-0 truncate pr-1 text-xs text-text-primary">

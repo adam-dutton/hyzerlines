@@ -279,14 +279,14 @@ export function ElevationProfileChart({
               with itself.
             */}
             <dt className="text-2xs text-text-secondary">Net change</dt>
-            <dd className="font-mono text-2xs tabular-nums text-text-primary">
+            <dd className="text-2xs tabular-nums text-text-primary">
               {formatChange(profile.netGain, units)}
             </dd>
           </div>
         )}
         <div className="flex justify-between gap-3">
           <dt className="text-2xs text-text-secondary">Climb and descent</dt>
-          <dd className="font-mono text-2xs tabular-nums text-text-primary">
+          <dd className="text-2xs tabular-nums text-text-primary">
             {formatChange(profile.totalClimb, units)} /{' '}
             {formatChange(-profile.totalDescent, units)}
           </dd>
@@ -294,7 +294,7 @@ export function ElevationProfileChart({
         {profile.steepestGrade !== null && (
           <div className="flex justify-between gap-3">
             <dt className="text-2xs text-text-secondary">Steepest grade</dt>
-            <dd className="font-mono text-2xs tabular-nums text-text-primary">
+            <dd className="text-2xs tabular-nums text-text-primary">
               {Math.round(profile.steepestGrade * 100)}%
             </dd>
           </div>

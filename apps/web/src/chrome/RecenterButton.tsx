@@ -3,7 +3,7 @@ import { Panel } from '@hyzerlines/design';
 import type { Feature } from '@hyzerlines/core';
 
 import { useMap } from '../map/MapContext';
-import { courseIsAdrift } from '../map/frame';
+import { courseIsAdrift, frameFeatures } from '../map/frame';
 
 /**
  * A way back, shown only when there is something to come back from.
@@ -18,13 +18,7 @@ import { courseIsAdrift } from '../map/frame';
  * wondering whether the map moved or the course did; a flight shows you which
  * direction you had wandered, which is worth the half second.
  */
-export function RecenterButton({
-  features,
-  onRecenter,
-}: {
-  features: readonly Feature[];
-  onRecenter: () => void;
-}) {
+export function RecenterButton({ features }: { features: readonly Feature[] }) {
   const { map } = useMap();
   const [adrift, setAdrift] = useState(false);
 
@@ -58,14 +52,21 @@ export function RecenterButton({
    * tall. The rail then grew a second panel and landed on top of it — the
    * button was still there, still visible, and no longer clickable. Two
    * components agreeing about a number is not an agreement, it is a
-   * coincidence with a deadline. `ToolRail` now owns the column and stacks
-   * this beneath itself, so the clearance is structural.
+   * coincidence with a deadline. It is handed to `MapControls` now and shares
+   * that cluster's line, so the clearance is structural.
+   *
+   * It also frames the course itself rather than taking a callback for it. The
+   * map is already here — the adrift check above needs it — and the features are
+   * the prop, so the only thing a callback added was a second place for the two
+   * to be passed to.
    */
   return (
     <Panel padding="none" className="hz-reveal pointer-events-auto">
       <button
         type="button"
-        onClick={onRecenter}
+        onClick={() => {
+          if (map) frameFeatures(map, features, { duration: 400 });
+        }}
         className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-text-primary transition-colors duration-fast hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
       >
         <svg width="13" height="13" viewBox="0 0 15 15" aria-hidden="true">
