@@ -129,7 +129,15 @@ function EditorHeader({
 
       <div className="flex items-center gap-2">
         {icon && (
-          <span aria-hidden="true" className="shrink-0 text-text-secondary">
+          /*
+            Flush left, never centred: the 16px feature drawings are mostly 15
+            units wide, and an odd width centred in an even box lands on a half
+            pixel and softens every edge the art snapped to a whole one.
+          */
+          <span
+            aria-hidden="true"
+            className="flex w-4 shrink-0 items-center justify-start text-text-secondary"
+          >
             {icon}
           </span>
         )}

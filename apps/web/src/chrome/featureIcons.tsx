@@ -1,5 +1,7 @@
 import type { FeatureKind } from '@hyzerlines/core';
 
+import { SMALL_ICONS, type SmallIconArt } from './smallIcons';
+
 /**
  * The feature icons, one drawing per kind.
  *
@@ -86,18 +88,25 @@ export function DropzoneIcon({ size = 24 }: IconProps) {
   );
 }
 
-/** A basket in side elevation: the rim, the chains, the band and the pole. */
+/**
+ * A basket in side elevation: the rim, the chains, the band and the pole.
+ *
+ * Replaced drawing. The pole runs to the bottom of the box rather than stopping
+ * short of it, which is what a basket on a map has to do — the marker stands on
+ * the point it marks, and a pole floating above the ground read as a basket
+ * hovering. The map's own marker is drawn from this same art; see `map/icons`.
+ */
 export function BasketIcon({ size = 24 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 23 24" fill="currentColor" aria-hidden="true">
-      <path d="M6 7V6.5H7V7C7 8.43159 7.36137 10.2413 7.96192 11.6826C8.26222 12.4033 8.61102 13.0034 8.98145 13.415C9.3553 13.8304 9.69919 14 10 14V15C9.30084 15 8.7072 14.607 8.23731 14.085C7.76401 13.5591 7.36276 12.8466 7.03809 12.0674C6.38866 10.5087 6 8.56839 6 7Z" />
-      <path d="M17 7V6.5H16V7C16 8.43159 15.6386 10.2413 15.0381 11.6826C14.7378 12.4033 14.389 13.0034 14.0186 13.415C13.6447 13.8304 13.3008 14 13 14V15C13.6992 15 14.2928 14.607 14.7627 14.085C15.236 13.5591 15.6372 12.8466 15.9619 12.0674C16.6114 10.5087 17 8.56839 17 7Z" />
-      <path d="M5 3H6V7H5V3Z" />
-      <path d="M6 4V3H17V4L6 4Z" />
-      <path d="M6 7V6L17 6V7H6Z" />
-      <path d="M18.5 14C18.6607 14 18.8113 14.0776 18.9053 14.208C18.9992 14.3384 19.0254 14.5058 18.9746 14.6582L17.9746 17.6582C17.9066 17.8624 17.7152 18 17.5 18H5.5C5.28479 18 5.09345 17.8624 5.02539 17.6582L4.02539 14.6582C3.97458 14.5058 4.0008 14.3384 4.09473 14.208C4.1887 14.0776 4.33928 14 4.5 14H18.5ZM5.86035 17H17.1397L17.8057 15H5.19434L5.86035 17Z" />
-      <path d="M17 3H18V7H17V3Z" />
-      <path d="M11 7H12V21H11V7Z" />
+      <path d="M6 6V5.5H7V6C7 7.43159 7.36137 9.2413 7.96192 10.6826C8.26222 11.4033 8.61102 12.0034 8.98145 12.415C9.3553 12.8304 9.69919 13 10 13V14C9.30084 14 8.7072 13.607 8.23731 13.085C7.76401 12.5591 7.36276 11.8466 7.03809 11.0674C6.38866 9.50871 6 7.56839 6 6Z" />
+      <path d="M17 6V5.5H16V6C16 7.43159 15.6386 9.2413 15.0381 10.6826C14.7378 11.4033 14.389 12.0034 14.0186 12.415C13.6447 12.8304 13.3008 13 13 13V14C13.6992 14 14.2928 13.607 14.7627 13.085C15.236 12.5591 15.6372 11.8466 15.9619 11.0674C16.6114 9.50871 17 7.56839 17 6Z" />
+      <path d="M5 2H6V6H5V2Z" />
+      <path d="M6 3V2H17V3L6 3Z" />
+      <path d="M6 6V5L17 5V6H6Z" />
+      <path d="M18.5 13C18.6607 13 18.8113 13.0776 18.9053 13.208C18.9992 13.3384 19.0254 13.5058 18.9746 13.6582L17.9746 16.6582C17.9066 16.8624 17.7152 17 17.5 17H5.5C5.28479 17 5.09345 16.8624 5.02539 16.6582L4.02539 13.6582C3.97458 13.5058 4.0008 13.3384 4.09473 13.208C4.1887 13.0776 4.33928 13 4.5 13H18.5ZM5.86035 16H17.1397L17.8057 14H5.19434L5.86035 16Z" />
+      <path d="M17 2H18V6H17V2Z" />
+      <path d="M11 6H12V22H11V6Z" />
     </svg>
   );
 }
@@ -217,7 +226,45 @@ export function hasIcon(kind: FeatureKind): kind is IconKind {
  * nobody has drawn its icon.
  */
 export function FeatureIcon({ kind, size = 16 }: { kind: FeatureKind } & IconProps) {
+  /*
+   * The small set wins at 16, where it exists.
+   *
+   * Not a scaled copy of the 24px art. Those icons are hairline fills, and the
+   * two thinnest — the basket's chains and the O/B lettering — landed on a third
+   * of a pixel at this size and went soft. The 16px drawings are snapped to
+   * whole units instead. Kinds with no small drawing fall through to the large
+   * one, which is still legible for the shapes that are not hairline.
+   */
+  const art = size === 16 ? SMALL_ICONS[kind] : undefined;
+  if (art) return <SmallIcon art={art} />;
+
   if (!hasIcon(kind)) return null;
   const Icon = FEATURE_ICONS[kind];
   return <Icon size={size} />;
+}
+
+/**
+ * A 16px drawing at its own width, which is usually 15.
+ *
+ * **Never centred, and never stretched to a square.** An odd width centred in an
+ * even box lands the artwork on a half pixel, and every edge these drawings
+ * carefully snapped to a whole unit picks up a grey fringe — which is the exact
+ * problem the redraw was for. `shrink-0` keeps flex from squeezing it, and the
+ * caller's box positions it; see `IconSlot`.
+ */
+function SmallIcon({ art }: { art: SmallIconArt }) {
+  return (
+    <svg
+      width={art.width}
+      height={16}
+      viewBox={art.viewBox}
+      fill="currentColor"
+      className="shrink-0"
+      aria-hidden="true"
+    >
+      {art.paths.map((d) => (
+        <path key={d} d={d} />
+      ))}
+    </svg>
+  );
 }

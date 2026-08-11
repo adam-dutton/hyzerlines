@@ -221,8 +221,14 @@ export function FeatureList({
                   >
                     <span
                       aria-hidden="true"
+                      /*
+                        Flush left in a 16px box, not centred in it. Most of the
+                        16px drawings are 15 units wide, and centring an odd
+                        width in an even box puts the artwork on a half pixel —
+                        which un-snaps every edge it was drawn to snap to.
+                      */
                       className={cn(
-                        'grid w-4 shrink-0 place-items-center',
+                        'flex w-4 shrink-0 items-center justify-start',
                         selected ? 'text-text-accent' : 'text-text-muted',
                       )}
                     >
