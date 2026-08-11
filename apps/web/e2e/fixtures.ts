@@ -302,20 +302,37 @@ export async function openEditor(page: Page, options: OpenOptions = {}): Promise
 }
 
 /**
- * Open one of the course panel's collapsible sections.
+ * Open one of the course's collapsible sections — Analysis, Settings, Notes.
  *
- * The panel folds now, and its sections start closed — everything they hold is
- * unmounted until opened, deliberately, so a folded switch is not still in the
- * tab order. Tests that reach for those controls have to open the section the
- * way a person would.
+ * The sections start closed and unmount what they hold, deliberately, so a
+ * folded switch is not still in the tab order. Tests that reach for those
+ * controls have to open the section the way a person would.
  *
- * Idempotent: calling it on an already-open section leaves it open, so a test
- * does not have to track which of its own steps opened what. Note that the
- * course panel's sections are a group — opening one closes the last — so a
- * test cannot have two of them open at once.
+ * ## It clears the selection first
+ *
+ * The course's properties are the right panel's third mode: it describes a
+ * selected feature, else a selected hole, else the course. So these sections
+ * exist only when nothing is selected, and almost every caller has just drawn
+ * something — which selects it. Escaping first is what a person would do, and
+ * doing it here keeps a dozen tests about switches from each becoming a test
+ * about selection.
+ *
+ * Escape unwinds one level of intent at a time — shape, then tool, then feature,
+ * then hole — so it may take a few presses to get back to the course. Three is
+ * enough from any state this helper is called in, and the loop stops as soon as
+ * the section appears rather than pressing a fixed number of times.
+ *
+ * Idempotent: calling it on an already-open section leaves it open. The sections
+ * are a group, so a test cannot have two open at once.
  */
 export async function openSection(page: Page, title: string): Promise<void> {
   const header = page.getByRole('button', { name: title, exact: true });
+
+  for (let attempt = 0; attempt < 3 && (await header.count()) === 0; attempt++) {
+    await page.keyboard.press('Escape');
+  }
+  await expect(header).toBeVisible();
+
   if ((await header.getAttribute('aria-expanded')) !== 'true') await header.click();
   await expect(header).toHaveAttribute('aria-expanded', 'true');
 }
@@ -384,15 +401,39 @@ export async function setSwitch(page: Page, name: string, on: boolean): Promise<
 export const rail = (page: Page) => page.getByRole('toolbar', { name: 'Tools' });
 
 /**
- * Click a feature where it currently is.
+ * A hole's chip in the holes grid.
+ *
+ * The word "Hole" is gone from the panel on purpose — a chip carries a big
+ * numeral, a par and a distance and nothing else — so `getByText('Hole 1')` no
+ * longer finds anything and the accessible name is the only handle. Which is the
+ * better handle regardless: it is what a screen reader reads, and asserting it is
+ * what stops the chip quietly becoming an unlabelled button showing a "1".
+ *
+ * Exact, because "Hole 1" is a prefix of "Hole 10" through "Hole 18".
+ */
+export const holeChip = (page: Page, number: number) =>
+  page.getByRole('button', { name: `Hole ${number}`, exact: true });
+
+/**
+ * Look at a feature, then click it.
  *
  * Fixed canvas coordinates only hold while the camera has not moved, and the
- * camera moves on its own now: selecting a hole in the list frames it. A test
- * that places a basket at (950, 500) and clicks there twenty lines later is
- * clicking wherever that pixel has since ended up.
+ * camera moves on its own: selecting a hole frames it. A test that places a
+ * basket at (950, 500) and clicks there twenty lines later is clicking wherever
+ * that pixel has since ended up. So the position is projected at the moment of
+ * the click.
  *
- * Projecting the feature's own position asks the map where the thing is at the
- * moment of the click, which is what a person does with their eyes.
+ * ## And the camera is centred on it first
+ *
+ * Projecting is not enough on its own, because a projected point can land under
+ * a panel — and the two inspector columns are permanent and full-height now, so
+ * roughly 40% of the viewport is chrome that swallows the click. That failed as a
+ * thirty-second timeout with a `<p>` from the properties panel named as the thing
+ * intercepting, which is a long way from "the basket was behind the inspector".
+ *
+ * Centring is also what a person does: you cannot click what you cannot see, so
+ * you pan to it. Tests that care where the camera is should not be using this
+ * helper to move the selection.
  */
 export async function clickFeature(page: Page, id: string): Promise<void> {
   const point = await page.evaluate((featureId) => {
@@ -405,6 +446,10 @@ export async function clickFeature(page: Page, id: string): Promise<void> {
     // first vertex is as good a place to click as any.
     const raw = feature.geometry.coordinates as number[] | number[][];
     const position = (typeof raw[0] === 'number' ? raw : raw[0]) as [number, number];
+
+    // Jump rather than ease: a test should not wait out an animation to click
+    // something, and there is nothing to orient here — no human is watching.
+    window.hyzerlinesMap!.jumpTo({ center: position });
     const { x, y } = window.hyzerlinesMap!.project(position);
     return { x, y };
   }, id);

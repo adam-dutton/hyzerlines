@@ -44,6 +44,10 @@ interface TextFieldProps extends Omit<
  * it says the field still exists and is still showing you a real number, it is
  * just not yours to type in right now. Which is exactly the state a tee's
  * facing is in while it is aligned to the fairway.
+ *
+ * The border it dashes is transparent at rest, which is what lets a *filled*
+ * field still have a locked state to switch into. Dropping the border outright
+ * with the outlines would have taken this with it.
  */
 const disabledClass = cn(
   'disabled:cursor-not-allowed disabled:text-text-disabled',
@@ -51,16 +55,24 @@ const disabledClass = cn(
 );
 
 const variants = {
+  /**
+   * Filled, not outlined.
+   *
+   * Named `bordered` still, because what it is *for* has not changed — this is
+   * the conventional field, the one a form row holds — and renaming it would
+   * churn every call site to say the same thing. What changed is the treatment:
+   * a fill instead of a hairline. See `surface.field` for why.
+   */
   bordered: cn(
-    'rounded-lg border border-border-default bg-surface-inset',
+    'rounded-md border border-transparent bg-surface-field',
     'placeholder:text-text-muted',
-    'focus:border-border-accent focus:outline-none focus:ring-2 focus:ring-focus-ring/40',
+    'focus:outline-none focus:ring-2 focus:ring-focus-ring/50',
   ),
   bare: cn(
-    'rounded bg-transparent',
+    'rounded border border-transparent bg-transparent',
     'transition-colors duration-fast',
     'hover:bg-surface-hover',
-    'focus:bg-surface-inset focus:outline-none focus:ring-2 focus:ring-focus-ring',
+    'focus:bg-surface-field focus:outline-none focus:ring-2 focus:ring-focus-ring',
   ),
 } as const;
 
@@ -111,24 +123,18 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function T
       className={cn(
         'inline-flex items-center',
         variants[variant],
-        'focus-within:border-border-accent focus-within:ring-2 focus-within:ring-focus-ring/40',
+        'focus-within:ring-2 focus-within:ring-focus-ring/50',
         className,
       )}
     >
       {prefix && (
-        <span
-          aria-hidden="true"
-          className={cn('pl-2 font-mono text-text-muted', affixSizes[size])}
-        >
+        <span aria-hidden="true" className={cn('pl-2 text-text-muted', affixSizes[size])}>
           {prefix}
         </span>
       )}
       {input}
       {suffix && (
-        <span
-          aria-hidden="true"
-          className={cn('pr-2 font-mono text-text-muted', affixSizes[size])}
-        >
+        <span aria-hidden="true" className={cn('pr-2 text-text-muted', affixSizes[size])}>
           {suffix}
         </span>
       )}

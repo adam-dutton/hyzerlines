@@ -58,9 +58,22 @@ export const shortcuts: readonly Shortcut[] = [
     hold: true,
   },
   { id: 'tool.tee', label: 'Tee pad', keys: ['t'], scope: 'map', group: 'Tools' },
+  /*
+   * Shift on the tool it shares a palette slot with.
+   *
+   * A drop zone is where you throw from after a missed mandatory — a teeing area
+   * with a different reason to exist — so it lives in a flyout off the tee tool
+   * rather than taking a slot of its own, and the modifier says the same thing
+   * the flyout does. The palette has to fit between two panel columns, which is
+   * what makes a slot worth sharing at all.
+   */
+  { id: 'tool.dropzone', label: 'Drop zone', keys: ['shift+t'], scope: 'map', group: 'Tools' },
   { id: 'tool.basket', label: 'Basket', keys: ['b'], scope: 'map', group: 'Tools' },
   { id: 'tool.path', label: 'Path', keys: ['p'], scope: 'map', group: 'Tools' },
   { id: 'tool.ob', label: 'Out of bounds', keys: ['o'], scope: 'map', group: 'Tools' },
+  /* The same arrangement, and a closer relationship: both are regulated areas,
+     and what separates them is the ruling rather than the shape. */
+  { id: 'tool.hazard', label: 'Hazard', keys: ['shift+o'], scope: 'map', group: 'Tools' },
   {
     id: 'tool.boundary',
     label: 'Property boundary',

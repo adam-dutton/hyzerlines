@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-import { clickMap, course, openEditor, place, waitForSave } from './fixtures';
+import { clickMap, course, holeChip, openEditor, place, waitForSave } from './fixtures';
 
 /**
  * Holes, par and design checks, through the real UI.
@@ -26,11 +26,18 @@ test.describe('holes', () => {
 
     await page.getByRole('button', { name: 'Add hole' }).click();
 
-    await expect(page.getByText('Hole 1').first()).toBeVisible();
-    // A measured distance, not a placeholder — proves it found both ends.
+    await expect(holeChip(page, 1)).toBeVisible();
+    /*
+     * A measured distance, not a placeholder — proves it found both ends.
+     *
+     * Read off the properties panel rather than the grid. A chip drops the unit
+     * to fit three across a 268px column, so `/\d+ ft/` has nothing to match
+     * there — and the panel says *which* measurement it is printing, which the
+     * grid never did.
+     */
     await expect(
       page
-        .getByRole('list')
+        .getByRole('region', { name: 'Properties', exact: true })
         .getByText(/\d+ ft/)
         .first(),
     ).toBeVisible();
@@ -65,7 +72,7 @@ test.describe('holes', () => {
     await place(page, 'Target', 800, 300);
     await page.getByRole('button', { name: 'Add hole' }).click();
 
-    const par = page.getByRole('combobox', { name: /Par for Hole 1/ });
+    const par = page.getByRole('combobox', { name: 'Par for the selected hole' });
     await par.selectOption('5');
     await expect(par).toHaveValue('5');
 
@@ -73,7 +80,15 @@ test.describe('holes', () => {
     await page.reload();
     await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
 
-    await expect(page.getByRole('combobox', { name: /Par for Hole 1/ })).toHaveValue('5');
+    /*
+     * Selected again, because par lives in the hole's panel rather than in the
+     * list. The grid's chips are navigation and print par as a fact; the control
+     * that sets it is one click away, which is the trade a 40px chip makes.
+     */
+    await holeChip(page, 1).click();
+    await expect(page.getByRole('combobox', { name: 'Par for the selected hole' })).toHaveValue(
+      '5',
+    );
   });
 
   test('reports a hole with nothing assigned, and can silence the check', async ({ page }) => {
@@ -122,13 +137,13 @@ test.describe('holes', () => {
     await place(page, 'Tee pad', 400, 500);
     await place(page, 'Target', 800, 300);
     await page.getByRole('button', { name: 'Add hole' }).click();
-    await expect(page.getByText('Hole 1').first()).toBeVisible();
+    await expect(holeChip(page, 1)).toBeVisible();
 
     await waitForSave(page);
     await page.reload();
     await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
 
-    await expect(page.getByText('Hole 1').first()).toBeVisible();
+    await expect(holeChip(page, 1)).toBeVisible();
   });
 
   /**
@@ -143,15 +158,24 @@ test.describe('holes', () => {
     await place(page, 'Target', 740, 200);
     await page.getByRole('button', { name: 'Add hole' }).click();
 
-    const par = page.getByRole('combobox', { name: /Par for Hole 1/ });
+    const par = page.getByRole('combobox', { name: 'Par for the selected hole' });
     const asDefault = await par.inputValue();
 
-    // Select the tee to reach its properties, then colour it Gold.
+    /*
+     * Select the tee to reach its properties, then colour it Gold — and then go
+     * back up to the hole to read the par again.
+     *
+     * The trip back is new and it is the point of the panel's shape: a selected
+     * feature takes the whole column now rather than appending a section under
+     * the hole, so the hole's par is not on screen while a tee is selected. The
+     * breadcrumb is the way back, which makes this a test of that too.
+     */
     await page.getByRole('button', { name: 'Select Tee pad' }).click();
     const colour = page.getByRole('combobox', { name: 'Skill color' });
     await colour.selectOption('gold');
     await expect(colour).toHaveValue('gold');
 
+    await page.getByRole('button', { name: 'Back to Hole 1', exact: true }).click();
     await expect(par).not.toHaveValue(asDefault);
     const asGold = await par.inputValue();
     expect(Number(asGold)).toBeLessThan(Number(asDefault));
@@ -160,8 +184,17 @@ test.describe('holes', () => {
     await page.reload();
     await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
 
-    await expect(page.getByRole('combobox', { name: /Par for Hole 1/ })).toHaveValue(asGold);
-    // And the course panel reports the level it derived, rather than storing one.
+    await holeChip(page, 1).click();
+    await expect(page.getByRole('combobox', { name: 'Par for the selected hole' })).toHaveValue(
+      asGold,
+    );
+
+    /*
+     * And the course reports the level it derived rather than storing one. It is
+     * the Analysis section's closed-state preview, which is why a closed section
+     * still says it — and it is in the right panel's course mode, so the
+     * selection has to be cleared to get there.
+     */
     await page.keyboard.press('Escape');
     await expect(page.getByText('Gold', { exact: true }).first()).toBeVisible();
   });
@@ -207,7 +240,7 @@ test.describe('holes', () => {
     await waitForSave(page);
     await page.reload();
     await page.locator('[data-hydrated="true"]').waitFor({ state: 'attached' });
-    await expect(page.getByText('Hole 1').first()).toBeVisible();
+    await expect(holeChip(page, 1)).toBeVisible();
 
     await expect
       .poll(() => page.evaluate(() => window.hyzerlinesMap!.getZoom()))
@@ -264,7 +297,7 @@ test.describe('holes', () => {
     await place(page, 'Tee pad', 400, 500);
     await place(page, 'Target', 800, 300);
     await page.getByRole('button', { name: 'Add hole' }).click();
-    await expect(page.getByText('Hole 1').first()).toBeVisible();
+    await expect(holeChip(page, 1)).toBeVisible();
 
     await page.getByRole('button', { name: 'Undo' }).click();
     await expect(page.getByText(/Add a hole, then draw its tee and basket/)).toBeVisible();

@@ -1,5 +1,6 @@
-import { Accordion, AccordionGroup, TextArea, cn } from '@hyzerlines/design';
+import { Accordion, AccordionGroup, TextArea, TextField, cn } from '@hyzerlines/design';
 import {
+  DESCRIPTION_MAX,
   activeLayout,
   courseAcreage,
   featureIndex,
@@ -18,7 +19,14 @@ import {
 
 import { formatArea, formatRange, type UnitSystem } from '../units';
 import { SMOOTHING_OPTIONS } from '../prefs';
-import { Row, SectionTitle, ToggleRow, fieldWidth, selectClass } from './propertyRow';
+import {
+  Row,
+  SectionTitle,
+  ToggleRow,
+  fieldWidth,
+  sectionClass,
+  selectClass,
+} from './propertyRow';
 
 /**
  * What the app has worked out about the course, and what it draws.
@@ -86,14 +94,58 @@ export function CourseProperties({
     .join(' · ');
 
   return (
-    <AccordionGroup>
+    <>
       {/*
-        Named for what it is rather than for where it came from. Skill level,
-        site and feature count were three sections describing one thing: what
-        the app has read off the drawing, none of it typed in.
+        Where it is and what it is, above everything derived from it.
+
+        These used to sit in the course card's header, under the name, as two
+        bare inputs reading like a subtitle. The name went to the top bar and
+        these did not follow it: a fixed-height bar has no room for a wrapping
+        description, and at the top they cost a permanent line each for fields
+        that are filled once and then only read.
+
+        Still bare rather than boxed, because that is what they are — the
+        placeholders do the work a label would, which is the same trade the
+        course name makes one column over.
       */}
-      <Accordion title="Analysis" preview={analysisPreview}>
+      <div className={sectionClass}>
+        <TextField
+          label="Course location"
+          variant="bare"
+          size="sm"
+          value={course.location}
+          placeholder="Add a location"
+          onChange={(e) => onOp({ type: 'setLocation', location: e.target.value })}
+          className="w-full text-xs text-text-secondary"
+        />
         {/*
+          The description is the one that wraps.
+
+          As a single-line input it truncated at the panel's width, so a sentence
+          you had just typed became unreadable the moment you left the field —
+          the field was hiding its own contents. It grows downwards instead, and
+          the 280-character cap keeps "grows" from meaning "takes the column".
+        */}
+        <TextArea
+          label="Course description"
+          variant="bare"
+          size="sm"
+          value={course.description}
+          maxLength={DESCRIPTION_MAX}
+          placeholder="Add a description"
+          onChange={(e) => onOp({ type: 'setDescription', description: e.target.value })}
+          className="w-full text-xs leading-5 text-text-secondary"
+        />
+      </div>
+
+      <AccordionGroup>
+        {/*
+          Named for what it is rather than for where it came from. Skill level,
+          site and feature count were three sections describing one thing: what
+          the app has read off the drawing, none of it typed in.
+        */}
+        <Accordion title="Analysis" preview={analysisPreview}>
+          {/*
           The skill level is read, not chosen.
 
           It comes from the tee colors — [ELEMENTS] p3 says a tee's color IS
@@ -103,32 +155,32 @@ export function CourseProperties({
           so rather than averaging two published tables into a number that is
           in neither.
         */}
-        <Row label="Skill level">
-          <span className="text-xs text-text-primary">
-            {skill ? SKILL_LEVEL_INFO[skill].label : 'Mixed'}
-          </span>
-        </Row>
-        <p className="text-2xs leading-4 text-text-muted">
-          {skill
-            ? `Par bands and length ranges follow the PDGA tables for ${SKILL_LEVEL_INFO[skill].label} — ${SKILL_LEVEL_INFO[skill].ratingDescription} rated players.`
-            : 'Tees are set to more than one color, so no PDGA level applies. Par is still read from each tee’s own color.'}
-        </p>
-        {!playable && (
-          <p className="mt-1 text-2xs leading-4 text-status-warning">
-            Not playable as it stands — a tee or target is marked position only.
+          <Row label="Skill level">
+            <span className="text-xs text-text-primary">
+              {skill ? SKILL_LEVEL_INFO[skill].label : 'Mixed'}
+            </span>
+          </Row>
+          <p className="text-2xs leading-4 text-text-muted">
+            {skill
+              ? `Par bands and length ranges follow the PDGA tables for ${SKILL_LEVEL_INFO[skill].label} — ${SKILL_LEVEL_INFO[skill].ratingDescription} rated players.`
+              : 'Tees are set to more than one color, so no PDGA level applies. Par is still read from each tee’s own color.'}
           </p>
-        )}
-        {/* The PDGA quotes this range for 18 holes and gives no per-hole
+          {!playable && (
+            <p className="mt-1 text-2xs leading-4 text-status-warning">
+              Not playable as it stands — a tee or target is marked position only.
+            </p>
+          )}
+          {/* The PDGA quotes this range for 18 holes and gives no per-hole
             figure, so it is shown as context at any hole count but only
             checked — in the findings list — at eighteen. */}
-        {skill && range && (
-          <p className="mt-1 text-2xs leading-4 text-text-muted">
-            Typical {SKILL_LEVEL_INFO[skill].label} course over {COURSE_LENGTH_HOLE_COUNT}{' '}
-            holes: {formatRange(feetToMeters(range.min), feetToMeters(range.max), units)}.
-          </p>
-        )}
+          {skill && range && (
+            <p className="mt-1 text-2xs leading-4 text-text-muted">
+              Typical {SKILL_LEVEL_INFO[skill].label} course over {COURSE_LENGTH_HOLE_COUNT}{' '}
+              holes: {formatRange(feetToMeters(range.min), feetToMeters(range.max), units)}.
+            </p>
+          )}
 
-        {/*
+          {/*
           The site.
 
           Without a boundary this used to disappear entirely, which was right
@@ -140,74 +192,74 @@ export function CourseProperties({
           that fills it, which also happens to be the only place in the app
           that explains why you would draw a boundary at all.
         */}
-        {acreage.boundaryCount > 0 ? (
-          <>
-            <Row label="Site area">
-              <span className="font-mono text-xs tabular-nums text-text-primary">
-                {formatArea(acreage.squareMeters, units)}
-              </span>
-            </Row>
-            {acreage.boundaryCount > 1 && (
-              <Row label="Boundaries">
-                <span className="font-mono text-xs tabular-nums text-text-secondary">
-                  {acreage.boundaryCount}
+          {acreage.boundaryCount > 0 ? (
+            <>
+              <Row label="Site area">
+                <span className="text-xs tabular-nums text-text-primary">
+                  {formatArea(acreage.squareMeters, units)}
                 </span>
               </Row>
-            )}
+              {acreage.boundaryCount > 1 && (
+                <Row label="Boundaries">
+                  <span className="text-xs tabular-nums text-text-secondary">
+                    {acreage.boundaryCount}
+                  </span>
+                </Row>
+              )}
 
-            {/*
+              {/*
               The comparison needs both a skill level and a foliage density, and
               says which is missing rather than going quiet. The chart is indexed
               by density and publishes three columns with none marked typical, so
               guessing one would be inventing guidance — see acreage.ts.
             */}
-            {acreage.guidance ? (
+              {acreage.guidance ? (
+                <p className="mt-1 text-2xs leading-4 text-text-muted">
+                  The PDGA chart gives {acreage.guidance.minAcres}–{acreage.guidance.maxAcres}{' '}
+                  acres for 18 {acreage.skill ? SKILL_LEVEL_INFO[acreage.skill].label : ''}{' '}
+                  holes in these woods
+                  {acreage.verdict === 'inside' ? ', which this fits.' : '.'}
+                </p>
+              ) : (
+                <p className="mt-1 text-2xs leading-4 text-text-muted">
+                  {acreage.density === null
+                    ? 'Set the boundary’s foliage density to compare this against the PDGA acreage chart.'
+                    : 'Tees are set to more than one color, so no acreage guidance applies.'}
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <Row label="Site area">
+                <button
+                  type="button"
+                  onClick={onDrawBoundary}
+                  className="text-xs text-text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                >
+                  Draw a property boundary
+                </button>
+              </Row>
               <p className="mt-1 text-2xs leading-4 text-text-muted">
-                The PDGA chart gives {acreage.guidance.minAcres}–{acreage.guidance.maxAcres}{' '}
-                acres for 18 {acreage.skill ? SKILL_LEVEL_INFO[acreage.skill].label : ''} holes
-                in these woods
-                {acreage.verdict === 'inside' ? ', which this fits.' : '.'}
+                Trace the land you have to work with and the app measures it, then compares the
+                acreage against the PDGA chart for a course of this level.
               </p>
-            ) : (
-              <p className="mt-1 text-2xs leading-4 text-text-muted">
-                {acreage.density === null
-                  ? 'Set the boundary’s foliage density to compare this against the PDGA acreage chart.'
-                  : 'Tees are set to more than one color, so no acreage guidance applies.'}
-              </p>
-            )}
-          </>
-        ) : (
-          <>
-            <Row label="Site area">
-              <button
-                type="button"
-                onClick={onDrawBoundary}
-                className="text-xs text-text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-              >
-                Draw a property boundary
-              </button>
-            </Row>
-            <p className="mt-1 text-2xs leading-4 text-text-muted">
-              Trace the land you have to work with and the app measures it, then compares the
-              acreage against the PDGA chart for a course of this level.
-            </p>
-          </>
-        )}
+            </>
+          )}
 
-        <Row label="Features drawn">
-          <span className="font-mono text-xs tabular-nums text-text-primary">
-            {course.features.length}
-          </span>
-        </Row>
-      </Accordion>
+          <Row label="Features drawn">
+            <span className="text-xs tabular-nums text-text-primary">
+              {course.features.length}
+            </span>
+          </Row>
+        </Accordion>
 
-      {/*
+        {/*
         Settings, not "Show on map" — the drawing aids were the first thing to
         go in here and they will not be the last, and a section named after its
         current contents has to be renamed the moment anything else arrives.
       */}
-      <Accordion title="Settings">
-        {/*
+        <Accordion title="Settings">
+          {/*
           A picker, not a switch. Everything below this is a thing that is
           either drawn or not — a switch is the right control for those — but
           units is a choice between two named systems, and "Feet and acres:
@@ -219,19 +271,21 @@ export function CourseProperties({
           in. So it lives in localStorage and travels with the browser, while
           the aids below travel with the file.
         */}
-        <Row label="Units">
-          <select
-            aria-label="Units"
-            value={units}
-            onChange={(e) => onUnitsChange(e.target.value === 'metric' ? 'metric' : 'imperial')}
-            className={cn(selectClass, fieldWidth, 'truncate')}
-          >
-            <option value="imperial">Feet and acres</option>
-            <option value="metric">Meters and hectares</option>
-          </select>
-        </Row>
+          <Row label="Units">
+            <select
+              aria-label="Units"
+              value={units}
+              onChange={(e) =>
+                onUnitsChange(e.target.value === 'metric' ? 'metric' : 'imperial')
+              }
+              className={cn(selectClass, fieldWidth, 'truncate')}
+            >
+              <option value="imperial">Feet and acres</option>
+              <option value="metric">Meters and hectares</option>
+            </select>
+          </Row>
 
-        {/*
+          {/*
           Smoothing the elevation charts.
 
           Here rather than on the layers panel because it is a fact about the
@@ -246,69 +300,69 @@ export function CourseProperties({
           grade twice what the land does. Averaging over the width of that
           staircase is what recovers the terrain.
         */}
-        <Row label="Smooth elevation">
-          <select
-            aria-label="Smooth elevation"
-            value={smoothing}
-            onChange={(e) => onSmoothingChange(e.target.value as Smoothing)}
-            className={cn(selectClass, fieldWidth, 'truncate')}
-          >
-            {SMOOTHING_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </Row>
-        <p className="mt-1 text-2xs leading-4 text-text-muted">
-          Evens out sampling steps in the elevation charts. Net change and par are read from the
-          raw data and never smoothed.
-        </p>
+          <Row label="Smooth elevation">
+            <select
+              aria-label="Smooth elevation"
+              value={smoothing}
+              onChange={(e) => onSmoothingChange(e.target.value as Smoothing)}
+              className={cn(selectClass, fieldWidth, 'truncate')}
+            >
+              {SMOOTHING_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </Row>
+          <p className="mt-1 text-2xs leading-4 text-text-muted">
+            Evens out sampling steps in the elevation charts. Net change and par are read from
+            the raw data and never smoothed.
+          </p>
 
-        <div className="mt-3">
-          <SectionTitle>Show on map</SectionTitle>
-          <ToggleRow
-            label="Fairways"
-            checked={display.fairways}
-            onChange={(fairways) => setDisplay({ fairways })}
-          />
-          <ToggleRow
-            label="Lines"
-            indent
-            checked={display.fairwayLines}
-            disabled={!display.fairways}
-            onChange={(fairwayLines) => setDisplay({ fairwayLines })}
-          />
-          <ToggleRow
-            label="Corridors"
-            indent
-            checked={display.fairwayAreas}
-            disabled={!display.fairways}
-            onChange={(fairwayAreas) => setDisplay({ fairwayAreas })}
-          />
+          <div className="mt-3">
+            <SectionTitle>Show on map</SectionTitle>
+            <ToggleRow
+              label="Fairways"
+              checked={display.fairways}
+              onChange={(fairways) => setDisplay({ fairways })}
+            />
+            <ToggleRow
+              label="Lines"
+              indent
+              checked={display.fairwayLines}
+              disabled={!display.fairways}
+              onChange={(fairwayLines) => setDisplay({ fairwayLines })}
+            />
+            <ToggleRow
+              label="Corridors"
+              indent
+              checked={display.fairwayAreas}
+              disabled={!display.fairways}
+              onChange={(fairwayAreas) => setDisplay({ fairwayAreas })}
+            />
 
-          <ToggleRow
-            label="Putting circles"
-            checked={display.circles}
-            onChange={(circles) => setDisplay({ circles })}
-          />
-          {/* Named and ordered from TARGET_CIRCLES, so a ring the app draws can
+            <ToggleRow
+              label="Putting circles"
+              checked={display.circles}
+              onChange={(circles) => setDisplay({ circles })}
+            />
+            {/* Named and ordered from TARGET_CIRCLES, so a ring the app draws can
               never be a ring this panel has no switch for. Outermost first,
               which is how they are read on the ground. */}
-          {[...TARGET_CIRCLES].reverse().map((circle) => (
-            <ToggleRow
-              key={circle.id}
-              label={circle.label}
-              indent
-              checked={display[circle.id]}
-              disabled={!display.circles}
-              onChange={(on) => setDisplay({ [circle.id]: on })}
-            />
-          ))}
-        </div>
-      </Accordion>
+            {[...TARGET_CIRCLES].reverse().map((circle) => (
+              <ToggleRow
+                key={circle.id}
+                label={circle.label}
+                indent
+                checked={display[circle.id]}
+                disabled={!display.circles}
+                onChange={(on) => setDisplay({ [circle.id]: on })}
+              />
+            ))}
+          </div>
+        </Accordion>
 
-      {/*
+        {/*
         Notes last, and a textarea rather than a single line.
 
         It is the one field here that is genuinely open-ended — everything
@@ -317,17 +371,18 @@ export function CourseProperties({
         content. The preview carries the first line, so a closed section still
         says whether there is anything in it.
       */}
-      <Accordion title="Notes" preview={course.notes.trim().split('\n')[0] ?? ''}>
-        <TextArea
-          label="Course notes"
-          size="sm"
-          value={course.notes}
-          rows={4}
-          placeholder="Anything worth remembering — access, permissions, the tree that has to go."
-          onChange={(e) => onOp({ type: 'setNotes', notes: e.target.value })}
-          className="w-full text-xs leading-5"
-        />
-      </Accordion>
-    </AccordionGroup>
+        <Accordion title="Notes" preview={course.notes.trim().split('\n')[0] ?? ''}>
+          <TextArea
+            label="Course notes"
+            size="sm"
+            value={course.notes}
+            rows={4}
+            placeholder="Anything worth remembering — access, permissions, the tree that has to go."
+            onChange={(e) => onOp({ type: 'setNotes', notes: e.target.value })}
+            className="w-full text-xs leading-5"
+          />
+        </Accordion>
+      </AccordionGroup>
+    </>
   );
 }

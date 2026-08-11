@@ -144,10 +144,25 @@ export const KIND_DEFINITIONS: Record<FeatureKind, KindDefinition> = {
    */
   fairway: { label: 'Fairway', geometry: 'line' },
   mando: { label: 'Mandatory', geometry: 'point', command: 'tool.mando' },
-  dropzone: { label: 'Drop zone', geometry: 'point', placedRectangle: true },
+  /*
+   * Reachable at last, through the tee tool's flyout.
+   *
+   * The kind has existed since the model did and there was no way to draw one:
+   * no command, no palette slot. It shares the tee's slot because it *is* a
+   * teeing area — you throw from inside it under the same rules — and the
+   * palette has a width budget it has to live inside.
+   */
+  dropzone: {
+    label: 'Drop zone',
+    geometry: 'point',
+    command: 'tool.dropzone',
+    placedRectangle: true,
+  },
 
   ob: { label: 'Out of bounds', geometry: 'polygon', command: 'tool.ob' },
-  hazard: { label: 'Hazard', geometry: 'polygon' },
+  /* Likewise, through the OB tool's flyout: both are regulated areas and the
+     ruling is what separates them. */
+  hazard: { label: 'Hazard', geometry: 'polygon', command: 'tool.hazard' },
   casualArea: { label: 'Casual area', geometry: 'polygon' },
   requiredRelief: { label: 'Required relief', geometry: 'polygon' },
 

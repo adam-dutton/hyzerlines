@@ -120,7 +120,15 @@ test.describe('the feature panel', () => {
     await holeWithEnds(page);
     await selectTee(page);
 
-    const crumb = page.getByRole('button', { name: 'Hole 1', exact: true });
+    /*
+     * "Back to Hole 1", not "Hole 1".
+     *
+     * Hole 1's chip in the grid already owns that name, and two buttons sharing
+     * one name is an ambiguity a screen reader cannot resolve — and that a test
+     * resolves by matching two elements and failing. It also describes what the
+     * breadcrumb does rather than just naming where it points.
+     */
+    const crumb = page.getByRole('button', { name: 'Back to Hole 1', exact: true });
     await expect(crumb).toBeVisible();
 
     await crumb.click();

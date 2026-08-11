@@ -4,6 +4,7 @@ import {
   clickFeature,
   clickMap as clickCanvas,
   course,
+  holeChip,
   openEditor,
   openSection,
   place,
@@ -348,7 +349,7 @@ test.describe('assigning features to holes', () => {
     // The loose basket shows up as a finding, and as something to claim.
     // Note this flies the camera to the hole, so canvas pixels from before it
     // no longer point at what they did.
-    await page.getByRole('button', { name: 'Hole 1' }).first().click();
+    await holeChip(page, 1).click();
     const claim = page.getByRole('combobox', { name: 'Add a basket' });
     await expect(claim).toBeVisible();
 

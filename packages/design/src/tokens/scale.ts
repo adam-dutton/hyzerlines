@@ -34,11 +34,27 @@ export const radius = {
 } as const;
 
 export const font = {
-  /** UI. System stack — a webfont request is a blocking round trip we don't need. */
-  sans: `ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`,
   /**
-   * Measurements. Tabular numerals are mandatory: distance readouts update
-   * continuously while dragging, and proportional digits make them jitter.
+   * UI. Inter, self-hosted, over the system stack.
+   *
+   * The stack used to be system-only, on the grounds that a webfont is a
+   * blocking round trip. That argument is against *fetching* a font, not
+   * against having one: `@fontsource-variable/inter` is bundled and served from
+   * our own origin, so it costs a local request that the same build already
+   * makes for its JS and CSS, and no third-party connection at all.
+   *
+   * The system stack stays behind it, so a failed font file degrades to what
+   * this app used to look like rather than to Times New Roman.
+   */
+  sans: `"Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`,
+  /**
+   * Kept for `kbd`, and for nothing else.
+   *
+   * Measurements used to be set in this, for tabular figures. Inter has real
+   * tabular figures under `font-variant-numeric`, so a readout can hold its
+   * width without changing typeface — which is what the `.tabular-nums`
+   * utility now does everywhere a distance is printed. A keycap is different:
+   * it is imitating a physical object, and the slab shapes are the imitation.
    */
   mono: `ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace`,
 } as const;
@@ -73,6 +89,16 @@ export const shadow = {
   xl: '0 24px 56px rgb(0 0 0 / 0.50), 0 0 0 1px rgb(0 0 0 / 0.28)',
   /** For elements sitting directly on the map with no panel behind them. */
   float: '0 2px 8px rgb(0 0 0 / 0.45), 0 0 0 1px rgb(0 0 0 / 0.30)',
+  /**
+   * The tool bar, and nothing else so far.
+   *
+   * A deeper drop than `xl` plus a one-pixel inset highlight along the top edge,
+   * which is what makes an opaque surface read as *lifted off* the map rather
+   * than as a hole cut in it. The palette is the one piece of chrome that has to
+   * win against imagery at any brightness, so it is the one piece that does not
+   * get the translucent treatment the panels use.
+   */
+  lifted: '0 16px 40px rgb(0 0 0 / 0.55), inset 0 1px 0 rgb(255 255 255 / 0.06)',
 } as const;
 
 /**

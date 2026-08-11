@@ -12,7 +12,9 @@ import { basemaps } from './map/basemaps';
 import { Attribution } from './chrome/Attribution';
 import { MapControls } from './chrome/MapControls';
 import { LocationSearch } from './chrome/LocationSearch';
-import { CoursePanel } from './chrome/CoursePanel';
+import { TopBar } from './chrome/TopBar';
+import { CourseProperties } from './chrome/CourseProperties';
+import { RecenterButton } from './chrome/RecenterButton';
 import { ShortcutsOverlay } from './chrome/ShortcutsOverlay';
 import { CourseEditor } from './CourseEditor';
 import { useShortcuts } from './keyboard/useShortcuts';
@@ -33,9 +35,21 @@ import { downloadCourse, openCourseFile } from './document/fileActions';
  * while measuring a fairway is the difference between a tool and a toy.
  */
 function Shell() {
-  // Undo and redo are still bound as shortcuts here, but their buttons now live
-  // in the tool rail, which reads `canUndo`/`canRedo` from the store directly.
-  const { course, dispatch, undo, redo, load, saveStatus, hydrating, restored } = useCourse();
+  // Undo and redo are bound as shortcuts here and their buttons live in the top
+  // bar, which this builds — so unlike the rail, which read the store directly,
+  // the enabled state comes through here.
+  const {
+    course,
+    dispatch,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    load,
+    saveStatus,
+    hydrating,
+    restored,
+  } = useCourse();
 
   /*
    * Survey state lives up here, above the canvas, and its map layers live
@@ -174,6 +188,13 @@ function Shell() {
                 basemapId={course.basemapId}
                 overlays={course.overlays}
                 units={units}
+                /*
+                  The recenter prompt shares the camera cluster's line.
+                  It has no position of its own on purpose — see the note on
+                  `MapControls` — and this is the cluster it belongs to: every
+                  other control in it moves the camera too.
+                */
+                recenter={<RecenterButton features={course.features} />}
                 survey={{
                   state: survey.state,
                   status: survey.state.status,
@@ -188,24 +209,39 @@ function Shell() {
           )}
 
           {/*
-            The course panel is built here and handed to the editor, because it
-            needs the shell's own state — theme, units, file actions, save
-            status — none of which the editor has any business knowing about.
+            The top bar and the course's properties are both built here and
+            handed to the editor, because both need the shell's own state —
+            theme, units, file actions, save status — none of which the editor
+            has any business knowing about. The editor hands back the two things
+            only it has: the focus, and the way to arm a tool.
           */}
           <CourseEditor
             units={units}
             hidden={chromeHidden}
-            coursePanel={({ drawBoundary }) => (
-              <CoursePanel
+            shell={({ focus, onFocusChange }) => (
+              <TopBar
                 course={course}
                 units={units}
+                focus={focus}
+                onFocusChange={onFocusChange}
                 onOp={dispatch}
                 saveStatus={saveStatus}
+                canUndo={canUndo}
+                canRedo={canRedo}
+                onUndo={undo}
+                onRedo={redo}
+                onImport={() => void openFile()}
+                onExport={() => downloadCourse(course)}
                 theme={theme}
                 onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
                 onShowShortcuts={() => setShowShortcuts(true)}
-                onOpen={() => void openFile()}
-                onSave={() => downloadCourse(course)}
+              />
+            )}
+            courseProperties={({ drawBoundary }) => (
+              <CourseProperties
+                course={course}
+                units={units}
+                onOp={dispatch}
                 onUnitsChange={changeUnits}
                 smoothing={smoothing}
                 onSmoothingChange={changeSmoothing}

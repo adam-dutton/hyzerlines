@@ -516,7 +516,7 @@ export function FeatureProperties({
       {feature.geometry.type === 'line' && (
         <div className={sectionClass}>
           <Row label="Length">
-            <span className="font-mono text-xs tabular-nums text-text-primary">
+            <span className="text-xs tabular-nums text-text-primary">
               {formatDistance(pathLength(feature.geometry.coordinates), units)}
             </span>
           </Row>
@@ -525,12 +525,12 @@ export function FeatureProperties({
       {feature.geometry.type === 'polygon' && (
         <div className={sectionClass}>
           <Row label="Area">
-            <span className="font-mono text-xs tabular-nums text-text-primary">
+            <span className="text-xs tabular-nums text-text-primary">
               {formatArea(featureArea(feature) ?? 0, units)}
             </span>
           </Row>
           <Row label="Perimeter">
-            <span className="font-mono text-xs tabular-nums text-text-primary">
+            <span className="text-xs tabular-nums text-text-primary">
               {formatDistance(
                 pathLength([...feature.geometry.coordinates, feature.geometry.coordinates[0]!]),
                 units,

@@ -37,16 +37,24 @@ export const primitive = {
     950: '#101318',
     1000: '#08090b',
   },
-  /** Brand / interactive. Cyan-leaning blue: no collision with turf or dirt. */
+  /**
+   * Brand / interactive. Cyan-leaning: no collision with turf or dirt.
+   *
+   * Retuned from sky blue towards teal so that step 300 is `#7fd3e0` — the
+   * accent the shell design was drawn against. The hue moved about fifteen
+   * degrees; the reason for the family did not. Green was rejected here and
+   * still is, because a green accent over grass is an accent that disappears
+   * exactly where this app is used.
+   */
   accent: {
-    100: '#d5f1ff',
-    200: '#a9e2ff',
-    300: '#7fd4ff',
-    400: '#38bdf8',
-    500: '#0ea5e9',
-    600: '#0284c7',
-    700: '#0369a1',
-    800: '#075985',
+    100: '#dcf5f9',
+    200: '#b4e9f1',
+    300: '#7fd3e0',
+    400: '#4ab8ca',
+    500: '#2b9cb0',
+    600: '#1c7d90',
+    700: '#16626f',
+    800: '#124e59',
   },
   red: { 300: '#ff9b96', 400: '#ff6b64', 500: '#f5352b', 600: '#cf1d14' },
   amber: { 300: '#ffd98a', 400: '#ffc046', 500: '#f0a010', 600: '#c47c04' },
@@ -67,9 +75,31 @@ export const semantic = {
     'surface.overlay': 'rgb(25 29 35 / 0.92)',
     'surface.sunken': primitive.neutral[1000],
     'surface.inset': primitive.neutral[800],
+    /**
+     * A tile resting on a panel — a hole chip, a card in a grid.
+     *
+     * Lighter than `inset`, and translucent where `inset` is opaque. The panels
+     * are themselves translucent over imagery, so an opaque tile inside one
+     * punches a solid hole in the blur and reads as a separate surface floating
+     * on top of the panel rather than as part of it.
+     */
+    'surface.tile': 'rgb(255 255 255 / 0.05)',
+    /**
+     * A filled control with no border: input, select, segmented track.
+     *
+     * The interface used to outline every field. At the density this app runs
+     * at — a dozen rows in a 268px column — that many hairlines reads as a
+     * grid, and the eye spends its effort on the boxes instead of the values.
+     * A fill says "you can type here" with no lines at all.
+     *
+     * Deliberately not `surface.hover`, which happens to carry the same value in
+     * the dark theme. A resting control styled from a hover token is a control
+     * that changes meaning the first time somebody retunes hover.
+     */
+    'surface.field': 'rgb(255 255 255 / 0.06)',
     'surface.hover': 'rgb(255 255 255 / 0.06)',
     'surface.active': 'rgb(255 255 255 / 0.10)',
-    'surface.selected': 'rgb(14 165 233 / 0.16)',
+    'surface.selected': 'rgb(127 211 224 / 0.16)',
     'surface.scrim': 'rgb(8 9 11 / 0.6)',
 
     'text.primary': primitive.neutral[50],
@@ -84,10 +114,20 @@ export const semantic = {
     'border.strong': 'rgb(255 255 255 / 0.22)',
     'border.accent': primitive.accent[500],
 
-    'accent.solid': primitive.accent[500],
-    'accent.solid-hover': primitive.accent[400],
+    /*
+     * A light accent carrying dark text, not a saturated one carrying white.
+     *
+     * The chrome floats over imagery at 94% opacity, and a mid-tone fill on a
+     * translucent dark panel is the one combination that reads as neither —
+     * too dim to be a primary action, too coloured to be a surface. The design
+     * settled this by making the solid fill the *light* step: `Share` and the
+     * active focus are near-white teal with near-black text, which is the
+     * highest-contrast pair the palette can produce.
+     */
+    'accent.solid': primitive.accent[300],
+    'accent.solid-hover': primitive.accent[200],
     'accent.text-on-solid': primitive.neutral[1000],
-    'accent.soft': 'rgb(14 165 233 / 0.15)',
+    'accent.soft': 'rgb(127 211 224 / 0.15)',
 
     'status.danger': primitive.red[400],
     'status.danger-soft': 'rgb(245 53 43 / 0.15)',
@@ -107,9 +147,11 @@ export const semantic = {
     'surface.overlay': 'rgb(255 255 255 / 0.94)',
     'surface.sunken': primitive.neutral[100],
     'surface.inset': primitive.neutral[100],
+    'surface.tile': 'rgb(8 9 11 / 0.04)',
+    'surface.field': 'rgb(8 9 11 / 0.05)',
     'surface.hover': 'rgb(8 9 11 / 0.05)',
     'surface.active': 'rgb(8 9 11 / 0.09)',
-    'surface.selected': 'rgb(14 165 233 / 0.13)',
+    'surface.selected': 'rgb(43 156 176 / 0.13)',
     'surface.scrim': 'rgb(8 9 11 / 0.35)',
 
     'text.primary': primitive.neutral[950],
@@ -127,7 +169,7 @@ export const semantic = {
     'accent.solid': primitive.accent[600],
     'accent.solid-hover': primitive.accent[700],
     'accent.text-on-solid': primitive.neutral[0],
-    'accent.soft': 'rgb(14 165 233 / 0.12)',
+    'accent.soft': 'rgb(43 156 176 / 0.12)',
 
     'status.danger': primitive.red[600],
     'status.danger-soft': 'rgb(245 53 43 / 0.12)',
@@ -226,7 +268,7 @@ export const feature = {
   handle: { stroke: primitive.neutral[0], fill: primitive.accent[500], casing: CASING },
   selected: {
     stroke: primitive.accent[400],
-    fill: 'rgb(56 189 248 / 0.28)',
+    fill: 'rgb(74 184 202 / 0.28)',
     casing: primitive.accent[500],
   },
   snap: { stroke: '#22d3ee', fill: 'rgb(34 211 238 / 0.40)', casing: CASING },

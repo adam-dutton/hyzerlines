@@ -3,6 +3,7 @@ import { hasOverlays, type Overlays } from '@hyzerlines/core';
 
 import { basemapById } from '../map/basemaps';
 import { TERRAIN_ATTRIBUTION } from '../map/terrain';
+import { COLUMN, READOUT_BOTTOM } from './layout';
 
 export const SOURCE_URL = 'https://github.com/adam-dutton/hyzerlines';
 
@@ -61,7 +62,25 @@ export function Attribution({
   const credits = [basemap.attribution, elevationCredit].filter(Boolean).join(' &middot; ');
 
   return (
-    <ChromeLayer className="bottom-3 left-4 max-w-sm">
+    /*
+     * Bottom left of the free channel, not of the viewport.
+     *
+     * The panel columns run the full height now, so `left-4` put this underneath
+     * the left panel — and an obligation to *display* a credit is not met by
+     * drawing it behind a card. Measuring from `COLUMN` keeps it in the gap
+     * between the columns, on the same line as the zoom cluster at the other end
+     * and below the tool bar, so none of the three can reach the others at any
+     * viewport width.
+     */
+    /*
+     * Wide enough for two lines, not three.
+     *
+     * `max-w-sm` wrapped the Esri credit onto a third line, which grew this box
+     * upwards into the tool bar's line 56px above it. The channel is much wider
+     * than the credit needs, so the cap is a wrapping preference rather than a
+     * fit constraint — and the readout line has room to spend.
+     */
+    <ChromeLayer className="max-w-lg" style={{ left: COLUMN, bottom: READOUT_BOTTOM }}>
       <div className="pointer-events-auto flex flex-wrap items-center gap-x-2 rounded bg-surface-overlay/75 px-1.5 py-0.5 text-2xs leading-4 text-text-secondary backdrop-blur-sm">
         {/* Attribution strings are compile-time constants in basemaps.ts and
             terrain.ts, never user or network input, and providers require the

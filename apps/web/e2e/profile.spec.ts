@@ -3,6 +3,7 @@ import { test, expect, type Page } from '@playwright/test';
 import {
   course,
   fakeSurveyGeoTiff,
+  holeChip,
   openEditor,
   openLayers,
   openSection,
@@ -294,10 +295,31 @@ const readStat = (page: Page, label: string): Promise<string> =>
 const gradePercent = async (page: Page): Promise<number> =>
   Number((await readStat(page, 'Steepest grade')).replace(/[^\d]/g, ''));
 
-/** Choose a smoothing level from the course panel's Settings section. */
+/**
+ * Choose a smoothing level, then get back to the hole whose chart it changed.
+ *
+ * The two halves cannot be on screen together, and that is the shape of the panel
+ * rather than an accident: the right column describes a selected feature, else a
+ * selected hole, else the course — and smoothing is a course setting while the
+ * chart belongs to a hole. So reading the effect of this control means selecting
+ * the hole again, because `openSection` had to clear the selection to reach the
+ * setting at all.
+ *
+ * Worth recording as a cost of moving the course's settings into the inspector: a
+ * designer tuning smoothing against one hole's chart pays two clicks per
+ * adjustment. It is the same trade the par control makes, and the alternative is
+ * the second permanent column this design removed.
+ *
+ * The trip back is conditional, because one caller has no holes at all — it only
+ * checks that the preference survives a reload. Clicking a chip that is not there
+ * would make that test fail for a reason it is not about.
+ */
 async function setSmoothing(page: Page, level: 'off' | 'light' | 'medium' | 'strong') {
   await openSection(page, 'Settings');
   await page.getByRole('combobox', { name: 'Smooth elevation' }).selectOption(level);
+
+  const chip = holeChip(page, 1);
+  if ((await chip.count()) > 0) await chip.click();
 }
 
 test.describe('elevation smoothing', () => {

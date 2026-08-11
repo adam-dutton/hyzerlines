@@ -174,7 +174,18 @@ function EndList({
                   checked={chosen}
                   onChange={() => onChange(feature.id)}
                   aria-label={`${verb} ${featureName(feature)}`}
-                  className="size-3 shrink-0 accent-[var(--hz-color-accent-solid)]"
+                  /*
+                   * `--hz-accent-solid`, not `--hz-color-accent-solid`.
+                   *
+                   * The latter does not exist and never did: the generator emits
+                   * semantic roles as `--hz-<role>` and only registers the
+                   * `--color-*` aliases inside `@theme inline`, for utilities to
+                   * resolve. So this radio has been falling back to the browser's
+                   * own accent colour — which is blue on most platforms, close
+                   * enough to the old palette to go unnoticed, and wrong now that
+                   * the accent is teal.
+                   */
+                  className="size-3 shrink-0 accent-[var(--hz-accent-solid)]"
                 />
                 <button
                   type="button"
@@ -355,7 +366,7 @@ export function HoleProperties({
               className={cn(
                 selectClass,
                 fieldWidth,
-                'font-mono tabular-nums',
+                'tabular-nums',
                 overridden && 'text-text-accent',
               )}
             >
@@ -414,7 +425,7 @@ export function HoleProperties({
       */}
       <div className={sectionClass}>
         <Row label="Tee to basket">
-          <span className="font-mono text-xs tabular-nums text-text-primary">
+          <span className="text-xs tabular-nums text-text-primary">
             {measurement?.straight == null ? '—' : formatDistance(measurement.straight, units)}
           </span>
         </Row>
@@ -422,7 +433,7 @@ export function HoleProperties({
             straight one would imply a route that isn't there. */}
         {measurement?.routed != null && (
           <Row label="Along the fairway">
-            <span className="font-mono text-xs tabular-nums text-text-primary">
+            <span className="text-xs tabular-nums text-text-primary">
               {formatDistance(measurement.routed, units)}
             </span>
           </Row>

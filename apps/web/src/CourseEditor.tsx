@@ -31,8 +31,7 @@ import { useFeatureDragging } from './map/useFeatureDragging';
 import { useNavigation } from './map/useNavigation';
 import { frameFeatures } from './map/frame';
 import type { Tool } from './map/tools';
-import { ToolRail } from './chrome/ToolRail';
-import { RecenterButton } from './chrome/RecenterButton';
+import { ToolBar } from './chrome/ToolBar';
 import { RightPanel } from './chrome/RightPanel';
 import type { SelectedPair } from './chrome/HoleProperties';
 import { LeftPanel } from './chrome/LeftPanel';
@@ -61,23 +60,36 @@ const NO_CHOICES: FairwayChoices = new Map();
 export function CourseEditor({
   units,
   hidden,
-  coursePanel,
+  shell,
+  courseProperties,
 }: {
   units: UnitSystem;
   hidden: boolean;
   /**
-   * Built by the shell — see the note where it is passed in.
+   * The top bar, built by the shell.
    *
-   * A function rather than a node because the panel has one control that
-   * reaches back into the editor: the prompt to draw a property boundary,
-   * which has to arm a tool. Tool state belongs here, next to the map that
-   * uses it, so the editor hands the panel the actions it needs rather than
-   * the shell reaching in for them.
+   * A function rather than a node because it needs two things only the editor
+   * has — the focus and the way to change it — while everything else on it
+   * belongs to the shell: the theme, the file actions, the save status. Handing
+   * the shell what it needs is the same arrangement `courseProperties` uses, and
+   * it beats lifting focus out of here, which would separate it from the tool
+   * state it disarms and the hit-testing it reorders.
    */
-  coursePanel: (api: { drawBoundary: () => void }) => ReactNode;
+  shell: (api: { focus: Focus; onFocusChange: (focus: Focus) => void }) => ReactNode;
+  /**
+   * The course's own properties, for the right panel's third mode.
+   *
+   * Built by the shell because it needs the shell's state — units, elevation
+   * smoothing — and hands back the one action that reaches into the editor: the
+   * prompt to draw a property boundary, which has to arm a tool. Tool state
+   * belongs here, next to the map that uses it.
+   */
+  courseProperties: (api: { drawBoundary: () => void }) => ReactNode;
 }) {
   const { map } = useMap();
-  const { course, dispatch, documentEpoch, undo, redo, canUndo, canRedo } = useCourse();
+  // Undo and redo are the shell's now — their buttons are in the top bar, which
+  // reads them from the store itself. The editor only needs the document.
+  const { course, dispatch, documentEpoch } = useCourse();
 
   const [tool, setTool] = useState<Tool>('select');
   const [focus, setFocus] = useState<Focus>(getStoredFocus);
@@ -116,8 +128,34 @@ export function CourseEditor({
     }
     setTool(kind);
   }, []);
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedHoleId, setSelectedHoleId] = useState<string | null>(null);
+
+  /*
+   * Features the designer has hidden, for the session.
+   *
+   * The same kind of state as `pairChoices` below, and out of the document for
+   * the same reasons: hiding the tree line to read the corridor under it is
+   * something you do at a desk for a minute, and storing it would autosave it,
+   * put it on the undo stack, and travel to whoever you sent the course to — who
+   * would open it with features missing and no way to know why.
+   *
+   * Emphatically not the focus mechanism. A focus never hides a feature, and that
+   * rule is what keeps it from becoming a mode you have to escape. This is the
+   * opposite kind of act: explicit, one feature at a time, and reversible from
+   * the row that did it.
+   */
+  const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(() => new Set());
+
+  const toggleHidden = useCallback((id: string) => {
+    setHiddenIds((previous) => {
+      const next = new Set(previous);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  }, []);
+
   /*
    * Which shot each hole is being looked at as, for the session.
    *
@@ -169,6 +207,25 @@ export function CourseEditor({
 
   const findings = useMemo(() => checkCourse(course, course.dismissedRules), [course]);
 
+  /** Playing order, which is what "4 of 18" and the stepper both count in. */
+  const ordered = useMemo(
+    () => [...course.holes].sort((a, b) => a.number - b.number),
+    [course.holes],
+  );
+
+  /**
+   * Where the selected hole falls in playing order, one-based.
+   *
+   * Its position, not its number: a nine-hole course numbered 10–18 is still
+   * showing you the first of nine, and "10 of 9" is the panel contradicting
+   * itself. Null when no hole is selected.
+   */
+  const holePosition = useMemo(() => {
+    if (!selectedHoleId) return null;
+    const index = ordered.findIndex((hole) => hole.id === selectedHoleId);
+    return index === -1 ? null : index + 1;
+  }, [ordered, selectedHoleId]);
+
   /*
    * What reads as active on the map.
    *
@@ -199,14 +256,35 @@ export function CourseEditor({
    * whole approach exists to avoid. A cached pad is a pad that is wrong for
    * exactly as long as it takes someone to notice.
    */
+  /*
+   * The course as the map should draw it: everything except what is hidden.
+   *
+   * Derived geometry is computed from *this* rather than from `course`, which is
+   * the whole reason it is a course-shaped value and not just a filtered array.
+   * A tee pad is derived from its tee and a corridor from a tee and a target, so
+   * hiding the tee has to take its pad and its corridor with it — otherwise
+   * hiding a feature leaves its shadow on the map, which reads as a bug rather
+   * than as a hidden feature.
+   *
+   * Nothing is hidden by default, so this is the identity in the ordinary case
+   * and the extra pass costs a single `Set.has` per feature.
+   */
+  const visible = useMemo(
+    () =>
+      hiddenIds.size === 0
+        ? course
+        : { ...course, features: course.features.filter((f) => !hiddenIds.has(f.id)) },
+    [course, hiddenIds],
+  );
+
   const derived = useMemo(
     () =>
       // So the map shows the shots the panels are showing. Without this, picking
       // pin B would re-measure the hole while the fairway stayed on pin A — and
       // passing only the selected hole's choice snapped every other hole back
       // the moment the selection moved.
-      derivedGeometry(course, pairChoices),
-    [course, pairChoices],
+      derivedGeometry(visible, pairChoices),
+    [visible, pairChoices],
   );
 
   /**
@@ -292,6 +370,31 @@ export function CourseEditor({
       if (id && map) frameFeatures(map, holeFeatures(id), { duration: 400 });
     },
     [holeFeatures, map, selectHole],
+  );
+
+  /**
+   * Step to the next or previous hole, wrapping at both ends.
+   *
+   * Wrapping rather than stopping, because the alternative is a control that
+   * goes dead at the first hole and the last — and a course is a loop you walk,
+   * so stepping off the eighteenth green onto the first tee is the more natural
+   * of the two.
+   *
+   * Goes through `selectHoleFromList`, so stepping frames the hole it lands on.
+   * The stepper is navigation in exactly the way the grid is, and stepping to
+   * hole 12 without moving the camera to hole 12 is the control doing half its
+   * job. With nothing selected it starts at the first hole, because `findIndex`
+   * returns −1 and −1 + 1 is 0 — which is the answer you want and is worth
+   * saying out loud rather than looking like an accident.
+   */
+  const stepHole = useCallback(
+    (delta: 1 | -1) => {
+      if (ordered.length === 0) return;
+      const index = ordered.findIndex((hole) => hole.id === selectedHoleId);
+      const next = ordered[(index + delta + ordered.length) % ordered.length];
+      if (next) selectHoleFromList(next.id);
+    },
+    [ordered, selectedHoleId, selectHoleFromList],
   );
 
   /**
@@ -438,6 +541,16 @@ export function CourseEditor({
    * feature and attaches it to the pair, so one ⌘Z takes both back.
    */
   const editableShape = useMemo<EditableShape | null>(() => {
+    /*
+     * A hidden shape grows no handles.
+     *
+     * An aid you cannot see must not be one you can edit by accident — the same
+     * rule the per-hole fairway switch follows. Handles are hit targets, and
+     * leaving them on an invisible line means a drag in empty space silently
+     * reshapes something the designer has taken off the map.
+     */
+    if (selected && hiddenIds.has(selected.id)) return null;
+
     if (selected && selected.geometry.type !== 'point') {
       const { type, coordinates } = selected.geometry;
       return {
@@ -472,7 +585,7 @@ export function CourseEditor({
           shapeFairway(course, fairway.teeId, fairway.targetId, next, selectedHole.id, gesture),
         ),
     };
-  }, [selected, selectedHole, selectedPair, derived.fairways, course, dispatch]);
+  }, [selected, hiddenIds, selectedHole, selectedPair, derived.fairways, course, dispatch]);
 
   /*
    * Gated on the tool because handles are hit targets: leaving them up while a
@@ -610,7 +723,7 @@ export function CourseEditor({
   return (
     <>
       <FeatureLayer
-        features={course.features}
+        features={visible.features}
         selectedIds={highlighted}
         onSelect={selectAt}
         preview={drawingPreview(nav.effective, drawing.pending, drawing.cursor)}
@@ -639,19 +752,13 @@ export function CourseEditor({
 
       {!hidden && (
         <>
-          <ToolRail
+          {shell({ focus, onFocusChange: changeFocus })}
+
+          <ToolBar
             tool={nav.effective}
-            invertZoom={nav.invertZoom}
             focus={focus}
-            onFocusChange={changeFocus}
+            invertZoom={nav.invertZoom}
             onToolChange={setTool}
-            canUndo={canUndo}
-            canRedo={canRedo}
-            onUndo={undo}
-            onRedo={redo}
-            below={
-              <RecenterButton features={course.features} onRecenter={() => frameCourse()} />
-            }
           />
 
           <LeftPanel
@@ -660,15 +767,16 @@ export function CourseEditor({
             findings={findings}
             choices={pairChoices}
             focus={focus}
+            hiddenIds={hiddenIds}
             selectedFeatureId={selectedId}
             onSelectFeature={selectFeature}
+            onToggleHidden={toggleHidden}
             selectedHoleId={selectedHoleId}
             onSelectHole={selectHoleFromList}
             onOp={handleOp}
             onAddHole={addHole}
             onRevealFinding={reveal}
             onDismissRule={dismissRule}
-            header={coursePanel({ drawBoundary: () => armKind('boundary') })}
           />
 
           <RightPanel
@@ -677,17 +785,23 @@ export function CourseEditor({
             feature={selected}
             hole={selectedHole}
             pair={selectedPair}
+            holeNumber={holePosition}
+            holeCount={course.holes.length}
             onOp={handleOp}
             onDeleteFeature={deleteSelected}
             onDeleteHole={deleteSelectedHole}
             onSelectFeature={selectFeature}
             onSelectHole={selectHole}
             onSelectPair={choosePair}
+            onStepHole={stepHole}
             onDrawFeature={armKind}
             onClearSelection={() => {
               setSelectedId(null);
               setSelectedHoleId(null);
             }}
+            courseProperties={courseProperties({
+              drawBoundary: () => armKind('boundary'),
+            })}
           />
 
           {/* While drawing a multi-point shape, say how to finish it. Nothing
