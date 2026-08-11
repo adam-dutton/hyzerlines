@@ -51,37 +51,42 @@ export function RecenterButton({
 
   if (!adrift) return null;
 
+  /*
+   * No position of its own.
+   *
+   * It used to sit at a fixed `top-20`, chosen to clear a tool rail one panel
+   * tall. The rail then grew a second panel and landed on top of it — the
+   * button was still there, still visible, and no longer clickable. Two
+   * components agreeing about a number is not an agreement, it is a
+   * coincidence with a deadline. `ToolRail` now owns the column and stacks
+   * this beneath itself, so the clearance is structural.
+   */
   return (
-    <div
-      className="pointer-events-none absolute left-1/2 top-20 -translate-x-1/2"
-      style={{ zIndex: 'var(--hz-z-chrome)' }}
-    >
-      <Panel padding="none" className="hz-reveal">
-        <button
-          type="button"
-          onClick={onRecenter}
-          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-text-primary transition-colors duration-fast hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-        >
-          <svg width="13" height="13" viewBox="0 0 15 15" aria-hidden="true">
-            <circle
-              cx="7.5"
-              cy="7.5"
-              r="4.5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.3"
-            />
-            <circle cx="7.5" cy="7.5" r="1.4" fill="currentColor" />
-            <path
-              d="M7.5 1v1.6M7.5 12.4V14M14 7.5h-1.6M2.6 7.5H1"
-              stroke="currentColor"
-              strokeWidth="1.3"
-              strokeLinecap="round"
-            />
-          </svg>
-          Recenter on course
-        </button>
-      </Panel>
-    </div>
+    <Panel padding="none" className="hz-reveal pointer-events-auto">
+      <button
+        type="button"
+        onClick={onRecenter}
+        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs text-text-primary transition-colors duration-fast hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+      >
+        <svg width="13" height="13" viewBox="0 0 15 15" aria-hidden="true">
+          <circle
+            cx="7.5"
+            cy="7.5"
+            r="4.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.3"
+          />
+          <circle cx="7.5" cy="7.5" r="1.4" fill="currentColor" />
+          <path
+            d="M7.5 1v1.6M7.5 12.4V14M14 7.5h-1.6M2.6 7.5H1"
+            stroke="currentColor"
+            strokeWidth="1.3"
+            strokeLinecap="round"
+          />
+        </svg>
+        Recenter on course
+      </button>
+    </Panel>
   );
 }

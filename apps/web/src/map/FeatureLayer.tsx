@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { GeoJSONSource, MapMouseEvent, MapSourceDataEvent } from 'maplibre-gl';
 import { feature as featureColors } from '@hyzerlines/design';
-import type { Feature } from '@hyzerlines/core';
+import { byFocus, type Feature, type FeatureKind, type Focus } from '@hyzerlines/core';
 
 import { useMap } from './MapContext';
 import {
@@ -40,6 +40,8 @@ interface FeatureLayerProps {
   handles: GeoJSON.FeatureCollection;
   /** Clicks select only when the select tool is active. */
   selectable: boolean;
+  /** Which features answer a click first where two overlap. See `byFocus`. */
+  focus: Focus;
 }
 
 /**
@@ -58,6 +60,7 @@ export function FeatureLayer({
   derived,
   handles,
   selectable,
+  focus,
 }: FeatureLayerProps) {
   const { map } = useMap();
   const readyRef = useRef(false);
@@ -275,7 +278,23 @@ export function FeatureLayer({
 
     const handleClick = (e: MapMouseEvent) => {
       if (overHandle(e)) return;
-      const hits = map.queryRenderedFeatures(e.point, { layers: [...INTERACTIVE_LAYERS] });
+      /*
+       * Ranked by focus before anything else reads them.
+       *
+       * `INTERACTIVE_LAYERS` orders candidates by geometry — a small thing
+       * standing on a big one wins — which is right but says nothing about
+       * what the designer is working on. In Land, a tree drawn over hole 7's
+       * corridor should answer the click; in Play, the hole should. Both stay
+       * reachable either way, because this reorders and never filters.
+       */
+      const hits = byFocus(
+        map.queryRenderedFeatures(e.point, { layers: [...INTERACTIVE_LAYERS] }),
+        focus,
+        (hit) => {
+          const kind = hit.properties?.['kind'];
+          return typeof kind === 'string' ? (kind as FeatureKind) : null;
+        },
+      );
       /*
        * `selectAs` wins where a feature has one.
        *
@@ -305,7 +324,7 @@ export function FeatureLayer({
       map.off('mousemove', handleMove);
       map.getCanvas().style.cursor = '';
     };
-  }, [map, selectable, onSelect]);
+  }, [map, selectable, onSelect, focus]);
 
   return null;
 }

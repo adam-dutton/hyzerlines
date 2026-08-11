@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { IconButton, Panel, Segmented, Tabs, cn, type TabDefinition } from '@hyzerlines/design';
+import { IconButton, Panel, Segmented, cn } from '@hyzerlines/design';
 import {
+  FOCUS_DEFINITIONS,
   hasMultipleTees,
   holeName,
   scorecard,
@@ -8,6 +9,7 @@ import {
   type Course,
   type FairwayChoices,
   type Finding,
+  type Focus,
   type Op,
 } from '@hyzerlines/core';
 
@@ -15,6 +17,7 @@ import { formatDistance, type UnitSystem } from '../units';
 import { useProfiles } from '../survey/useProfiles';
 import { FindingsList } from './FindingsList';
 import { ParCell } from './ParCell';
+import { LandPanel } from './LandPanel';
 import { Scorecard, type CardMode } from './Scorecard';
 
 /**
@@ -30,16 +33,17 @@ import { Scorecard, type CardMode } from './Scorecard';
  * beneath the list they annotate, and the count is readable without opening
  * anything.
  *
- * ## Tabs, with one of them empty
+ * ## The focus decides what this panel is
  *
- * Holes and layouts are two readings of the same course — the corridors that
- * exist, and the order somebody plays them in — so they are peers, and a tab
- * strip is what says so. The layouts tab is here before layouts are, on
- * purpose: it is the frame the next PR fills, and standing it up now means
- * that PR does not also have to relitigate this panel's shape.
+ * It used to be a tab strip: Holes and Layouts, two readings of one course. The
+ * focus does that job now and does it better, because the same switch also
+ * changes the palette and what wins a click — a tab that changed only the panel
+ * was solving a third of the problem.
  *
- * It renders a sentence rather than being disabled. A disabled tab is a door
- * that does not open and does not say why.
+ * A focus with nothing behind it still renders, and says so in a sentence. That
+ * is inherited from the empty Layouts tab and the reasoning has not changed: a
+ * control that vanishes until its milestone lands leaves the structure
+ * invisible exactly when somebody is trying to learn it.
  */
 
 export function LeftPanel({
@@ -47,6 +51,9 @@ export function LeftPanel({
   units,
   findings,
   choices,
+  focus,
+  selectedFeatureId,
+  onSelectFeature,
   selectedHoleId,
   onSelectHole,
   onOp,
@@ -66,6 +73,10 @@ export function LeftPanel({
    * selected hole.
    */
   choices: FairwayChoices;
+  /** Which kind of work the editor is set up for. Decides this panel's content. */
+  focus: Focus;
+  selectedFeatureId: string | null;
+  onSelectFeature: (id: string) => void;
   selectedHoleId: string | null;
   onSelectHole: (id: string | null) => void;
   onOp: (op: Op) => void;
@@ -106,6 +117,7 @@ export function LeftPanel({
    * Asked before built, so the single-tee course does not pay for a card it
    * will not draw.
    */
+  const definition = FOCUS_DEFINITIONS[focus];
   const multipleTees = hasMultipleTees(course);
   const card = useMemo(
     () => (multipleTees ? scorecard(course, holes, { elevations, choices }) : null),
@@ -121,15 +133,6 @@ export function LeftPanel({
    * filling the card in rather than reading it.
    */
   const [cardMode, setCardMode] = useState<CardMode>('length');
-
-  const [tab, setTab] = useState('holes');
-  const tabs = useMemo<TabDefinition[]>(
-    () => [
-      { id: 'holes', label: 'Holes', badge: holes.length },
-      { id: 'layouts', label: 'Layouts' },
-    ],
-    [holes.length],
-  );
 
   return (
     <div
@@ -157,105 +160,118 @@ export function LeftPanel({
          * while never growing past what it actually holds.
          */
         className="flex min-h-0 flex-col overflow-hidden"
-        aria-label="Holes and layouts"
+        aria-label={definition.label}
       >
-        <Tabs tabs={tabs} value={tab} onChange={setTab} label="Holes and layouts">
-          {tab === 'layouts' ? (
-            <p className="px-3 py-3 text-2xs leading-4 text-text-muted">
-              A layout is the order a course is played in — which can skip a hole, or play one
-              twice. Coming in the next release.
-            </p>
-          ) : (
-            <>
-              <div className="flex shrink-0 items-center justify-between px-3 py-1.5">
-                <span className="text-2xs text-text-muted">
-                  {holes.length === 0 ? 'None yet' : 'In playing order'}
-                </span>
-                {/* Only with the card, because the list has its par control in
-                    every row already — there is nothing to switch to. */}
-                {card && (
-                  <Segmented
-                    label="Card shows"
-                    value={cardMode}
-                    onChange={setCardMode}
-                    options={[
-                      { value: 'length', label: 'Length' },
-                      { value: 'par', label: 'Par' },
-                    ]}
-                    className="ml-auto mr-1"
-                  />
-                )}
-                <IconButton label="Add hole" size="sm" tooltipSide="right" onClick={onAddHole}>
-                  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-                    <path
-                      d="M6 2v8M2 6h8"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </IconButton>
-              </div>
+        <h2 className="flex shrink-0 items-center gap-2 border-b border-border-subtle px-3 py-1.5 text-2xs font-medium uppercase tracking-wide text-text-muted">
+          {definition.label}
+        </h2>
 
-              {holes.length === 0 ? (
-                <p className="px-3 pb-3 text-2xs leading-4 text-text-muted">
-                  Add a hole, then draw its tee and basket — anything you place while a hole is
-                  selected joins it.
-                </p>
-              ) : card ? (
-                <Scorecard
-                  course={course}
-                  card={card}
-                  units={units}
-                  mode={cardMode}
-                  selectedHoleId={selectedHoleId}
-                  onSelectHole={onSelectHole}
-                  onOp={onOp}
+        {/*
+          A focus that has no milestone behind it says so, in its own words.
+          Hiding it until the work lands would leave the structure invisible
+          exactly when somebody is trying to learn it — the same reasoning that
+          stood the Layouts tab up empty, which this replaces.
+        */}
+        {!definition.ready ? (
+          <p className="px-3 py-3 text-2xs leading-4 text-text-muted">
+            {definition.summary} Coming in a later release.
+          </p>
+        ) : focus === 'land' ? (
+          <LandPanel
+            course={course}
+            selectedId={selectedFeatureId}
+            onSelectFeature={onSelectFeature}
+          />
+        ) : (
+          <>
+            <div className="flex shrink-0 items-center justify-between px-3 py-1.5">
+              <span className="text-2xs text-text-muted">
+                {holes.length === 0 ? 'None yet' : 'In playing order'}
+              </span>
+              {/* Only with the card, because the list has its par control in
+                    every row already — there is nothing to switch to. */}
+              {card && (
+                <Segmented
+                  label="Card shows"
+                  value={cardMode}
+                  onChange={setCardMode}
+                  options={[
+                    { value: 'length', label: 'Length' },
+                    { value: 'par', label: 'Par' },
+                  ]}
+                  className="ml-auto mr-1"
                 />
-              ) : (
-                <ul className="min-h-0 flex-1 overflow-y-auto">
-                  {holes.map((hole) => {
-                    const view = views.get(hole.id) ?? null;
-                    const selected = hole.id === selectedHoleId;
-                    return (
-                      <li
-                        key={hole.id}
-                        className={cn(
-                          'flex items-center gap-2 border-t border-border-subtle pr-2',
-                          'transition-colors duration-fast hover:bg-surface-hover',
-                          selected && 'bg-surface-selected',
-                        )}
-                      >
-                        {/* The row selects; the par control inside it must not,
+              )}
+              <IconButton label="Add hole" size="sm" tooltipSide="right" onClick={onAddHole}>
+                <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                  <path
+                    d="M6 2v8M2 6h8"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </IconButton>
+            </div>
+
+            {holes.length === 0 ? (
+              <p className="px-3 pb-3 text-2xs leading-4 text-text-muted">
+                Add a hole, then draw its tee and basket — anything you place while a hole is
+                selected joins it.
+              </p>
+            ) : card ? (
+              <Scorecard
+                course={course}
+                card={card}
+                units={units}
+                mode={cardMode}
+                selectedHoleId={selectedHoleId}
+                onSelectHole={onSelectHole}
+                onOp={onOp}
+              />
+            ) : (
+              <ul className="min-h-0 flex-1 overflow-y-auto">
+                {holes.map((hole) => {
+                  const view = views.get(hole.id) ?? null;
+                  const selected = hole.id === selectedHoleId;
+                  return (
+                    <li
+                      key={hole.id}
+                      className={cn(
+                        'flex items-center gap-2 border-t border-border-subtle pr-2',
+                        'transition-colors duration-fast hover:bg-surface-hover',
+                        selected && 'bg-surface-selected',
+                      )}
+                    >
+                      {/* The row selects; the par control inside it must not,
                             so they are siblings rather than nested — a select
                             inside a button is invalid and swallows its own
                             clicks. */}
-                        <button
-                          type="button"
-                          onClick={() => onSelectHole(selected ? null : hole.id)}
-                          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-                        >
-                          <span className="w-5 shrink-0 font-mono text-2xs tabular-nums text-text-muted">
-                            {hole.number}
-                          </span>
-                          <span className="min-w-0 flex-1 truncate text-xs text-text-primary">
-                            {holeName(hole)}
-                          </span>
-                          <span className="shrink-0 font-mono text-2xs tabular-nums text-text-secondary">
-                            {view?.measurement.effective == null
-                              ? '—'
-                              : formatDistance(view.measurement.effective, units)}
-                          </span>
-                        </button>
-                        <ParCell course={course} hole={hole} view={view} onOp={onOp} />
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </>
-          )}
-        </Tabs>
+                      <button
+                        type="button"
+                        onClick={() => onSelectHole(selected ? null : hole.id)}
+                        className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                      >
+                        <span className="w-5 shrink-0 font-mono text-2xs tabular-nums text-text-muted">
+                          {hole.number}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-xs text-text-primary">
+                          {holeName(hole)}
+                        </span>
+                        <span className="shrink-0 font-mono text-2xs tabular-nums text-text-secondary">
+                          {view?.measurement.effective == null
+                            ? '—'
+                            : formatDistance(view.measurement.effective, units)}
+                        </span>
+                      </button>
+                      <ParCell course={course} hole={hole} view={view} onOp={onOp} />
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </>
+        )}
       </Panel>
 
       <FindingsList

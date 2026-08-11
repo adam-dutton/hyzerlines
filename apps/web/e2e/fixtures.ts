@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { FOCUSES, FOCUS_DEFINITIONS, KIND_DEFINITIONS } from '@hyzerlines/core';
 import { deflateSync } from 'node:zlib';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 
@@ -435,9 +436,42 @@ export async function dragCanvas(
   await page.mouse.up();
 }
 
+/**
+ * Which focus offers each tool, derived rather than restated.
+ *
+ * Built from the same tables the rail reads, so moving a kind between focuses
+ * cannot leave the tests arming a tool that is no longer on screen. A hard-coded
+ * copy here would drift silently and fail as "button not found", which reads as
+ * a broken rail rather than a moved tool.
+ */
+const FOCUS_OF_TOOL = new Map<string, string>(
+  FOCUSES.flatMap((focus) =>
+    FOCUS_DEFINITIONS[focus].kinds.map(
+      (kind) => [KIND_DEFINITIONS[kind].label, FOCUS_DEFINITIONS[focus].label] as const,
+    ),
+  ),
+);
+
+/**
+ * Arm a drawing tool, switching focus first if it lives in another one.
+ *
+ * The switch is real behaviour, not a shortcut around it: a tool the current
+ * focus does not offer genuinely is not on the rail. It lives here so that
+ * twenty tests about drawing do not each become a test about focus — the focus
+ * mechanism has its own tests, which assert the switching directly.
+ */
+export async function armTool(page: Page, tool: string): Promise<void> {
+  const focus = FOCUS_OF_TOOL.get(tool);
+  if (focus) {
+    const control = page.getByRole('radio', { name: focus, exact: true });
+    if ((await control.getAttribute('aria-checked')) !== 'true') await control.click();
+  }
+  await rail(page).getByRole('button', { name: tool, exact: true }).click();
+}
+
 /** Draw a point feature with the named tool, then clear the auto-selection. */
 export async function place(page: Page, tool: string, x: number, y: number): Promise<void> {
-  await rail(page).getByRole('button', { name: tool, exact: true }).click();
+  await armTool(page, tool);
   await clickMap(page, x, y);
   await page.keyboard.press('Escape');
 }

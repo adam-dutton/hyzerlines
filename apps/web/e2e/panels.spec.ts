@@ -1,11 +1,11 @@
 import { test, expect, type Page } from '@playwright/test';
 
 import {
+  armTool,
   clickMap,
   openEditor,
   openSection,
   place,
-  rail,
   setSwitch,
   switchControl,
   waitForSave,
@@ -30,7 +30,7 @@ async function holeWithEnds(page: Page): Promise<void> {
     ['Tee pad', 430, 500],
     ['Target', 860, 240],
   ] as const) {
-    await rail(page).getByRole('button', { name: tool, exact: true }).click();
+    await armTool(page, tool);
     await clickMap(page, x, y);
   }
 }

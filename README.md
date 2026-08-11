@@ -1,6 +1,6 @@
 # Hyzerlines
 
-Design disc golf courses on real terrain, in a browser. Free, open source, and
+Design disc golf courses on real terrain, in a browser. Free to start, and
 usable without an account.
 
 Point it at a piece of land, draw tees and baskets on satellite imagery, and get
@@ -330,16 +330,21 @@ parks department.
 
 ## Contributing
 
-Issues and pull requests are welcome. CI runs format, lint, typecheck and build
-on every PR; `pnpm format && pnpm lint && pnpm build` locally covers the same
-ground.
+Issues and pull requests are welcome, but hold off on large ones for now: the
+licence is changing (see below), and a contribution made under one licence and
+shipped under another is a problem for whoever wrote it. Small fixes are fine.
+
+CI runs format, lint, typecheck and build on every PR;
+`pnpm format && pnpm lint && pnpm build` locally covers the same ground.
 
 ## License
 
-[AGPL-3.0-or-later](LICENSE).
+**In transition.** Everything through
+[#15](https://github.com/adam-dutton/hyzerlines/pull/15) shipped under
+[AGPL-3.0-or-later](LICENSE), and those versions stay AGPL permanently — anyone
+holding a copy keeps the right to use, modify, self-host, redistribute and fork
+it. Future versions move to a proprietary licence, with a free tier and a paid
+subscription. See [docs/PLAN.md](docs/PLAN.md#licence-and-business-model).
 
-You can use, modify, self-host and redistribute this freely. The one condition
-that matters: if you run a modified version as a network service, you have to
-offer your users its source. That is deliberate — it keeps the project from
-being closed up and resold as a hosted product, while leaving self-hosting and
-forking wide open.
+The `LICENSE` file still contains the AGPL text and has not been replaced yet.
+Until it is, treat the current contents as authoritative for what is here.
