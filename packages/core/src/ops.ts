@@ -1,6 +1,7 @@
 import { DESCRIPTION_MAX, type Course } from './schema.js';
 import type { Display } from './display.js';
 import type { Overlays } from './overlays.js';
+import type { CustomGlyph, MapStyle } from './style.js';
 import type { SiteSurvey } from './survey.js';
 import type { View } from './geo.js';
 import type { Feature, Geometry } from './features.js';
@@ -72,6 +73,31 @@ export type Op =
    * `setDisplay` is — see overlays.ts for why these are in the document.
    */
   | { type: 'setOverlays'; changes: Partial<Overlays> }
+  /**
+   * Restyle the map.
+   *
+   * The whole stylesheet rather than a partial, and unlike its two neighbours
+   * that is deliberate. A style edit is often a *deletion* — clearing an
+   * override so the kind goes back to inheriting — and a partial merge cannot
+   * express one: `{ stroke: undefined }` merges to nothing at all. Sending the
+   * whole sheet makes "set" and "unset" the same operation, and makes the
+   * inverse exactly the sheet that was there before.
+   *
+   * The uploaded glyph library is not in here; see `addGlyph`. It is the one
+   * part of a stylesheet with real weight, and every undo entry would otherwise
+   * carry a copy of every drawing.
+   */
+  | { type: 'setStyle'; style: Omit<MapStyle, 'glyphs'> }
+  /**
+   * Add or remove an uploaded glyph.
+   *
+   * Separate ops rather than a whole-library set, because the library is the
+   * heavy part of a stylesheet and these are the only two things anybody does
+   * to it. Removing one leaves any kind pointing at it pointing at nothing,
+   * which resolves back to the default drawing — see `featureStyleSchema`.
+   */
+  | { type: 'addGlyph'; glyph: CustomGlyph }
+  | { type: 'removeGlyph'; id: string }
   /**
    * Attach or clear the imported elevation for this site.
    *
@@ -420,6 +446,40 @@ export function applyOp(course: Course, op: Op): ApplyResult {
         { type: 'setDisplay', changes: course.display },
         undoable,
       );
+
+    case 'setStyle': {
+      // The library is carried across rather than replaced: `setStyle` is about
+      // the choices, and an op that silently dropped somebody's uploads would
+      // be a very expensive way to change a colour.
+      const style = { ...op.style, glyphs: course.style.glyphs };
+      const { glyphs: _keep, ...previous } = course.style;
+      return result({ ...course, style }, { type: 'setStyle', style: previous }, undoable);
+    }
+
+    case 'addGlyph':
+      return result(
+        { ...course, style: { ...course.style, glyphs: [...course.style.glyphs, op.glyph] } },
+        { type: 'removeGlyph', id: op.glyph.id },
+        undoable,
+      );
+
+    case 'removeGlyph': {
+      const gone = course.style.glyphs.find((glyph) => glyph.id === op.id);
+      // Already gone. A no-op rather than a failure: undo and redo both replay
+      // ops against a document that may have moved under them.
+      if (!gone) return noop(course, op);
+      return result(
+        {
+          ...course,
+          style: {
+            ...course.style,
+            glyphs: course.style.glyphs.filter((glyph) => glyph.id !== op.id),
+          },
+        },
+        { type: 'addGlyph', glyph: gone },
+        undoable,
+      );
+    }
 
     case 'setOverlays':
       return result(

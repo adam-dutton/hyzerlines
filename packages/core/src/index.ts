@@ -8,6 +8,7 @@ export * from './geometry.js';
 export * from './acreage.js';
 export * from './display.js';
 export * from './overlays.js';
+export * from './style.js';
 export * from './survey.js';
 export * from './resample.js';
 export * from './profile.js';

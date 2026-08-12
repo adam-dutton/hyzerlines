@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { displaySchema } from './display.js';
 import { overlaysSchema } from './overlays.js';
+import { mapStyleSchema } from './style.js';
 import { siteSurveySchema } from './survey.js';
 import { viewSchema, type View } from './geo.js';
 import { featureSchema, type Feature } from './features.js';
@@ -105,6 +106,14 @@ export const courseSchema = z.object({
    * it was showing.
    */
   overlays: overlaysSchema.default({}),
+
+  /**
+   * How this course is drawn. See style.ts.
+   *
+   * Additive with defaults, like the two above: a document written before this
+   * existed parses with an empty stylesheet, which draws exactly what it drew.
+   */
+  style: mapStyleSchema.default({}),
 
   /**
    * Elevation the designer brought for this site. See survey.ts.

@@ -1,0 +1,210 @@
+import { z } from 'zod';
+
+import { featureKindSchema, type FeatureKind } from './features.js';
+import { TARGET_CIRCLES, type TargetCircleId } from './pdga.js';
+
+/**
+ * How this course is drawn.
+ *
+ * In the document, beside `display` and `overlays`, and for the same reason:
+ * the look of a course is part of the course. A designer who hands a park board
+ * a `.hyzer` with the fairways in green and the mandatories in orange meant them
+ * to see it that way, and a look that lived in whichever browser last touched
+ * the file would arrive as somebody else's defaults.
+ *
+ * ## Everything here is optional, and that is the design
+ *
+ * An unset value means "whatever the app draws by default", not "transparent"
+ * or "zero". Three things follow from it, all of them worth having:
+ *
+ *   - A course that has never been styled carries an empty object, so the file
+ *     stays small and says nothing it does not mean.
+ *   - Improving a default reaches every course that never overrode it, which is
+ *     how a default earns the name.
+ *   - The interface can show the difference between a value somebody chose and
+ *     one they inherited, which is the difference between a decision and a
+ *     starting point. `Reset` is then deletion rather than a second guess at
+ *     what the default used to be.
+ *
+ * The defaults themselves are deliberately NOT here. They come from the design
+ * tokens, which live in the design package because they are also the interface's
+ * colours; core holds the overrides and knows nothing about hue. See
+ * `resolveStyle` in the web app.
+ */
+
+/**
+ * Colours are hex, and validated.
+ *
+ * Not decoration: these strings are handed to MapLibre as paint values, and a
+ * colour it cannot parse fails the *whole layer* rather than the one property —
+ * which presents as a feature kind silently not drawing. A document that has
+ * been round-tripped through a text editor is exactly where that would come
+ * from, so the schema is the place to stop it.
+ *
+ * Three digits, six, or eight with alpha. Named colours and `rgb()` are refused
+ * rather than parsed: the picker produces hex, opacity has its own field, and a
+ * second way to say the same thing is a second thing to keep in step.
+ */
+const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+export const colorSchema = z
+  .string()
+  .regex(HEX, 'A colour has to be a hex value, like #ff6b64.');
+
+/**
+ * How a line is broken.
+ *
+ * Three, named for what they mean rather than for numbers. A designer picking
+ * "dotted" is saying *this is a note about the land*, and the dash lengths that
+ * express it are a rendering decision that should be free to change — see
+ * `DASH_PATTERNS` in the web app.
+ */
+export const DASHES = ['solid', 'dashed', 'dotted'] as const;
+export const dashSchema = z.enum(DASHES);
+export type Dash = z.infer<typeof dashSchema>;
+
+/**
+ * Everything one kind of feature can be told about how to draw itself.
+ *
+ * One shape for all fifteen kinds rather than a shape per geometry. A point has
+ * no fill and a polygon has no glyph, and the interface only offers what the
+ * kind can use — but a single record means adding a property is one field here
+ * and one control there, instead of three parallel edits that drift.
+ */
+export const featureStyleSchema = z.object({
+  /** The line, the outline of an area, and the ink of a glyph. */
+  stroke: colorSchema.optional(),
+  /** In screen pixels: an annotation stays legible at every zoom. */
+  strokeWidth: z.number().min(0).max(24).optional(),
+  dash: dashSchema.optional(),
+  /**
+   * The dark line under the stroke — the contrast floor.
+   *
+   * Customisable, and it is the one setting here that can make a map unreadable.
+   * It is offered anyway because it is also the setting that makes a *light*
+   * basemap work: over a print-white plan the casing wants to be light and the
+   * stroke dark, which is not reachable by changing the stroke alone.
+   */
+  casing: colorSchema.optional(),
+  fill: colorSchema.optional(),
+  fillOpacity: z.number().min(0).max(1).optional(),
+  /**
+   * Which drawing marks a point of this kind.
+   *
+   * A built-in name, or the id of an uploaded glyph. Unknown ids fall back to
+   * the default rather than drawing nothing — a course whose custom glyph was
+   * deleted should lose the drawing, not the basket.
+   */
+  glyph: z.string().min(1).optional(),
+  /** How big the glyph lands on screen, in pixels. */
+  glyphSize: z.number().min(8).max(96).optional(),
+});
+
+export type FeatureStyle = z.infer<typeof featureStyleSchema>;
+
+/**
+ * The hole's number, on the ground.
+ *
+ * A disc with a numeral in it, so the two colours are the ink and the ground it
+ * sits on. Sized in pixels like every other annotation: the number is a label
+ * on the map, not an object on the site.
+ */
+export const holeNumberStyleSchema = z.object({
+  text: colorSchema.optional(),
+  disc: colorSchema.optional(),
+  size: z.number().min(8).max(48).optional(),
+});
+
+export type HoleNumberStyle = z.infer<typeof holeNumberStyleSchema>;
+
+/** A putting circle's ring. It has no fill — see the note in `derivedLayers`. */
+export const circleStyleSchema = z.object({
+  stroke: colorSchema.optional(),
+  strokeWidth: z.number().min(0).max(12).optional(),
+  dash: dashSchema.optional(),
+});
+
+export type CircleStyle = z.infer<typeof circleStyleSchema>;
+
+/**
+ * A glyph somebody uploaded.
+ *
+ * **Path data and nothing else.** An SVG file is a document format with scripts,
+ * external references and embedded images in it; what this stores is the `d`
+ * attribute of its paths, which is a string of coordinates that `Path2D` turns
+ * into a shape. Nothing in an uploaded file can *do* anything, because nothing
+ * but the coordinates survives the import. See `glyphFromSvg`.
+ *
+ * The box is kept so the drawing can be scaled to whatever size the style asks
+ * for without the importer having to re-fit anybody's artwork.
+ */
+export const customGlyphSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1).max(60),
+  paths: z.array(z.string().min(1)).min(1).max(200),
+  /** `[minX, minY, width, height]`, straight from the file's own viewBox. */
+  viewBox: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+});
+
+export type CustomGlyph = z.infer<typeof customGlyphSchema>;
+
+const TARGET_CIRCLE_IDS = TARGET_CIRCLES.map((circle) => circle.id) as [
+  TargetCircleId,
+  ...TargetCircleId[],
+];
+
+export const mapStyleSchema = z.object({
+  /** Overrides by kind. Absent kinds draw at their defaults. */
+  features: z.record(featureKindSchema, featureStyleSchema).default({}),
+  holeNumber: holeNumberStyleSchema.default({}),
+  /** Keyed by `TargetCircleId`, so a new ring is a compile error rather than
+      a circle nobody can restyle. */
+  circles: z.record(z.enum(TARGET_CIRCLE_IDS), circleStyleSchema).default({}),
+  /** The uploaded library, referenced by `featureStyle.glyph`. */
+  glyphs: z.array(customGlyphSchema).default([]),
+});
+
+export type MapStyle = z.infer<typeof mapStyleSchema>;
+
+export const DEFAULT_MAP_STYLE: MapStyle = mapStyleSchema.parse({});
+
+/** What has been said about a kind, which is usually nothing. */
+export const featureStyleOf = (style: MapStyle, kind: FeatureKind): FeatureStyle =>
+  style.features[kind] ?? {};
+
+export const circleStyleOf = (style: MapStyle, id: TargetCircleId): CircleStyle =>
+  style.circles[id] ?? {};
+
+export const glyphById = (style: MapStyle, id: string): CustomGlyph | undefined =>
+  style.glyphs.find((glyph) => glyph.id === id);
+
+/**
+ * Set one kind's style, dropping the keys that were cleared.
+ *
+ * An override set back to its default is *removed* rather than written as the
+ * default's current value. Storing it would freeze today's default into the
+ * document and quietly opt the course out of every future improvement to it —
+ * and it would make "inherited" and "chosen, and happens to match" the same
+ * state, which is exactly the distinction this model exists to keep.
+ */
+export function withFeatureStyle(
+  style: MapStyle,
+  kind: FeatureKind,
+  next: FeatureStyle,
+): MapStyle {
+  const cleaned = Object.fromEntries(
+    Object.entries(next).filter(([, value]) => value !== undefined),
+  ) as FeatureStyle;
+
+  const features = { ...style.features };
+  if (Object.keys(cleaned).length === 0) delete features[kind];
+  else features[kind] = cleaned;
+
+  return { ...style, features };
+}
+
+/** Whether anything at all has been overridden. Drives "Reset all". */
+export const isDefaultStyle = (style: MapStyle): boolean =>
+  Object.keys(style.features).length === 0 &&
+  Object.keys(style.holeNumber).length === 0 &&
+  Object.keys(style.circles).length === 0 &&
+  style.glyphs.length === 0;
