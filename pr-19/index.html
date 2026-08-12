@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" data-theme="dark" style="color-scheme: dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Hyzerlines</title>
+    <meta
+      name="description"
+      content="Design disc golf courses on real terrain. Free, open source, no account required."
+    />
+    <meta name="theme-color" content="#08090b" />
+
+    <!--
+      The theme is resolved before first paint. Without this the app flashes
+      dark-then-light for anyone who chose light, which is exactly the kind of
+      detail that makes a tool feel unfinished.
+    -->
+    <script>
+      try {
+        var stored = localStorage.getItem('hyzerlines.theme');
+        if (stored === 'light') {
+          document.documentElement.dataset.theme = 'light';
+          document.documentElement.style.colorScheme = 'light';
+        }
+      } catch (e) {
+        /* storage blocked; dark default already applied above */
+      }
+    </script>
+
+    <link rel="preconnect" href="https://server.arcgisonline.com" crossorigin />
+    <script type="module" crossorigin src="/hyzerlines/pr-19/assets/index-CstKjoTN.js"></script>
+    <link rel="modulepreload" crossorigin href="/hyzerlines/pr-19/assets/maplibre-CMX7JeUv.js">
+    <link rel="stylesheet" crossorigin href="/hyzerlines/pr-19/assets/index-CTvU-0_H.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>Hyzerlines is an interactive map editor and needs JavaScript enabled.</noscript>
+  </body>
+</html>
