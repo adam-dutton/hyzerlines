@@ -100,6 +100,22 @@ export const featureStyleSchema = z.object({
   fill: colorSchema.optional(),
   fillOpacity: z.number().min(0).max(1).optional(),
   /**
+   * The repeating lettering over a regulated area.
+   *
+   * What the letters *say* is not in here: OB, HZ, CAS and REL are what those
+   * areas are called, not a label somebody types, and a designer who could
+   * write "OOB" over an out-of-bounds area could write anything over anything.
+   * The colour is not in here either — it follows the line, so the lettering
+   * and the outline of one area can never disagree about which area it is.
+   */
+  pattern: z.boolean().optional(),
+  /** Cap height of the lettering, in pixels. */
+  patternSize: z.number().min(6).max(48).optional(),
+  /** Centre to centre, in pixels. Bigger is sparser. */
+  patternSpacing: z.number().min(16).max(400).optional(),
+  /** Degrees clockwise. The lettering runs at this angle across the area. */
+  patternAngle: z.number().min(-90).max(90).optional(),
+  /**
    * Which drawing marks a point of this kind.
    *
    * A built-in name, or the id of an uploaded glyph. Unknown ids fall back to

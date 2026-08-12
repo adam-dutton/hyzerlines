@@ -13,6 +13,7 @@ import {
 
 import { MARKER_SIZE_PX, markerIcon, type MarkerName } from './icons';
 import { CASING_RATIO, DASH_PATTERNS, casingDash, type ResolvedStyle } from './mapStyle';
+import { hasPattern, patternImage } from './patterns';
 
 /**
  * How course features are drawn.
@@ -622,6 +623,31 @@ export function featureLayers(style: ResolvedStyle): LayerSpecification[] {
         },
       },
     );
+
+    /*
+     * The lettering, as a second fill above the first.
+     *
+     * A layer of its own rather than a pattern on the fill itself, because they
+     * are two different things: the fill is how solid the shading is, and the
+     * lettering says which rule applies. A designer who wants the letters over
+     * clear ground can take the fill's opacity to nothing and keep them.
+     *
+     * Not in `INTERACTIVE_LAYERS`: it sits exactly on top of the fill that is,
+     * carries the same feature, and adding it would only mean answering the
+     * same click twice.
+     */
+    if (hasPattern(kind)) {
+      layers.push({
+        id: `features-${kind}-pattern`,
+        type: 'fill',
+        source: FEATURES_SOURCE,
+        filter,
+        paint: {
+          'fill-pattern': patternImage(kind),
+          'fill-opacity': drawn.pattern ? 1 : 0,
+        },
+      });
+    }
   }
 
   /*

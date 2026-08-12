@@ -220,34 +220,32 @@ const WHITE_FILL = 'rgb(255 255 255 / 0.18)';
 const mono = { stroke: WHITE, fill: WHITE_FILL, casing: CASING };
 
 /**
- * Out of bounds is the one exception, and it earns it.
+ * The regulated areas are lettered, and the letters carry the identity.
  *
- * Red for OB is not a styling choice this project gets to make — it is what OB
- * looks like on every course map, every tournament handout and every rulebook
- * diagram a player has ever seen. Drawing it in the same white as a path would
- * be withholding the one piece of information the map can convey without a
- * label, on the only kind of area that costs a throw to land in.
+ * Out of bounds used to be red, on the argument that red is what OB looks like
+ * on every course map a player has ever seen. True of a *line* with nothing
+ * else to go on — and the four regulated areas now carry their own repeating
+ * lettering, which says which is which far more exactly than four hues could.
+ * OB, HZ, CAS and REL are unambiguous; four reds a shade apart are not.
  *
- * The other regulated areas stay white for now. They are penalties too, but
- * they have no established colour, and inventing three more would put the map
- * back where the monochrome pass started.
+ * So the colours change job. The fill is transparent black on all four, which
+ * is what shades ground on a printed plan without tinting the imagery a
+ * designer is reading terrain from, and the line takes a hue that reads against
+ * canopy: white for OB, yellow for a hazard, blue for a casual area, red for
+ * required relief.
  */
-const RED_FILL = 'rgb(255 107 100 / 0.22)';
-const ob = { stroke: primitive.red[400], fill: RED_FILL, casing: CASING };
+const SHADE = 'rgb(0 0 0 / 0.28)';
+const regulated = (stroke: string) => ({ stroke, fill: SHADE, casing: CASING });
 
 /**
- * A mandatory is the second thing that earns red, and for OB's own reason.
+ * A mandatory is the other thing that earns red.
  *
- * The two are the same claim to a player: cross this and it costs you a throw.
- * Course maps have drawn mandatory arrows in red for as long as they have drawn
- * OB in it, so the colour is read rather than learned — and a mandatory line is
- * *specifically* a thing you must not cross, which is exactly what a white line
- * on this map does not say.
- *
- * The same red as OB rather than a second one. Two reds a shade apart would be
- * the map implying a distinction it does not mean.
+ * Cross it and it costs you a throw, and course maps have drawn mandatory
+ * arrows in red for as long as they have drawn anything in it — so the colour
+ * is read rather than learned. A mandatory line is *specifically* a thing you
+ * must not cross, which is exactly what a white line on this map does not say.
  */
-const mando = { stroke: primitive.red[400], fill: RED_FILL, casing: CASING };
+const mando = { stroke: primitive.red[400], fill: 'rgb(255 107 100 / 0.22)', casing: CASING };
 
 export const feature = {
   tee: mono,
@@ -257,10 +255,10 @@ export const feature = {
   mando,
   dropzone: mono,
 
-  ob,
-  hazard: mono,
-  casualArea: mono,
-  requiredRelief: mono,
+  ob: regulated(WHITE),
+  hazard: regulated(primitive.amber[400]),
+  casualArea: regulated(primitive.accent[300]),
+  requiredRelief: regulated(primitive.red[400]),
 
   water: mono,
   path: mono,

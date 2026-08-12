@@ -18,6 +18,7 @@ import {
   builtInGlyphsFor,
   hasGlyph,
 } from '../map/mapStyle';
+import { PATTERN_TEXT, hasPattern } from '../map/patterns';
 import { SectionTitle, ToggleRow, sectionClass } from './propertyRow';
 import { ColorRow, DASH_OPTIONS, FactRow, NumberRow, SelectRow } from './StyleControls';
 
@@ -332,6 +333,50 @@ export function StyleProperties({
               commit({ ...sheet, features: withFeatureStyle(style, kind, rest).features });
             }}
           />
+        </div>
+      )}
+
+      {hasPattern(kind) && (
+        <div className={sectionClass}>
+          <SectionTitle>Lettering</SectionTitle>
+          <ToggleRow
+            label={`Repeat "${PATTERN_TEXT[kind] ?? ''}"`}
+            checked={current.pattern ?? base.pattern}
+            onChange={(pattern) => set({ pattern })}
+          />
+          <NumberRow
+            label="Text size"
+            value={current.patternSize ?? base.patternSize}
+            inherited={current.patternSize === undefined}
+            suffix="px"
+            step={1}
+            onChange={(patternSize) => set({ patternSize })}
+            onReset={() => clear('patternSize')}
+          />
+          <NumberRow
+            label="Spacing"
+            value={current.patternSpacing ?? base.patternSpacing}
+            inherited={current.patternSpacing === undefined}
+            suffix="px"
+            step={8}
+            onChange={(patternSpacing) => set({ patternSpacing })}
+            onReset={() => clear('patternSpacing')}
+          />
+          <NumberRow
+            label="Angle"
+            value={current.patternAngle ?? base.patternAngle}
+            inherited={current.patternAngle === undefined}
+            suffix="°"
+            step={5}
+            onChange={(patternAngle) => set({ patternAngle })}
+            onReset={() => clear('patternAngle')}
+          />
+          <p className="mt-2 text-2xs leading-4 text-text-muted">
+            The letters take the line&rsquo;s colour, so an area&rsquo;s outline and its
+            lettering can never disagree about which area it is. What they say is the
+            kind&rsquo;s own name rather than something typed — an area lettered anything at all
+            would say nothing reliable.
+          </p>
         </div>
       )}
 

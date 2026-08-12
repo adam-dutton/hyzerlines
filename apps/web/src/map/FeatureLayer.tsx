@@ -29,6 +29,7 @@ import {
 import { VERTEX_LAYERS } from './useVertexEditing';
 import { addMarkerIcons } from './icons';
 import { resolveStyle, type ResolvedStyle } from './mapStyle';
+import { addPatternImages } from './patterns';
 import type { DerivedGeometry } from './derived';
 
 const PREVIEW_SOURCE = 'drawing-preview';
@@ -173,6 +174,7 @@ export function FeatureLayer({
        * Installing it after would bury the thing you actually click.
        */
       addMarkerIcons(map, resolved);
+      addPatternImages(map, resolved);
 
       if (!map.getSource(DERIVED_SOURCE)) {
         // promoteId for the same reason the feature source needs it: a tee pad
@@ -267,6 +269,7 @@ export function FeatureLayer({
       if (map.getLayer(layer.id)) map.removeLayer(layer.id);
     }
     addMarkerIcons(map, resolved);
+    addPatternImages(map, resolved);
     for (const layer of scene) {
       if (!map.getLayer(layer.id)) map.addLayer(layer);
     }

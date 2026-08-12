@@ -14,6 +14,7 @@ import {
 } from '@hyzerlines/core';
 
 import { LARGE_ART } from '../chrome/iconArt';
+import { hasPattern } from './patterns';
 
 /**
  * The defaults a stylesheet overrides, and the answer after it has.
@@ -48,6 +49,10 @@ export interface ResolvedFeatureStyle {
   /** A built-in name or an uploaded glyph's id. Empty for kinds with no point. */
   glyph: string;
   glyphSize: number;
+  pattern: boolean;
+  patternSize: number;
+  patternSpacing: number;
+  patternAngle: number;
 }
 
 export interface ResolvedCircleStyle {
@@ -222,8 +227,30 @@ function defaultFeatureStyle(kind: FeatureKind): ResolvedFeatureStyle {
     fillOpacity: fill.opacity * (geometry === 'polygon' ? 1 : 0.9),
     glyph: DEFAULT_GLYPHS[kind] ?? '',
     glyphSize: DEFAULT_GLYPH_SIZE,
+    /*
+     * On for the four regulated areas, because that is what a course map looks
+     * like: the shading says *something rules this ground* and the letters say
+     * which rule. An unlettered shaded area is the half of that which cannot be
+     * read.
+     */
+    pattern: hasPattern(kind),
+    ...PATTERN_DEFAULTS,
   };
 }
+
+/**
+ * How the lettering is set, when nobody has said otherwise.
+ *
+ * Sparse and small. The pattern is a *ground*, not a label — it has to say
+ * which area this is without competing with the tees, the corridor and the
+ * numbers drawn over it, and lettering at label size repeated every forty
+ * pixels is a texture nobody can see the map through.
+ */
+const PATTERN_DEFAULTS = {
+  patternSize: 11,
+  patternSpacing: 96,
+  patternAngle: 0,
+} as const;
 
 /**
  * The default sheet, computed once.
@@ -313,6 +340,10 @@ export function resolveStyle(style: MapStyle): ResolvedStyle {
           fillOpacity: over.fillOpacity ?? base.fillOpacity,
           glyph: over.glyph ?? base.glyph,
           glyphSize: over.glyphSize ?? base.glyphSize,
+          pattern: over.pattern ?? base.pattern,
+          patternSize: over.patternSize ?? base.patternSize,
+          patternSpacing: over.patternSpacing ?? base.patternSpacing,
+          patternAngle: over.patternAngle ?? base.patternAngle,
         } satisfies ResolvedFeatureStyle,
       ];
     }),
