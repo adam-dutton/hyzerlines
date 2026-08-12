@@ -48,9 +48,14 @@ export interface ResolvedFeatureStyle {
   /** A built-in name or an uploaded glyph's id. Empty for kinds with no point. */
   glyph: string;
   glyphSize: number;
+  secondCorridor: boolean;
+  secondFill: string;
+  secondFillOpacity: number;
   arrow: boolean;
   arrowSize: number;
   lineGap: number;
+  shade: boolean;
+  shadeOpacity: number;
   fillOutside: boolean;
 }
 
@@ -239,8 +244,20 @@ function defaultFeatureStyle(kind: FeatureKind): ResolvedFeatureStyle {
      * on a hole with two mandatories a wall with no direction is one you have
      * to work out from a glyph forty pixels away.
      */
+    /*
+     * The approach corridor is off until asked for.
+     *
+     * It is a second claim about the same shot, and two translucent bands down
+     * one strip of land is a lot of ink for a map whose whole job is to be read
+     * through. The designer who wants it knows they want it.
+     */
+    secondCorridor: false,
+    secondFill: fill.color,
+    secondFillOpacity: 0.3,
     arrow: isRule,
     arrowSize: 14,
+    shade: isRule,
+    shadeOpacity: 0.35,
     /* Clear of the glyph, which is about thirty pixels across at the zoom a
        hole is designed at. */
     lineGap: isRule ? 4 : 0,
@@ -359,6 +376,11 @@ export function resolveStyle(style: MapStyle): ResolvedStyle {
           casingOn: over.casingOn ?? base.casingOn,
           fill: over.fill ?? base.fill,
           fillOpacity: over.fillOpacity ?? base.fillOpacity,
+          secondCorridor: over.secondCorridor ?? base.secondCorridor,
+          secondFill: over.secondFill ?? base.secondFill,
+          secondFillOpacity: over.secondFillOpacity ?? base.secondFillOpacity,
+          shade: over.shade ?? base.shade,
+          shadeOpacity: over.shadeOpacity ?? base.shadeOpacity,
           arrow: over.arrow ?? base.arrow,
           arrowSize: over.arrowSize ?? base.arrowSize,
           lineGap: over.lineGap ?? base.lineGap,

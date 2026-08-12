@@ -307,6 +307,12 @@ export function CourseEditor({
           spacingM: course.style.lettering.spacing ?? DEFAULT_LETTERING_STYLE.spacingM,
           angle: course.style.lettering.angle ?? DEFAULT_LETTERING_STYLE.angle,
         },
+        {
+          secondCorridor:
+            course.style.features.fairway?.secondCorridor ??
+            DEFAULT_FEATURE_STYLES.fairway.secondCorridor,
+          shade: course.style.features.mando?.shade ?? DEFAULT_FEATURE_STYLES.mando.shade,
+        },
       ),
     [
       visible,
@@ -316,6 +322,8 @@ export function CourseEditor({
       course.style.lettering.on,
       course.style.lettering.spacing,
       course.style.lettering.angle,
+      course.style.features.fairway?.secondCorridor,
+      course.style.features.mando?.shade,
     ],
   );
 

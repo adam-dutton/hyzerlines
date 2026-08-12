@@ -241,6 +241,39 @@ export function pointInRing(ring: readonly Position[], point: Position): boolean
 }
 
 /**
+ * A half disc, as a ring: the flat edge across the middle, the bulge one way.
+ *
+ * `facingDeg` is the compass bearing the bulge points. Used for the shading
+ * behind a mandatory's wall, where the flat edge lies on the line and the bulge
+ * runs the way play goes.
+ */
+export function semicircleRing(
+  centre: Position,
+  radiusM: number,
+  facingDeg: number,
+  segments = 24,
+): Position[] {
+  const plane = planeAt(centre);
+  const { forward, right } = axes(facingDeg);
+  const ring: Position[] = [];
+
+  // From one end of the flat edge, round through the bulge, to the other.
+  for (let i = 0; i <= segments; i++) {
+    const angle = Math.PI * (i / segments) - Math.PI / 2;
+    const out = Math.cos(angle) * radiusM;
+    const across = Math.sin(angle) * radiusM;
+    ring.push(
+      fromLocal(plane, [
+        forward[0] * out + right[0] * across,
+        forward[1] * out + right[1] * across,
+      ]),
+    );
+  }
+
+  return ring;
+}
+
+/**
  * A point a distance and a bearing away from another, on the local plane.
  *
  * Metres, so the result holds its relationship to the ground rather than to the
@@ -424,6 +457,16 @@ export const FAIRWAY_CORRIDOR = {
    * value of 4 is tuned for glyph strokes, not for ground.
    */
   miterLimit: 2,
+  /**
+   * The approach corridor's width at the target: Circle 2, across.
+   *
+   * `[RULES]` 806.02 puts Circle 2 at 20 m, so the corridor arrives exactly as
+   * wide as the ring the map already draws — the same reasoning as the first
+   * corridor and Circle 1, one ring further out. It is the ground a player is
+   * trying to *reach*, where the first corridor is the line they are trying to
+   * hold.
+   */
+  approachWidthAtTargetM: TARGET_CIRCLES.find((c) => c.id === 'c2')!.radiusM * 2,
 } as const;
 
 export interface CorridorWidths {

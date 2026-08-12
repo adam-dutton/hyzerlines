@@ -377,6 +377,40 @@ export function StyleProperties({
         </div>
       )}
 
+      {kind === 'fairway' && (
+        <div className={sectionClass}>
+          <SectionTitle>Approach corridor</SectionTitle>
+          <ToggleRow
+            label="Show it"
+            checked={current.secondCorridor ?? base.secondCorridor}
+            onChange={(secondCorridor) => set({ secondCorridor })}
+          />
+          <ColorRow
+            label="Colour"
+            value={current.secondFill ?? base.secondFill}
+            opacity={current.secondFillOpacity ?? base.secondFillOpacity}
+            inherited={
+              current.secondFill === undefined && current.secondFillOpacity === undefined
+            }
+            palette={style.palette}
+            onColor={(secondFill) => set({ secondFill })}
+            onOpacity={(secondFillOpacity) => set({ secondFillOpacity })}
+            onKeep={keep}
+            onReset={() => {
+              const { secondFill: _a, secondFillOpacity: _b, ...rest } = current;
+              commit({ ...sheet, features: withFeatureStyle(style, kind, rest).features });
+            }}
+          />
+          <p className="mt-2 text-2xs leading-4 text-text-muted">
+            A second, wider band from the front of the tee, opening out to enclose Circle 2. The
+            first corridor says how much room the line has; this says how much the approach has
+            — the ground a player is trying to reach rather than the line they are trying to
+            hold. Off by default, because two translucent bands down one strip of land is a lot
+            of ink.
+          </p>
+        </div>
+      )}
+
       {kind === 'mando' && (
         <div className={sectionClass}>
           <SectionTitle>The line</SectionTitle>
@@ -403,6 +437,24 @@ export function StyleProperties({
             onChange={(arrowSize) => set({ arrowSize })}
             onReset={() => clear('arrowSize')}
           />
+          <ToggleRow
+            label="Shade behind it"
+            checked={current.shade ?? base.shade}
+            onChange={(shade) => set({ shade })}
+          />
+          <NumberRow
+            label="Shading"
+            value={current.shadeOpacity ?? base.shadeOpacity}
+            inherited={current.shadeOpacity === undefined}
+            step={0.05}
+            onChange={(shadeOpacity) => set({ shadeOpacity })}
+            onReset={() => clear('shadeOpacity')}
+          />
+          <p className="mt-2 text-2xs leading-4 text-text-muted">
+            The shading is a half disc with its flat edge on the line, bulging the way play goes
+            — the ground you end up on if you take the wrong side and carry on to the basket.
+            The line says where the plane is; the shading says what it costs you.
+          </p>
           <p className="mt-2 text-2xs leading-4 text-text-muted">
             Where the wall starts, measured out from the object, so it clears the marker rather
             than running through it. Metres rather than pixels because the line is on the ground

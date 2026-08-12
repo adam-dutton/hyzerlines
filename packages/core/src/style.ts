@@ -110,6 +110,18 @@ export const featureStyleSchema = z.object({
    */
   fillOutside: z.boolean().optional(),
   /**
+   * A fairway's second, wider corridor.
+   *
+   * The first says how much room the shot has; this says how much room the
+   * *approach* has — it runs from the front of the tee pad and opens out to
+   * enclose Circle 2, which is the ground a player is trying to reach rather
+   * than the line they are trying to hold. Two claims about one shot, so two
+   * shapes with their own colour and their own weight.
+   */
+  secondCorridor: z.boolean().optional(),
+  secondFill: colorSchema.optional(),
+  secondFillOpacity: z.number().min(0).max(1).optional(),
+  /**
    * A mandatory's own three, shown only on that kind.
    *
    * They live in the same record as everything else for the reason the record
@@ -120,6 +132,15 @@ export const featureStyleSchema = z.object({
   arrowSize: z.number().min(6).max(48).optional(),
   /** Where the mandatory line starts, measured out from the object, in metres. */
   lineGap: z.number().min(0).max(50).optional(),
+  /**
+   * The shading behind a mandatory's wall.
+   *
+   * A half disc with its flat edge on the line, bulging the way play goes: the
+   * ground you end up on if you take the wrong side and carry on to the basket.
+   * The line says where the plane is; this says what it costs you.
+   */
+  shade: z.boolean().optional(),
+  shadeOpacity: z.number().min(0).max(1).optional(),
   /**
    * Which drawing marks a point of this kind.
    *

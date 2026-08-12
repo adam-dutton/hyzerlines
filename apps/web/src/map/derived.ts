@@ -8,8 +8,13 @@ import {
   featureIndex,
   footprintOf,
   bearingNearest,
+  corridorWidthsFor,
+  distance,
+  fairwayCorridor,
+  FAIRWAY_CORRIDOR,
   holeLabelPosition,
   holeName,
+  semicircleRing,
   offsetFrom,
   KIND_DEFINITIONS,
   mandoBearingFor,
@@ -37,6 +42,16 @@ import {
  * clicking and selection are concerned. Fairway lines carry a `pair` key
  * instead: they may have no feature behind them at all until somebody bends one.
  */
+
+/**
+ * How many rings the mandatory's shading is built from.
+ *
+ * A stand-in for a radial gradient, which MapLibre fills do not have. Nested
+ * semicircles at one opacity each stack up densest at the flat edge and thin
+ * out towards the arc, which is the falloff a gradient would give — six is
+ * enough that the steps are not countable and few enough to cost nothing.
+ */
+const SHADE_BANDS = 6;
 
 export interface DerivedGeometry {
   collection: GeoJSON.FeatureCollection;
@@ -119,6 +134,11 @@ export function derivedGeometry(
     on: false,
     spacingM: 30,
     angle: 0,
+  },
+  /** The two shapes that are off unless the stylesheet asks for them. */
+  approach: { secondCorridor: boolean; shade: boolean } = {
+    secondCorridor: false,
+    shade: false,
   },
 ): DerivedGeometry {
   const featureById = featureIndex(course);
@@ -301,6 +321,34 @@ export function derivedGeometry(
     });
 
     /*
+     * The shading behind the wall: a half disc, flat edge on the line, bulging
+     * the way play goes. Banded rather than a gradient, because MapLibre fills
+     * have no radial gradient — see `derivedLayers`.
+     */
+    if (approach.shade) {
+      const [from, to] = mando.line;
+      const middle: [number, number] = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2];
+      const radius = distance(from, to) / 2;
+
+      for (let band = 0; band < SHADE_BANDS; band++) {
+        const ring = semicircleRing(
+          middle,
+          (radius * (SHADE_BANDS - band)) / SHADE_BANDS,
+          mando.bearingDeg,
+        );
+        features.push({
+          type: 'Feature',
+          properties: {
+            id: `${feature.id} shade ${band}`,
+            kind: 'mando',
+            derived: 'mandoShade',
+          },
+          geometry: { type: 'Polygon', coordinates: [[...ring, ring[0]!]] },
+        });
+      }
+    }
+
+    /*
      * The arrowhead, at the far end and pointing out along the wall.
      *
      * The line says where the plane is; this says which way it faces. On a hole
@@ -403,6 +451,31 @@ export function derivedGeometry(
      * shot goes. On a wide corridor over broken canopy the fill alone does not
      * read as a direction, and the line is also what carries the vertex handles.
      */
+    /*
+     * The approach corridor: the same line, opened out to Circle 2.
+     *
+     * Under the first one, because it is the wider claim — how much room the
+     * approach has, where the first says how much room the line has. Drawn from
+     * the same centreline rather than a second geometry: they are two readings
+     * of one shot, and a second line would be a second thing to keep in step.
+     */
+    if (approach.secondCorridor && visible && fairway.corridor) {
+      const wide = fairwayCorridor(fairway.line, {
+        atStart: corridorWidthsFor(
+          fairway.fairwayId ? featureById.get(fairway.fairwayId) : undefined,
+          featureById.get(fairway.teeId),
+        ).atStart,
+        atEnd: FAIRWAY_CORRIDOR.approachWidthAtTargetM,
+      });
+      if (wide) {
+        features.push({
+          type: 'Feature',
+          properties: { id: `${pair} approach`, pair, kind: 'fairway', derived: 'approach' },
+          geometry: { type: 'Polygon', coordinates: [[...wide.ring, wide.ring[0]!]] },
+        });
+      }
+    }
+
     if (!drawLines || !shown(fairway)) continue;
     features.push({
       type: 'Feature',

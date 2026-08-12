@@ -239,6 +239,40 @@ export function derivedLayers(style: ResolvedStyle): LayerSpecification[] {
       },
     },
     /*
+     * The approach corridor, under the first one because it is the wider
+     * claim: how much room the approach has, where the first says how much
+     * room the line has.
+     */
+    {
+      id: 'derived-approach',
+      type: 'fill',
+      source: DERIVED_SOURCE,
+      filter: ['==', ['get', 'derived'], 'approach'],
+      paint: {
+        'fill-color': selectable(fairway.secondFill, 'fill'),
+        'fill-opacity': fairway.secondFillOpacity,
+      },
+    },
+    /*
+     * The shading behind a mandatory's wall.
+     *
+     * Six nested half discs at a fraction of the asked-for opacity each,
+     * because MapLibre fills have no radial gradient. They stack densest at the
+     * flat edge and thin out towards the arc, which is the falloff a gradient
+     * would give — and the whole point of the shape is that it fades, so a hard
+     * edge at the far side would read as a second wall.
+     */
+    {
+      id: 'derived-mando-shade',
+      type: 'fill',
+      source: DERIVED_SOURCE,
+      filter: ['==', ['get', 'derived'], 'mandoShade'],
+      paint: {
+        'fill-color': '#000000',
+        'fill-opacity': mando.shadeOpacity / 6,
+      },
+    },
+    /*
      * The alternatives, first and therefore underneath everything.
      *
      * Not in the interactive list: at 1.25px these are a poor click target, and
