@@ -1,13 +1,18 @@
 import type { LayerSpecification, ExpressionSpecification } from 'maplibre-gl';
-import { feature as featureColors, type FeatureKind } from '@hyzerlines/design';
+import { feature as featureColors } from '@hyzerlines/design';
 import {
   EARTH_RADIUS,
   FEATURE_KINDS,
+  KIND_DEFINITIONS,
   PLACED_RECTANGLE_DEFAULTS,
+  TARGET_CIRCLES,
   type Feature,
+  type FeatureKind,
+  type TargetCircleId,
 } from '@hyzerlines/core';
 
 import { MARKER_SIZE_PX, markerIcon, type MarkerName } from './icons';
+import { CASING_RATIO, DASH_PATTERNS, casingDash, type ResolvedStyle } from './mapStyle';
 
 /**
  * How course features are drawn.
@@ -39,34 +44,21 @@ export const DERIVED_SOURCE = 'derived-geometry';
 export const HANDLES_SOURCE = 'edit-handles';
 
 /**
- * Build a MapLibre `match` expression over feature kinds from the tokens.
+ * A colour, or the selection colour when the feature is selected.
  *
- * Every kind currently resolves to the same white — see the note on `feature` in
- * the design tokens. The expression is kept rather than collapsed to a constant
- * because bringing hue back for some kinds is then a token change and nothing
- * else, which is the whole point of generating map styling from the tokens.
+ * Selection is a colour swap and nothing else. Every one of these used to be a
+ * `case` on selection that also changed a size: lines thickened, points grew,
+ * outlines appeared. Which meant selecting a hole *redrew* it — the geometry on
+ * screen stopped being the geometry you had drawn, and a fairway's apparent
+ * width depended on whether you happened to have it selected. On a map whose
+ * whole job is to be measured off, that is the one thing the drawing must not
+ * do.
+ *
+ * It is legible enough: accent blue against a designer's own colours is not a
+ * subtle difference, and it is the only thing on screen that is ever blue.
  */
-function colorByKind(role: 'stroke' | 'fill'): ExpressionSpecification {
-  const cases = FEATURE_KINDS.flatMap((kind) => [
-    kind,
-    featureColors[kind as FeatureKind][role],
-  ]) as (string | number)[];
-  // A match needs a fallback; an unknown kind should be loud, not invisible.
-  return [
-    'match',
-    ['get', 'kind'],
-    ...cases,
-    featureColors.handle.stroke,
-  ] as unknown as ExpressionSpecification;
-}
-
-const CASING = featureColors.tee.casing;
-
-const selected: ExpressionSpecification = ['boolean', ['feature-state', 'selected'], false];
-
-/** Kind colour normally, the selection colour when selected. */
-function selectableColor(role: 'stroke' | 'fill'): ExpressionSpecification {
-  return ['case', selected, featureColors.selected[role], colorByKind(role)];
+function selectable(color: string, role: 'stroke' | 'fill'): ExpressionSpecification {
+  return ['case', selected, featureColors.selected[role], color];
 }
 
 /**
@@ -77,17 +69,36 @@ function selectableColor(role: 'stroke' | 'fill'): ExpressionSpecification {
  * entirely when the feature is the only one of its kind on screen. Recolouring
  * the contrast floor gives an unmistakable halo against both dark canopy and
  * bright sand.
- *
- * It used to invert dark-to-white, which worked while features carried their
- * own hues. Now that every feature *is* white, a white halo would be invisible
- * against the thing it surrounds, so selection is the one place colour is spent.
  */
-const CASING_COLOR: ExpressionSpecification = [
-  'case',
-  selected,
-  featureColors.selected.casing,
-  CASING,
-];
+function casingColor(casing: string): ExpressionSpecification {
+  return ['case', selected, featureColors.selected.casing, casing];
+}
+
+/**
+ * A dash, as the paint fragment MapLibre wants.
+ *
+ * Absent for a solid line rather than `[1, 0]`: a zero-length gap renders as a
+ * row of degenerate segments, which reads as a line that is somehow both solid
+ * and broken.
+ */
+const dashPaint = (dash: readonly [number, number] | null) =>
+  dash ? { 'line-dasharray': [...dash] } : {};
+
+/** Layer ids, named once so the interactive and draggable lists cannot drift. */
+export const circleLayer = (id: TargetCircleId) => `derived-circle-${id}`;
+export const areaFillLayer = (kind: FeatureKind) => `features-${kind}-fill`;
+export const areaStrokeLayer = (kind: FeatureKind) => `features-${kind}-stroke`;
+export const lineStrokeLayer = (kind: FeatureKind) => `features-${kind}-stroke`;
+
+export const areaKinds = (): FeatureKind[] =>
+  FEATURE_KINDS.filter((kind) => KIND_DEFINITIONS[kind].geometry === 'polygon');
+
+export const lineKinds = (): FeatureKind[] =>
+  FEATURE_KINDS.filter(
+    (kind) => KIND_DEFINITIONS[kind].geometry === 'line' && kind !== 'fairway',
+  );
+
+const selected: ExpressionSpecification = ['boolean', ['feature-state', 'selected'], false];
 
 /**
  * Widths are in screen pixels, deliberately, not ground meters.
@@ -110,32 +121,7 @@ const CASING_COLOR: ExpressionSpecification = [
  * accent blue against white over satellite imagery is not a subtle difference,
  * and it is the only thing on screen that is ever blue.
  */
-const LINE_WIDTH = 2.5;
-const LINE_CASING_WIDTH = 6;
 const POINT_RADIUS = 7;
-
-/**
- * A dash pattern and the casing pattern that lines up underneath it.
- *
- * `line-dasharray` is measured in line widths, so a casing twice as wide as its
- * stroke needs half the dash numbers to break in the same places. Get that wrong
- * and the casing fills the gaps — which is exactly how a dashed line ends up
- * looking solid, and is what made selected fairways read as solid strokes: the
- * gaps were there, filled in by a casing in a near-identical blue.
- *
- * The ratio has to be constant for this to hold, so widths that vary with
- * selection vary together.
- */
-function casingDash(dash: readonly [number, number], ratio: number): [number, number] {
-  return [dash[0] / ratio, dash[1] / ratio];
-}
-
-/** Casing width as a multiple of stroke width, wherever a dash has to align. */
-const CASING_RATIO = 2.2;
-
-const CENTRELINE_DASH = [3, 2] as const;
-const CENTRELINE_WIDTH = 2.5;
-const CENTRELINE_CASING_WIDTH = CENTRELINE_WIDTH * CASING_RATIO;
 
 /**
  * The shots a hole offers but is not being drawn as.
@@ -151,44 +137,8 @@ const CENTRELINE_CASING_WIDTH = CENTRELINE_WIDTH * CASING_RATIO;
  * basket end up drawn.
  */
 const ALTERNATIVE_DASH = [2, 4] as const;
-const ALTERNATIVE_WIDTH = 1.25;
+const ALTERNATIVE_SCALE = 0.5;
 const ALTERNATIVE_OPACITY = 0.45;
-
-/**
- * A property boundary is a note about the land, not a thing on it.
- *
- * So it gets the thinnest dotted line on the map and no fill at all. The fill
- * was the real problem: a boundary is routinely the largest shape on screen, and
- * a translucent wash over the whole site dims the imagery a designer is reading
- * the terrain from — every tree line and every fall of ground goes through it.
- * A dotted outline says the same thing and takes nothing away.
- */
-/**
- * The mandatory line's dash.
- *
- * Dashed because the plane is not a thing on the ground: there is nothing at
- * the site to walk along, only a rule about where a disc may go. Long dashes
- * with short gaps, so it still reads as a barrier rather than as the dotted
- * hairline a property line uses — the two claims could not be further apart.
- */
-const MANDO_DASH = [3, 1.5] as const;
-
-const BOUNDARY_DASH = [1, 2] as const;
-const BOUNDARY_WIDTH = 1.25;
-const BOUNDARY_CASING_WIDTH = BOUNDARY_WIDTH * CASING_RATIO;
-
-const isBoundary: ExpressionSpecification = ['==', ['get', 'kind'], 'boundary'];
-
-/**
- * How solid a fairway corridor reads.
- *
- * It was 0.5, which was tuned against a corridor that also had a dashed
- * outline holding its shape. With the outline gone the fill is the only thing
- * saying where the corridor is, and at half strength over green canopy it
- * barely said it — the room a shot has is one of the two things this map is
- * for, and it was the faintest mark on screen.
- */
-const CORRIDOR_OPACITY = 0.75;
 
 /**
  * The plain circle is suppressed once a feature has a picture of its own.
@@ -251,7 +201,19 @@ const PAD_LEGIBLE_ZOOM = Math.log2(
  * were calculated is an implementation detail rather than something to hedge
  * about on screen.
  */
-export function derivedLayers(): LayerSpecification[] {
+export function derivedLayers(style: ResolvedStyle): LayerSpecification[] {
+  /*
+   * Derived geometry belongs to a kind even though the document does not store
+   * it. A corridor and a centreline are two drawings of one fairway, a pad is
+   * a tee, and a mandatory line is a mandatory — so each takes that kind's
+   * style rather than one of its own. Restyling `fairway` restyles the shot.
+   */
+  const fairway = style.features.fairway;
+  const mando = style.features.mando;
+  const tee = style.features.tee;
+  const fairwayDash = DASH_PATTERNS[fairway.dash];
+  const mandoDash = DASH_PATTERNS[mando.dash];
+
   const isCorridor: ExpressionSpecification = ['==', ['get', 'derived'], 'corridor'];
   const isFootprint: ExpressionSpecification = ['==', ['get', 'derived'], 'footprint'];
   const isMandoLine: ExpressionSpecification = ['==', ['get', 'derived'], 'mandoLine'];
@@ -273,40 +235,50 @@ export function derivedLayers(): LayerSpecification[] {
       filter: ['==', ['get', 'derived'], 'alternative'],
       layout: { 'line-join': 'round', 'line-cap': 'butt' },
       paint: {
-        'line-color': selectableColor('stroke'),
-        'line-width': ALTERNATIVE_WIDTH,
+        'line-color': selectable(fairway.stroke, 'stroke'),
+        'line-width': fairway.strokeWidth * ALTERNATIVE_SCALE,
         'line-opacity': ALTERNATIVE_OPACITY,
         'line-dasharray': [...ALTERNATIVE_DASH],
       },
     },
     /*
-     * Putting circles, at their real size on the ground.
+     * Putting circles, at their real size on the ground, one layer per ring.
+     *
+     * One layer each rather than one layer with expressions inside it, for the
+     * reason the feature layers are split the same way: `line-dasharray` takes
+     * no data-driven expression, so three rings that can each carry their own
+     * dash have to be three layers. It also means a designer restyling Circle 1
+     * cannot accidentally restyle the bullseye.
      *
      * Outline only — three filled rings stacked around every basket would sit
-     * on the imagery a designer is reading the terrain from. Circle 1 is the one
-     * that is a rule, so it is drawn solid and the other two dashed: 20 m is a
-     * real figure the rules use for pace of play rather than a named circle, and
-     * the 3 m bullseye is league convention that appears in no PDGA document.
-     * See TARGET_CIRCLES.
+     * on the imagery a designer is reading the terrain from.
      */
-    {
-      id: 'derived-circle',
-      type: 'line',
-      source: DERIVED_SOURCE,
-      filter: ['==', ['get', 'derived'], 'circle'],
-      layout: { 'line-join': 'round' },
-      paint: {
-        'line-color': featureColors.target.stroke,
-        'line-width': ['case', ['==', ['get', 'circle'], 'c1'], 1.5, 1],
-        'line-opacity': ['case', ['==', ['get', 'authority'], 'rules'], 0.75, 0.45],
-        'line-dasharray': [
-          'case',
-          ['==', ['get', 'authority'], 'rules'],
-          ['literal', [1, 0]],
-          ['literal', [2, 2]],
+    ...TARGET_CIRCLES.map((circle): LayerSpecification => {
+      const ring = style.circles[circle.id];
+      return {
+        id: circleLayer(circle.id),
+        type: 'line',
+        source: DERIVED_SOURCE,
+        filter: [
+          'all',
+          ['==', ['get', 'derived'], 'circle'],
+          ['==', ['get', 'circle'], circle.id],
         ],
-      },
-    },
+        layout: { 'line-join': 'round' },
+        paint: {
+          'line-color': ring.stroke,
+          'line-width': ring.strokeWidth,
+          /*
+           * A ring the rules publish is drawn more strongly than one they do
+           * not. The 3 m bullseye is league convention and appears in no PDGA
+           * document; drawing it at the same weight as Circle 1 would be the
+           * map making a claim the rules do not.
+           */
+          'line-opacity': circle.authority === 'rules' ? 0.75 : 0.45,
+          ...dashPaint(DASH_PATTERNS[ring.dash]),
+        },
+      };
+    }),
     /*
      * No outline. A corridor is a drawing aid, not a boundary anyone has
      * actually drawn, and a stroke around it read as a claim about where the
@@ -322,7 +294,7 @@ export function derivedLayers(): LayerSpecification[] {
       source: DERIVED_SOURCE,
       filter: isCorridor,
       paint: {
-        'fill-color': selectableColor('fill'),
+        'fill-color': selectable(fairway.fill, 'fill'),
         // Fainter than a drawn area of the same kind: it is the room the shot
         // has, not a thing in its own right.
         //
@@ -330,7 +302,12 @@ export function derivedLayers(): LayerSpecification[] {
         // The shape stays on the map so the ground a hole's shot runs over
         // still selects that hole; hiding the drawing must not take the target
         // away with it.
-        'fill-opacity': ['case', ['coalesce', ['get', 'hidden'], false], 0, CORRIDOR_OPACITY],
+        'fill-opacity': [
+          'case',
+          ['coalesce', ['get', 'hidden'], false],
+          0,
+          fairway.fillOpacity,
+        ],
       },
     },
     /*
@@ -351,9 +328,9 @@ export function derivedLayers(): LayerSpecification[] {
       filter: isCentreline,
       layout: { 'line-join': 'round', 'line-cap': 'butt' },
       paint: {
-        'line-color': CASING_COLOR,
-        'line-width': CENTRELINE_CASING_WIDTH,
-        'line-dasharray': casingDash(CENTRELINE_DASH, CASING_RATIO),
+        'line-color': casingColor(fairway.casing),
+        'line-width': fairway.strokeWidth * CASING_RATIO,
+        ...dashPaint(casingDash(fairway.dash)),
       },
     },
     {
@@ -363,9 +340,9 @@ export function derivedLayers(): LayerSpecification[] {
       filter: isCentreline,
       layout: { 'line-join': 'round', 'line-cap': 'butt' },
       paint: {
-        'line-color': selectableColor('stroke'),
-        'line-width': CENTRELINE_WIDTH,
-        'line-dasharray': [...CENTRELINE_DASH],
+        'line-color': selectable(fairway.stroke, 'stroke'),
+        'line-width': fairway.strokeWidth,
+        ...dashPaint(fairwayDash),
       },
     },
     /*
@@ -386,9 +363,9 @@ export function derivedLayers(): LayerSpecification[] {
       filter: isMandoLine,
       layout: { 'line-join': 'round', 'line-cap': 'butt' },
       paint: {
-        'line-color': CASING_COLOR,
-        'line-width': LINE_CASING_WIDTH,
-        'line-dasharray': casingDash(MANDO_DASH, CASING_RATIO),
+        'line-color': casingColor(mando.casing),
+        'line-width': mando.strokeWidth * CASING_RATIO,
+        ...dashPaint(casingDash(mando.dash)),
       },
     },
     {
@@ -398,9 +375,9 @@ export function derivedLayers(): LayerSpecification[] {
       filter: isMandoLine,
       layout: { 'line-join': 'round', 'line-cap': 'butt' },
       paint: {
-        'line-color': selectableColor('stroke'),
-        'line-width': LINE_WIDTH,
-        'line-dasharray': [...MANDO_DASH],
+        'line-color': selectable(mando.stroke, 'stroke'),
+        'line-width': mando.strokeWidth,
+        ...dashPaint(mandoDash),
       },
     },
     /*
@@ -419,7 +396,7 @@ export function derivedLayers(): LayerSpecification[] {
       filter: isFootprint,
       minzoom: PAD_LEGIBLE_ZOOM,
       layout: { 'line-join': 'round' },
-      paint: { 'line-color': CASING_COLOR, 'line-width': 3.5 },
+      paint: { 'line-color': casingColor(tee.casing), 'line-width': tee.strokeWidth * 1.4 },
     },
     {
       id: 'derived-footprint',
@@ -427,7 +404,7 @@ export function derivedLayers(): LayerSpecification[] {
       source: DERIVED_SOURCE,
       filter: isFootprint,
       minzoom: PAD_LEGIBLE_ZOOM,
-      paint: { 'fill-color': selectableColor('fill'), 'fill-opacity': 1 },
+      paint: { 'fill-color': selectable(tee.stroke, 'fill'), 'fill-opacity': 1 },
     },
 
     /*
@@ -557,148 +534,160 @@ const markerOfKind = (kind: string): ExpressionSpecification => [
   ['==', ['get', 'kind'], kind],
 ];
 
-export function featureLayers(): LayerSpecification[] {
-  const isArea: ExpressionSpecification = ['==', ['geometry-type'], 'Polygon'];
+/**
+ * The feature layers, generated per kind.
+ *
+ * One set of layers for every kind that can be an area, and one for every kind
+ * that can be a line, rather than a handful of shared layers with `match`
+ * expressions inside them. That is not a stylistic preference: `line-dasharray`
+ * is the one paint property MapLibre accepts no data-driven expression for, so
+ * "dotted for a property line, solid for out of bounds" cannot be written
+ * inside one layer at all. A stylesheet that lets any kind take any dash
+ * therefore needs a layer per kind, and once you have that the colours and
+ * widths stop needing expressions too.
+ *
+ * The property boundary used to be the only kind split out, for exactly this
+ * reason, with a comment explaining the constraint. This is that comment
+ * applied consistently.
+ *
+ * Order within a kind is fill, casing, stroke — so an outline sits on top of
+ * its own fill. Order between kinds follows `FEATURE_KINDS`, which is stable.
+ */
+export function featureLayers(style: ResolvedStyle): LayerSpecification[] {
+  const layers: LayerSpecification[] = [];
+
+  const ofKind = (
+    kind: FeatureKind,
+    geometry: 'Polygon' | 'LineString',
+  ): ExpressionSpecification => [
+    'all',
+    ['==', ['geometry-type'], geometry],
+    ['==', ['get', 'kind'], kind],
+  ];
+
+  // --- Areas. Fill first so outlines sit on top of their own fill.
+  for (const kind of FEATURE_KINDS) {
+    if (KIND_DEFINITIONS[kind].geometry !== 'polygon') continue;
+    const drawn = style.features[kind];
+    const filter = ofKind(kind, 'Polygon');
+    const dash = DASH_PATTERNS[drawn.dash];
+    const under = casingDash(drawn.dash);
+
+    layers.push(
+      {
+        id: areaFillLayer(kind),
+        type: 'fill',
+        source: FEATURES_SOURCE,
+        filter,
+        paint: {
+          'fill-color': selectable(drawn.fill, 'fill'),
+          'fill-opacity': drawn.fillOpacity,
+        },
+      },
+      {
+        id: `features-${kind}-casing`,
+        type: 'line',
+        source: FEATURES_SOURCE,
+        filter,
+        layout: { 'line-join': 'round', 'line-cap': dash ? 'butt' : 'round' },
+        paint: {
+          'line-color': casingColor(drawn.casing),
+          'line-width': drawn.strokeWidth * CASING_RATIO,
+          ...(under ? { 'line-dasharray': under } : {}),
+        },
+      },
+      {
+        id: areaStrokeLayer(kind),
+        type: 'line',
+        source: FEATURES_SOURCE,
+        filter,
+        layout: { 'line-join': 'round', 'line-cap': dash ? 'butt' : 'round' },
+        paint: {
+          'line-color': selectable(drawn.stroke, 'stroke'),
+          'line-width': drawn.strokeWidth,
+          ...(dash ? { 'line-dasharray': [...dash] } : {}),
+        },
+      },
+    );
+  }
+
   /*
-   * Boundaries are split out rather than styled by a `case` inside one layer.
+   * --- Lines.
    *
-   * `line-dasharray` takes no data-driven expression — MapLibre accepts only a
-   * constant or a zoom function — so "dashed for one kind, solid for the rest"
-   * cannot be written as a paint expression at all. Two filtered layers is the
-   * supported way to say it, and the filters are exact complements so nothing
-   * is drawn twice or missed.
+   * Fairways are excluded: they are drawn by the derived source instead,
+   * whether or not the document stores one. Drawing a shaped fairway here as
+   * well would put two lines on the same coordinates, and the designer would
+   * see a doubled stroke on exactly the holes they had bothered to route.
    */
-  const isPlainArea: ExpressionSpecification = ['all', isArea, ['!', isBoundary]];
-  const isBoundaryArea: ExpressionSpecification = ['all', isArea, isBoundary];
+  for (const kind of FEATURE_KINDS) {
+    if (KIND_DEFINITIONS[kind].geometry !== 'line' || kind === 'fairway') continue;
+    const drawn = style.features[kind];
+    const filter = ofKind(kind, 'LineString');
+    const dash = DASH_PATTERNS[drawn.dash];
+    const under = casingDash(drawn.dash);
 
-  return [
-    // --- Areas. Fill first so outlines sit on top of their own fill.
-    {
-      id: 'features-polygon-fill',
-      type: 'fill',
-      source: FEATURES_SOURCE,
-      filter: isPlainArea,
-      paint: {
-        'fill-color': selectableColor('fill'),
-        'fill-opacity': 0.7,
+    layers.push(
+      {
+        id: `features-${kind}-casing`,
+        type: 'line',
+        source: FEATURES_SOURCE,
+        filter,
+        layout: { 'line-join': 'round', 'line-cap': dash ? 'butt' : 'round' },
+        paint: {
+          'line-color': casingColor(drawn.casing),
+          'line-width': drawn.strokeWidth * CASING_RATIO,
+          ...(under ? { 'line-dasharray': under } : {}),
+        },
       },
-    },
-    {
-      id: 'features-polygon-casing',
-      type: 'line',
-      source: FEATURES_SOURCE,
-      filter: isPlainArea,
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': CASING_COLOR, 'line-width': LINE_CASING_WIDTH },
-    },
-    {
-      id: 'features-polygon-stroke',
-      type: 'line',
-      source: FEATURES_SOURCE,
-      filter: isPlainArea,
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': selectableColor('stroke'), 'line-width': LINE_WIDTH },
-    },
+      {
+        id: lineStrokeLayer(kind),
+        type: 'line',
+        source: FEATURES_SOURCE,
+        filter,
+        layout: { 'line-join': 'round', 'line-cap': dash ? 'butt' : 'round' },
+        paint: {
+          'line-color': selectable(drawn.stroke, 'stroke'),
+          'line-width': drawn.strokeWidth,
+          ...(dash ? { 'line-dasharray': [...dash] } : {}),
+        },
+      },
+    );
+  }
 
-    // The property boundary: no fill, a thin dotted outline. See BOUNDARY_DASH.
-    {
-      id: 'features-boundary-casing',
-      type: 'line',
-      source: FEATURES_SOURCE,
-      filter: isBoundaryArea,
-      layout: { 'line-join': 'round', 'line-cap': 'butt' },
-      paint: {
-        'line-color': CASING_COLOR,
-        'line-width': BOUNDARY_CASING_WIDTH,
-        'line-dasharray': casingDash(BOUNDARY_DASH, CASING_RATIO),
-      },
-    },
-    {
-      id: 'features-boundary-stroke',
-      type: 'line',
-      source: FEATURES_SOURCE,
-      filter: isBoundaryArea,
-      layout: { 'line-join': 'round', 'line-cap': 'butt' },
-      paint: {
-        'line-color': selectableColor('stroke'),
-        'line-width': BOUNDARY_WIDTH,
-        'line-dasharray': [...BOUNDARY_DASH],
-      },
-    },
-
+  /*
+   * --- Points last: they are the things you click, and must win hit-testing.
+   *
+   * The plain circle is for kinds with no drawing of their own. A basket, a
+   * tee, a drop zone and a mandatory get glyphs — see `markerLayers` — and a
+   * circle underneath one would be a second marker for one object.
+   *
+   * Tees with a pad are a subtler case, handled by the derived source: the pad
+   * *is* the tee, but a pad is two metres of real ground, which is a fraction
+   * of a pixel at the zoom you use to see a whole course.
+   */
+  layers.push({
+    id: 'features-point',
+    type: 'circle',
+    source: FEATURES_SOURCE,
     /*
-     * --- Lines.
-     *
-     * Fairways are excluded: they are drawn by the derived source instead,
-     * whether or not the document stores one. Drawing a shaped fairway here as
-     * well would put two lines on the same coordinates, and the designer would
-     * see a doubled stroke on exactly the holes they had bothered to route.
+     * Targets are excluded outright — a basket always has a glyph. Everything
+     * else stands down only once it *has* one, which is the `hasMarker`
+     * property `POINT_OPACITY` reads: a mandatory nobody has ruled yet gets no
+     * glyph, and it still has to be on the map to be clicked and ruled.
      */
-    {
-      id: 'features-line-casing',
-      type: 'line',
-      source: FEATURES_SOURCE,
-      filter: [
-        'all',
-        ['==', ['geometry-type'], 'LineString'],
-        ['!=', ['get', 'kind'], 'fairway'],
-      ],
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': CASING_COLOR, 'line-width': LINE_CASING_WIDTH },
+    filter: ['all', ['==', ['geometry-type'], 'Point'], ['!=', ['get', 'kind'], 'target']],
+    paint: {
+      'circle-color': selectable(style.features.notedPoint.stroke, 'stroke'),
+      'circle-radius': POINT_RADIUS,
+      'circle-opacity': POINT_OPACITY,
+      // The casing, as a stroke rather than a second layer.
+      'circle-stroke-color': casingColor(style.features.notedPoint.casing),
+      'circle-stroke-width': 2,
+      'circle-stroke-opacity': POINT_OPACITY,
     },
-    {
-      id: 'features-line-stroke',
-      type: 'line',
-      source: FEATURES_SOURCE,
-      filter: [
-        'all',
-        ['==', ['geometry-type'], 'LineString'],
-        ['!=', ['get', 'kind'], 'fairway'],
-      ],
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': selectableColor('stroke'), 'line-width': LINE_WIDTH },
-    },
+  });
 
-    /*
-     * --- Points last: they are the things you click, and must win hit-testing.
-     *
-     * Targets are excluded outright — they get the basket glyph below, because
-     * a basket is the one object on a course everybody recognises on sight and
-     * a coloured circle is indistinguishable from a mando or a noted point.
-     *
-     * Tees with a pad are a subtler case. The pad *is* the tee, so a dot in the
-     * middle of it is a second marker for one object — but a pad is two metres
-     * of real ground, which is a fraction of a pixel at the zoom you use to see
-     * a whole course. Suppressing the dot outright makes tees vanish exactly
-     * when you are looking at the layout as a whole.
-     *
-     * So the dot hands over rather than disappearing: full strength while the
-     * pad is too small to see, gone by the time the pad is unmistakable.
-     */
-    {
-      id: 'features-point',
-      type: 'circle',
-      source: FEATURES_SOURCE,
-      filter: ['all', ['==', ['geometry-type'], 'Point'], ['!=', ['get', 'kind'], 'target']],
-      paint: {
-        'circle-color': selectableColor('stroke'),
-        'circle-radius': POINT_RADIUS,
-        'circle-opacity': POINT_OPACITY,
-        // The casing, as a stroke rather than a second layer.
-        'circle-stroke-color': CASING_COLOR,
-        'circle-stroke-width': 2,
-        'circle-stroke-opacity': POINT_OPACITY,
-      },
-    },
-    /*
-     * The basket, as two stacked layers cross-faded by selection.
-     *
-     * It has to be two. `icon-image` is a LAYOUT property, and MapLibre refuses
-     * feature-state expressions in layout properties — the whole layer fails
-     * validation and never installs, which presents as baskets simply not
-     * drawing. `icon-opacity` is paint, where feature-state is allowed, so the
-     * selected glyph is a second layer faded in over the first.
-     */
+  layers.push(
     ...markerLayers('features-target', 'target', {
       source: FEATURES_SOURCE,
       filter: pointOfKind('target'),
@@ -706,7 +695,9 @@ export function featureLayers(): LayerSpecification[] {
       // basket actually stands.
       anchor: 'bottom',
     }),
-  ];
+  );
+
+  return layers;
 }
 
 /**
@@ -720,8 +711,12 @@ export function featureLayers(): LayerSpecification[] {
  * way to select a hole, and the only one that does not require already knowing
  * which shapes belong to it.
  */
-export function holeLabelLayers(): LayerSpecification[] {
+export function holeLabelLayers(style: ResolvedStyle): LayerSpecification[] {
   const isLabel: ExpressionSpecification = ['==', ['get', 'derived'], 'holeLabel'];
+  const { text, disc, size } = style.holeNumber;
+  // The disc grows with the numeral, so a bigger number does not outgrow the
+  // shape that exists to make it readable.
+  const radius = size * 0.92;
   return [
     {
       id: 'hole-label-disc',
@@ -729,9 +724,9 @@ export function holeLabelLayers(): LayerSpecification[] {
       source: DERIVED_SOURCE,
       filter: isLabel,
       paint: {
-        'circle-color': ['case', selected, featureColors.selected.casing, CASING],
-        'circle-radius': 12,
-        'circle-stroke-color': featureColors.tee.stroke,
+        'circle-color': ['case', selected, featureColors.selected.casing, disc],
+        'circle-radius': radius,
+        'circle-stroke-color': text,
         'circle-stroke-width': 1,
       },
     },
@@ -742,13 +737,13 @@ export function holeLabelLayers(): LayerSpecification[] {
       filter: isLabel,
       layout: {
         'text-field': ['get', 'number'],
-        'text-size': 13,
+        'text-size': size,
         // Never dropped for collision: a course where 7 and 8 sit close together
         // is exactly when you need to tell them apart.
         'text-allow-overlap': true,
         'text-ignore-placement': true,
       },
-      paint: { 'text-color': featureColors.tee.stroke },
+      paint: { 'text-color': text },
     },
   ];
 }
@@ -811,19 +806,23 @@ export function vertexLayers(): LayerSpecification[] {
  * the mandatory rather than a thing in its own right — clicking either should
  * reach whatever is under it.
  */
-export const INTERACTIVE_LAYERS = [
+export const INTERACTIVE_LAYERS: readonly string[] = [
   'hole-label-disc',
   'features-target',
   'features-point',
-  'features-line-stroke',
-  'features-polygon-fill',
+  ...lineKinds().map(lineStrokeLayer),
+  ...areaKinds().map(areaFillLayer),
   /*
    * A boundary has no fill, so its outline is the only thing to click, and the
    * casing is used rather than the stroke because it is the wider of the two —
    * a 1.25 px dotted line is not a target anybody can hit. It carries the same
    * feature id, so which one answers makes no difference to the caller.
+   *
+   * Generated for every area kind rather than for the boundary alone: any kind
+   * can now be styled down to no fill, and the one that is would be the one you
+   * could not click.
    */
-  'features-boundary-casing',
+  ...areaKinds().map((kind) => `features-${kind}-casing`),
   'derived-marker-mando-left',
   'derived-marker-mando-right',
   'derived-marker-tee',
@@ -840,7 +839,7 @@ export const INTERACTIVE_LAYERS = [
    * a corridor wins the click.
    */
   'derived-corridor',
-] as const;
+];
 
 /**
  * Layers that stand for something too large to drag by.
@@ -850,8 +849,8 @@ export const INTERACTIVE_LAYERS = [
  * move. Dragging it would have to mean dragging the hole.
  */
 const AREA_LAYERS: readonly string[] = [
-  'features-polygon-fill',
-  'features-boundary-casing',
+  ...areaKinds().map(areaFillLayer),
+  ...areaKinds().map((kind) => `features-${kind}-casing`),
   'derived-corridor',
 ];
 

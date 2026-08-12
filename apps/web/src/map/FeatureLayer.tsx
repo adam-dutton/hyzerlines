@@ -1,7 +1,18 @@
-import { useEffect, useRef } from 'react';
-import type { GeoJSONSource, MapMouseEvent, MapSourceDataEvent } from 'maplibre-gl';
+import { useEffect, useMemo, useRef } from 'react';
+import type {
+  GeoJSONSource,
+  LayerSpecification,
+  MapMouseEvent,
+  MapSourceDataEvent,
+} from 'maplibre-gl';
 import { feature as featureColors } from '@hyzerlines/design';
-import { byFocus, type Feature, type FeatureKind, type Focus } from '@hyzerlines/core';
+import {
+  byFocus,
+  type Feature,
+  type FeatureKind,
+  type Focus,
+  type MapStyle,
+} from '@hyzerlines/core';
 
 import { useMap } from './MapContext';
 import {
@@ -17,6 +28,7 @@ import {
 } from './featureLayers';
 import { VERTEX_LAYERS } from './useVertexEditing';
 import { addMarkerIcons } from './icons';
+import { resolveStyle, type ResolvedStyle } from './mapStyle';
 import type { DerivedGeometry } from './derived';
 
 const PREVIEW_SOURCE = 'drawing-preview';
@@ -42,6 +54,54 @@ interface FeatureLayerProps {
   selectable: boolean;
   /** Which features answer a click first where two overlap. See `byFocus`. */
   focus: Focus;
+  /** How the course is drawn. See `mapStyle`. */
+  style: MapStyle;
+}
+
+/**
+ * Every layer the course scene is made of, in draw order.
+ *
+ * One list, used to install the scene and to rebuild it when the stylesheet
+ * changes. Order is the whole point and it is load-bearing twice over:
+ * MapLibre draws in insertion order, and it hit-tests in it too. Derived
+ * geometry sits under the features it was computed from, the handles sit over
+ * everything because the smallest targets on screen must win a click, and a
+ * rebuild that got this wrong would bury the thing you are trying to grab.
+ */
+function sceneLayers(resolved: ResolvedStyle): LayerSpecification[] {
+  return [
+    ...derivedLayers(resolved),
+    ...featureLayers(resolved),
+    // Provisional geometry: dashed, so it never reads as committed.
+    {
+      id: 'preview-line',
+      type: 'line',
+      source: PREVIEW_SOURCE,
+      filter: ['==', ['geometry-type'], 'LineString'],
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: {
+        'line-color': featureColors.snap.stroke,
+        'line-width': 2,
+        'line-dasharray': [2, 1.5],
+      },
+    },
+    // Above the geometry they label, below the handles.
+    ...holeLabelLayers(resolved),
+    // Above everything: the smallest targets on screen must win hit-testing.
+    ...vertexLayers(),
+    {
+      id: 'preview-vertex',
+      type: 'circle',
+      source: PREVIEW_SOURCE,
+      filter: ['==', ['geometry-type'], 'Point'],
+      paint: {
+        'circle-color': featureColors.handle.fill,
+        'circle-radius': 4,
+        'circle-stroke-color': featureColors.handle.stroke,
+        'circle-stroke-width': 1.5,
+      },
+    },
+  ];
 }
 
 /**
@@ -61,8 +121,20 @@ export function FeatureLayer({
   handles,
   selectable,
   focus,
+  style,
 }: FeatureLayerProps) {
   const { map } = useMap();
+  /*
+   * The defaults, with the document's overrides folded in.
+   *
+   * Memoised on the stylesheet rather than recomputed per render: it is read by
+   * the install effect and by the effect that re-applies a changed style, and
+   * an unstable object would make the second one fire on every keystroke
+   * anywhere in the app.
+   */
+  const resolved = useMemo(() => resolveStyle(style), [style]);
+  const resolvedRef = useRef(resolved);
+  resolvedRef.current = resolved;
   const readyRef = useRef(false);
   const selectedRef = useRef<readonly string[]>([]);
 
@@ -91,13 +163,16 @@ export function FeatureLayer({
 
     const install = () => {
       const { features, derived, preview, handles } = dataRef.current;
+      // Same reason as `dataRef`: the style may have moved on between this
+      // effect running and MapLibre being ready to hold layers.
+      const resolved = resolvedRef.current;
 
       /*
        * Derived geometry goes in first, because MapLibre draws in insertion
        * order and a tee pad must sit under the tee point it was computed from.
        * Installing it after would bury the thing you actually click.
        */
-      addMarkerIcons(map);
+      addMarkerIcons(map, resolved);
 
       if (!map.getSource(DERIVED_SOURCE)) {
         // promoteId for the same reason the feature source needs it: a tee pad
@@ -108,10 +183,6 @@ export function FeatureLayer({
           promoteId: 'id',
         });
       }
-      for (const layer of derivedLayers()) {
-        if (!map.getLayer(layer.id)) map.addLayer(layer);
-      }
-
       if (!map.getSource(FEATURES_SOURCE)) {
         map.addSource(FEATURES_SOURCE, {
           type: 'geojson',
@@ -135,48 +206,8 @@ export function FeatureLayer({
         map.addSource(HANDLES_SOURCE, { type: 'geojson', data: handles });
       }
 
-      for (const layer of featureLayers()) {
+      for (const layer of sceneLayers(resolved)) {
         if (!map.getLayer(layer.id)) map.addLayer(layer);
-      }
-
-      // Provisional geometry: dashed, so it never reads as committed.
-      if (!map.getLayer('preview-line')) {
-        map.addLayer({
-          id: 'preview-line',
-          type: 'line',
-          source: PREVIEW_SOURCE,
-          filter: ['==', ['geometry-type'], 'LineString'],
-          layout: { 'line-join': 'round', 'line-cap': 'round' },
-          paint: {
-            'line-color': featureColors.snap.stroke,
-            'line-width': 2,
-            'line-dasharray': [2, 1.5],
-          },
-        });
-      }
-      // Above the geometry they label, below the handles.
-      for (const layer of holeLabelLayers()) {
-        if (!map.getLayer(layer.id)) map.addLayer(layer);
-      }
-
-      // Above everything: the smallest targets on screen must win hit-testing.
-      for (const layer of vertexLayers()) {
-        if (!map.getLayer(layer.id)) map.addLayer(layer);
-      }
-
-      if (!map.getLayer('preview-vertex')) {
-        map.addLayer({
-          id: 'preview-vertex',
-          type: 'circle',
-          source: PREVIEW_SOURCE,
-          filter: ['==', ['geometry-type'], 'Point'],
-          paint: {
-            'circle-color': featureColors.handle.fill,
-            'circle-radius': 4,
-            'circle-stroke-color': featureColors.handle.stroke,
-            'circle-stroke-width': 1.5,
-          },
-        });
       }
 
       readyRef.current = true;
@@ -184,10 +215,52 @@ export function FeatureLayer({
 
     if (map.isStyleLoaded()) install();
     else map.once('load', install);
-    // Data props are deliberately not deps: this installs the scene once,
-    // reading current data from `dataRef`. Ordinary updates go through the
-    // `setData` effects below.
+    // Data props and the stylesheet are deliberately not deps: this installs
+    // the scene once, reading both from refs. Ordinary data updates go through
+    // the `setData` effects below, and a restyle through the one after them.
   }, [map]);
+
+  /*
+   * Restyling: drop the course's layers and put them back.
+   *
+   * Coarse on purpose. The alternative is a table mapping every style field to
+   * the layers and paint properties it touches, and calling `setPaintProperty`
+   * for each — which is more code, has to be kept in step with the layer
+   * definitions by hand, and cannot express the one thing a restyle most often
+   * changes: a dash, which decides whether a layer even carries the property.
+   *
+   * It is also cheap in the way that matters. The **sources** are untouched, so
+   * no geometry is re-parsed and no tile is re-fetched; MapLibre re-runs layout
+   * for a few dozen layers over data it already holds. A designer dragging a
+   * colour picker sees it keep up.
+   *
+   * Skipped entirely on the first pass, when `install` has just used this same
+   * stylesheet.
+   */
+  const installedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!map || !readyRef.current) return;
+    if (installedRef.current === null) {
+      installedRef.current = 'installed';
+      return;
+    }
+
+    const scene = sceneLayers(resolved);
+    /*
+     * Removed in reverse and re-added forwards, so the scene ends up in the
+     * order it was built in. Everything is torn down, including the layers a
+     * stylesheet cannot touch: re-adding only *some* of them would append them
+     * above the ones that stayed, which is how the vertex handles would end up
+     * underneath the shapes they belong to.
+     */
+    for (const layer of [...scene].reverse()) {
+      if (map.getLayer(layer.id)) map.removeLayer(layer.id);
+    }
+    addMarkerIcons(map, resolved);
+    for (const layer of scene) {
+      if (!map.getLayer(layer.id)) map.addLayer(layer);
+    }
+  }, [map, resolved]);
 
   // Push document features to the map.
   useEffect(() => {

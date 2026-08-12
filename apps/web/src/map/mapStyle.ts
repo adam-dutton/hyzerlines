@@ -1,0 +1,312 @@
+import { feature as featureColors } from '@hyzerlines/design';
+import {
+  FEATURE_KINDS,
+  KIND_DEFINITIONS,
+  TARGET_CIRCLES,
+  circleStyleOf,
+  featureStyleOf,
+  glyphById,
+  type CircleStyle,
+  type Dash,
+  type FeatureKind,
+  type MapStyle,
+  type TargetCircleId,
+} from '@hyzerlines/core';
+
+import { LARGE_ART } from '../chrome/iconArt';
+
+/**
+ * The defaults a stylesheet overrides, and the answer after it has.
+ *
+ * `@hyzerlines/core` holds what the designer *said* and nothing else — see
+ * style.ts for why. This is the other half: what the app draws when they have
+ * said nothing, and the merge of the two that the map actually reads.
+ *
+ * It lives in the web app because the defaults are the design tokens, and the
+ * tokens are also the interface's colours. Core knowing about hue would make
+ * the document model depend on the look of the thing displaying it.
+ *
+ * ## Widths are in screen pixels, deliberately
+ *
+ * A fairway centreline is an annotation, not a physical object — it should stay
+ * legible at every zoom rather than shrinking to nothing when you zoom out to
+ * see the whole property. Areas differ: an OB boundary encloses real ground, so
+ * its fill scales with the map while its outline stays readable.
+ */
+
+/** Everything the map needs to draw one kind, with nothing left unanswered. */
+export interface ResolvedFeatureStyle {
+  stroke: string;
+  strokeWidth: number;
+  dash: Dash;
+  casing: string;
+  fill: string;
+  fillOpacity: number;
+  /** A built-in name or an uploaded glyph's id. Empty for kinds with no point. */
+  glyph: string;
+  glyphSize: number;
+}
+
+export interface ResolvedCircleStyle {
+  stroke: string;
+  strokeWidth: number;
+  dash: Dash;
+}
+
+/**
+ * How wide the casing is, as a multiple of the stroke it sits under.
+ *
+ * A ratio rather than a width of its own, so a designer who thickens a line
+ * gets a casing that still reads as one. It also has to be constant for dashed
+ * lines to work: `line-dasharray` is measured in line widths, so a casing twice
+ * as wide needs half the dash numbers to break in the same places. Get that
+ * wrong and the casing fills the gaps, which is how a dashed line ends up
+ * looking solid.
+ */
+export const CASING_RATIO = 2.2;
+
+/**
+ * What each dash means, in line widths.
+ *
+ * Named rather than numbered in the document, because a designer picking
+ * "dotted" is saying *this is a note about the land* — and the lengths that
+ * express it are a rendering decision that should stay free to change.
+ */
+export const DASH_PATTERNS: Record<Dash, readonly [number, number] | null> = {
+  // Null, not [1, 0]: MapLibre wants the property absent for a solid line, and
+  // a zero-length gap renders as a row of degenerate segments.
+  solid: null,
+  dashed: [3, 1.5],
+  dotted: [1, 2],
+};
+
+/** The casing's dash for a stroke's dash, breaking in the same places. */
+export function casingDash(dash: Dash): [number, number] | null {
+  const pattern = DASH_PATTERNS[dash];
+  return pattern ? [pattern[0] / CASING_RATIO, pattern[1] / CASING_RATIO] : null;
+}
+
+/**
+ * The glyph each kind is marked with when nobody has said otherwise.
+ *
+ * Only the kinds with a drawing. A point kind absent from here gets the plain
+ * circle, which is the honest marker for something nobody has drawn an icon
+ * for yet.
+ */
+const DEFAULT_GLYPHS: Partial<Record<FeatureKind, string>> = {
+  target: 'basketFill',
+  tee: 'teePad',
+  dropzone: 'dropzone',
+  mando: 'mandoLeft',
+};
+
+/**
+ * Glyphs a designer can pick from, per kind.
+ *
+ * A few each rather than the whole art table: a basket may be drawn solid or
+ * outlined, a tee as a bare pad or a lettered one, and offering the OB
+ * lettering as an option for a tee would be offering a mistake. Uploads are
+ * added to whichever list the kind has — see `glyphOptionsFor`.
+ */
+const BUILT_IN_GLYPHS: Partial<Record<FeatureKind, readonly string[]>> = {
+  target: ['basketFill', 'basket'],
+  tee: ['teePad', 'tee'],
+  dropzone: ['dropzone', 'teePad'],
+  mando: ['mandoLeft', 'mandoRight'],
+};
+
+/** Whether a kind is marked with a glyph at all. */
+export const hasGlyph = (kind: FeatureKind): boolean => kind in BUILT_IN_GLYPHS;
+
+/** The built-in choices for a kind, in the order the picker should offer them. */
+export const builtInGlyphsFor = (kind: FeatureKind): readonly string[] =>
+  BUILT_IN_GLYPHS[kind] ?? [];
+
+/**
+ * How big a glyph lands on screen by default, in pixels.
+ *
+ * One size for the set. A basket and a mandatory marking the same ground at
+ * different sizes would read as a claim about importance that nobody made.
+ */
+const DEFAULT_GLYPH_SIZE = 36;
+
+/**
+ * Line weights, by what the line *is* rather than by kind.
+ *
+ * Three registers, and the difference between them is a claim: a thing on the
+ * ground is drawn at full weight, a drawing aid at a hairline, and a property
+ * line — a note about the land rather than anything on it — thinner still.
+ */
+const STROKE_WIDTH = { feature: 2.5, aid: 2.5, note: 1.25 } as const;
+
+function defaultFeatureStyle(kind: FeatureKind): ResolvedFeatureStyle {
+  const colors = featureColors[kind];
+  const geometry = KIND_DEFINITIONS[kind].geometry;
+
+  /*
+   * A property boundary is a note about the land, not a thing on it.
+   *
+   * So it gets the thinnest dotted line on the map and no fill at all. The fill
+   * was the real problem: a boundary is routinely the largest shape on screen,
+   * and a translucent wash over the whole site dims the imagery a designer is
+   * reading the terrain from — every tree line and every fall of ground goes
+   * through it. A dotted outline says the same thing and takes nothing away.
+   */
+  const isNote = kind === 'boundary';
+  /* A fairway is a drawing aid the app worked out, not a thing on the ground,
+     and it should say so whether or not anybody has bent it. */
+  const isAid = kind === 'fairway';
+  /* A mandatory line is a rule about where a disc may go — dashed, because
+     there is nothing at the site to walk along. */
+  const isRule = kind === 'mando';
+
+  return {
+    stroke: colors.stroke,
+    strokeWidth: isNote ? STROKE_WIDTH.note : STROKE_WIDTH.feature,
+    dash: isNote ? 'dotted' : isAid || isRule ? 'dashed' : 'solid',
+    casing: colors.casing,
+    fill: colors.fill,
+    /*
+     * Opaque at the value the fill token already carries its own alpha at, so
+     * the two do not multiply into nothing. A boundary is the exception and
+     * gets none: see above.
+     *
+     * The corridor is more solid than a plain area. It was 0.5, tuned against a
+     * corridor that also had a dashed outline holding its shape; with the
+     * outline gone the fill is the only thing saying where the corridor is, and
+     * the room a shot has is one of the two things this map is for.
+     */
+    fillOpacity: isNote ? 0 : geometry === 'polygon' ? 0.7 : 0.75,
+    glyph: DEFAULT_GLYPHS[kind] ?? '',
+    glyphSize: DEFAULT_GLYPH_SIZE,
+  };
+}
+
+/**
+ * The default sheet, computed once.
+ *
+ * Every kind, fully answered. Built at module load rather than per call because
+ * it cannot change: it is a function of the tokens, which are constants.
+ */
+export const DEFAULT_FEATURE_STYLES: Record<FeatureKind, ResolvedFeatureStyle> =
+  Object.fromEntries(FEATURE_KINDS.map((kind) => [kind, defaultFeatureStyle(kind)])) as Record<
+    FeatureKind,
+    ResolvedFeatureStyle
+  >;
+
+/**
+ * Circle 1 is the one worth seeing. The other two are reference.
+ *
+ * Outline only — three filled rings stacked around every basket would sit on
+ * the imagery a designer is reading the terrain from.
+ */
+const DEFAULT_CIRCLE_STYLES: Record<TargetCircleId, ResolvedCircleStyle> = Object.fromEntries(
+  TARGET_CIRCLES.map((circle) => [
+    circle.id,
+    {
+      stroke: featureColors.target.stroke,
+      strokeWidth: circle.id === 'c1' ? 1.5 : 1,
+      dash: 'dotted' as Dash,
+    },
+  ]),
+) as Record<TargetCircleId, ResolvedCircleStyle>;
+
+/** The hole number's disc and its numeral. */
+export interface ResolvedHoleNumberStyle {
+  text: string;
+  disc: string;
+  size: number;
+}
+
+const DEFAULT_HOLE_NUMBER: ResolvedHoleNumberStyle = {
+  text: featureColors.tee.stroke,
+  disc: featureColors.tee.casing,
+  size: 13,
+};
+
+/** What is actually drawn: the defaults, with the document's overrides on top. */
+export interface ResolvedStyle {
+  features: Record<FeatureKind, ResolvedFeatureStyle>;
+  circles: Record<TargetCircleId, ResolvedCircleStyle>;
+  holeNumber: ResolvedHoleNumberStyle;
+  /** The paths behind every glyph name in use, built-in or uploaded. */
+  glyphPaths: (name: string) => GlyphArt | null;
+}
+
+export interface GlyphArt {
+  paths: readonly string[];
+  /** `[minX, minY, width, height]`. Built-in art is authored in a 24 box. */
+  viewBox: readonly [number, number, number, number];
+}
+
+const BUILT_IN_BOX: readonly [number, number, number, number] = [0, 0, 24, 24];
+
+/**
+ * Fold a stylesheet over the defaults.
+ *
+ * `??` at every field rather than a spread, because an override object holds
+ * only the keys somebody set and a spread of `{ stroke: undefined }` would
+ * overwrite a default with nothing. That is the whole point of optional
+ * overrides, and the one place it could quietly go wrong.
+ */
+export function resolveStyle(style: MapStyle): ResolvedStyle {
+  const features = Object.fromEntries(
+    FEATURE_KINDS.map((kind) => {
+      const base = DEFAULT_FEATURE_STYLES[kind];
+      const over = featureStyleOf(style, kind);
+      return [
+        kind,
+        {
+          stroke: over.stroke ?? base.stroke,
+          strokeWidth: over.strokeWidth ?? base.strokeWidth,
+          dash: over.dash ?? base.dash,
+          casing: over.casing ?? base.casing,
+          fill: over.fill ?? base.fill,
+          fillOpacity: over.fillOpacity ?? base.fillOpacity,
+          glyph: over.glyph ?? base.glyph,
+          glyphSize: over.glyphSize ?? base.glyphSize,
+        } satisfies ResolvedFeatureStyle,
+      ];
+    }),
+  ) as Record<FeatureKind, ResolvedFeatureStyle>;
+
+  const circles = Object.fromEntries(
+    TARGET_CIRCLES.map((circle) => {
+      const base = DEFAULT_CIRCLE_STYLES[circle.id];
+      const over: CircleStyle = circleStyleOf(style, circle.id);
+      return [
+        circle.id,
+        {
+          stroke: over.stroke ?? base.stroke,
+          strokeWidth: over.strokeWidth ?? base.strokeWidth,
+          dash: over.dash ?? base.dash,
+        } satisfies ResolvedCircleStyle,
+      ];
+    }),
+  ) as Record<TargetCircleId, ResolvedCircleStyle>;
+
+  return {
+    features,
+    circles,
+    holeNumber: {
+      text: style.holeNumber.text ?? DEFAULT_HOLE_NUMBER.text,
+      disc: style.holeNumber.disc ?? DEFAULT_HOLE_NUMBER.disc,
+      size: style.holeNumber.size ?? DEFAULT_HOLE_NUMBER.size,
+    },
+    /*
+     * Built-in first, then the uploads.
+     *
+     * Null for a name that resolves to neither, which the marker builder reads
+     * as "draw the default instead". A course whose custom glyph was deleted
+     * should lose the drawing, not the basket.
+     */
+    glyphPaths: (name) => {
+      const builtIn = LARGE_ART[name as keyof typeof LARGE_ART] as
+        readonly string[] | undefined;
+      if (builtIn) return { paths: builtIn, viewBox: BUILT_IN_BOX };
+
+      const uploaded = glyphById(style, name);
+      return uploaded ? { paths: uploaded.paths, viewBox: uploaded.viewBox } : null;
+    },
+  };
+}

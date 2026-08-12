@@ -1,6 +1,20 @@
-import { feature as featureColors, type FeatureKind } from '@hyzerlines/design';
+import { feature as featureColors } from '@hyzerlines/design';
+import type { FeatureKind } from '@hyzerlines/core';
 
-import { LARGE_ART } from '../chrome/iconArt';
+import {
+  DEFAULT_FEATURE_STYLES,
+  builtInGlyphsFor,
+  type GlyphArt,
+  type ResolvedStyle,
+} from './mapStyle';
+
+/** Each kind's own default drawing, for when a chosen one resolves to nothing. */
+const DEFAULT_GLYPH_OF: Partial<Record<FeatureKind, string>> = Object.fromEntries(
+  (Object.keys(DEFAULT_FEATURE_STYLES) as FeatureKind[]).map((kind) => [
+    kind,
+    DEFAULT_FEATURE_STYLES[kind].glyph,
+  ]),
+);
 
 /**
  * Map markers that are pictures rather than dots.
@@ -47,22 +61,26 @@ const SCALE = 3;
  */
 export const MARKER_SIZE_PX = (ART_SIZE * SCALE) / PIXEL_RATIO;
 
+/**
+ * The kinds that are marked with a drawing, and how each one stands on its
+ * coordinate.
+ *
+ * A mandatory has two entries because which way it points *is* the ruling — see
+ * `mandoLineOf`. Everything else is one marker whose artwork the stylesheet
+ * chooses.
+ */
 interface Marker {
-  art: readonly string[];
-  /**
-   * Which feature's colours it takes. Two markers can share a kind — a
-   * mandatory has a drawing for each side it can send you.
-   */
   kind: FeatureKind;
   /**
-   * The lowest the drawing's own ink reaches, in art units, when that is not
-   * the bottom of the box.
+   * Which of the kind's drawings this marker is, when a kind has more than one.
    *
-   * Only the basket sets it. Its pole stops at 22 of 24, and the marker is
-   * anchored `bottom`, so two empty units under the image would float every
-   * basket off the ground it is standing on.
+   * Only the mandatory does. The style names one glyph for `mando`, and the
+   * right-hand marker is the left-hand one's opposite number — so it takes the
+   * glyph *after* the chosen one in the kind's built-in list rather than a
+   * setting of its own, which is what keeps "pass left" and "pass right"
+   * looking like a pair.
    */
-  inkBottom?: number;
+  variant?: 'opposite';
   /**
    * Fill the drawing's outer contour with the casing colour first.
    *
@@ -78,36 +96,36 @@ interface Marker {
    */
   backing?: true;
   /**
-   * How wide the casing is stroked, in art units.
+   * Whether the drawing is a solid silhouette rather than an outline.
    *
-   * Not one number for the set, and this is the one place these drawings are
-   * not interchangeable. The basket marker is a solid silhouette, so a casing
-   * two units wide lies entirely outside it and reads as an edge. The others
-   * are *outlines* — one-unit bands with the map showing through — and a
-   * two-unit casing centred on a one-unit band leaves a third of it white
-   * inside a dark surround. At marker size that is not a glyph with a contrast
-   * floor, it is a blob: the mandatory came out as a dark teardrop with a dot
-   * in it, and the M it is named for was gone.
+   * It decides the casing width, and it is the one place these markers are not
+   * interchangeable. A silhouette takes a casing two units wide that lies
+   * entirely outside it and reads as an edge. An *outline* is a one-unit band
+   * with the map showing through, and the same casing centred on it leaves a
+   * third of the band inside a dark surround — at marker size that is not a
+   * glyph with a contrast floor, it is a blob.
+   *
+   * Which a drawing is depends on the artwork, and an uploaded one could be
+   * either, so this is a property of the *slot* and the default for uploads is
+   * the safer of the two.
    */
-  casingWidth?: number;
+  solid?: true;
+  /**
+   * The lowest the drawing's own ink reaches, as a fraction of its box.
+   *
+   * Only the basket needs it. Its pole stops short of the bottom edge, and the
+   * marker is anchored `bottom`, so empty box under the ink would float every
+   * basket off the ground it is standing on.
+   */
+  inkBottom?: number;
 }
 
-/**
- * Every marker the map draws, and the art it is drawn from.
- *
- * The basket is the *filled* variant rather than the outline the tool bar uses.
- * At marker size the outline's interior lines are a pixel apart and read as
- * grey mush, where the solid silhouette holds its shape over canopy and sand
- * alike. Everything else is the same drawing at both sizes: they are outlines
- * of simple shapes, and they survive.
- */
 const MARKERS = {
-  target: { art: LARGE_ART.basketFill, kind: 'target', inkBottom: 22, casingWidth: 2 },
-  // A solid rectangle, like the basket, so it takes the basket's casing.
-  tee: { art: LARGE_ART.teePad, kind: 'tee', inkBottom: 18, casingWidth: 2 },
-  dropzone: { art: LARGE_ART.dropzone, kind: 'dropzone' },
-  mandoLeft: { art: LARGE_ART.mandoLeft, kind: 'mando', backing: true },
-  mandoRight: { art: LARGE_ART.mandoRight, kind: 'mando', backing: true },
+  target: { kind: 'target', inkBottom: 22 / 24, solid: true },
+  tee: { kind: 'tee', inkBottom: 18 / 24, solid: true },
+  dropzone: { kind: 'dropzone' },
+  mandoLeft: { kind: 'mando', backing: true },
+  mandoRight: { kind: 'mando', variant: 'opposite', backing: true },
 } as const satisfies Record<string, Marker>;
 
 export type MarkerName = keyof typeof MARKERS;
@@ -135,11 +153,22 @@ export function markerIcon(name: MarkerName, selected = false): string {
  * subpath describes the outside and the inside, and the nonzero rule would fill
  * the gap and turn the basket into a solid lozenge and the tee into a slab.
  */
-function draw(ctx: CanvasRenderingContext2D, marker: Marker, color: string, casing: string) {
-  const paths = marker.art.map((d) => new Path2D(d));
+function draw(
+  ctx: CanvasRenderingContext2D,
+  marker: Marker,
+  art: GlyphArt,
+  color: string,
+  casing: string,
+): void {
+  const paths = art.paths.map((d) => new Path2D(d));
+  const [minX, minY, width, height] = art.viewBox;
+  // Uploaded artwork is authored in whatever box its designer used, so it is
+  // fitted to the marker's square rather than assumed to be 24 by 24.
+  const fit = ART_SIZE / Math.max(width, height, 1);
 
   ctx.save();
-  ctx.scale(SCALE, SCALE);
+  ctx.scale(SCALE * fit, SCALE * fit);
+  ctx.translate(-minX, -minY);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
@@ -149,7 +178,9 @@ function draw(ctx: CanvasRenderingContext2D, marker: Marker, color: string, casi
   }
 
   ctx.strokeStyle = casing;
-  ctx.lineWidth = marker.casingWidth ?? 1;
+  // Divided by the fit so an uploaded glyph in a 512 box gets the same casing
+  // on screen as a built-in one in a 24 box.
+  ctx.lineWidth = (marker.solid ? 2 : 1) / fit;
   for (const path of paths) ctx.stroke(path);
 
   ctx.fillStyle = color;
@@ -157,29 +188,79 @@ function draw(ctx: CanvasRenderingContext2D, marker: Marker, color: string, casi
   ctx.restore();
 }
 
-function render(marker: Marker, color: string, casing: string): ImageData | null {
+function render(
+  marker: Marker,
+  art: GlyphArt,
+  sizePx: number,
+  color: string,
+  casing: string,
+): ImageData | null {
   const canvas = document.createElement('canvas');
-  canvas.width = ART_SIZE * SCALE;
-  canvas.height = (marker.inkBottom ?? ART_SIZE) * SCALE;
+  // The style asks for a size in CSS pixels; the image is drawn at the device
+  // ratio it will be registered at.
+  const side = Math.round(sizePx * PIXEL_RATIO);
+  canvas.width = side;
+  canvas.height = Math.max(1, Math.round(side * (marker.inkBottom ?? 1)));
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
 
-  draw(ctx, marker, color, casing);
+  // `draw` works in art units scaled by SCALE; rescale to the asked-for size.
+  ctx.scale(side / (ART_SIZE * SCALE), side / (ART_SIZE * SCALE));
+  draw(ctx, marker, art, color, casing);
   return ctx.getImageData(0, 0, canvas.width, canvas.height);
+}
+
+/**
+ * Which drawing a marker uses, after the stylesheet has had its say.
+ *
+ * Falls back to the kind's default when the style names a glyph that resolves
+ * to nothing — an uploaded one that has since been deleted, most likely. A
+ * course should lose the drawing, not the basket.
+ */
+function artFor(name: MarkerName, style: ResolvedStyle): GlyphArt | null {
+  const marker: Marker = MARKERS[name];
+  const chosen = style.features[marker.kind].glyph;
+  const fallback = () => style.glyphPaths(DEFAULT_GLYPH_OF[marker.kind] ?? '');
+
+  if (marker.variant === 'opposite') {
+    const pair = builtInGlyphsFor(marker.kind);
+    const index = pair.indexOf(chosen);
+    /*
+     * Only a built-in has an opposite number.
+     *
+     * An uploaded glyph is one drawing, so both sides of a mandatory use it and
+     * the line is what says which side you must pass. Inventing a mirror image
+     * would be the app claiming to know which way somebody's artwork points.
+     */
+    const opposite = index === -1 ? chosen : (pair[(index + 1) % pair.length] ?? chosen);
+    return style.glyphPaths(opposite) ?? fallback();
+  }
+
+  return style.glyphPaths(chosen) ?? fallback();
 }
 
 /**
  * Register every marker image with a map.
  *
- * Idempotent, because a basemap change re-runs style installation.
+ * Re-registers rather than skipping: `addImage` refuses a name it already
+ * holds, so a changed drawing has to replace the old one explicitly. Cheap —
+ * five drawings on a canvas — and it runs only when the stylesheet changes.
  */
-export function addMarkerIcons(map: {
-  hasImage: (id: string) => boolean;
-  addImage: (id: string, image: ImageData, options?: { pixelRatio?: number }) => void;
-}): void {
+export function addMarkerIcons(
+  map: {
+    hasImage: (id: string) => boolean;
+    addImage: (id: string, image: ImageData, options?: { pixelRatio?: number }) => void;
+    removeImage: (id: string) => void;
+  },
+  style: ResolvedStyle,
+): void {
   for (const [name, marker] of Object.entries(MARKERS) as [MarkerName, Marker][]) {
+    const art = artFor(name, style);
+    if (!art) continue;
+
+    const drawn = style.features[marker.kind];
     const variants: [string, string, string][] = [
-      [markerIcon(name), featureColors[marker.kind].stroke, featureColors[marker.kind].casing],
+      [markerIcon(name), drawn.stroke, drawn.casing],
       /*
        * Selected: the accent, fill and casing both, exactly as every other
        * vector on the map does it.
@@ -195,9 +276,10 @@ export function addMarkerIcons(map: {
     ];
 
     for (const [id, color, casing] of variants) {
-      if (map.hasImage(id)) continue;
-      const image = render(marker, color, casing);
-      if (image) map.addImage(id, image, { pixelRatio: 2 });
+      const image = render(marker, art, drawn.glyphSize, color, casing);
+      if (!image) continue;
+      if (map.hasImage(id)) map.removeImage(id);
+      map.addImage(id, image, { pixelRatio: PIXEL_RATIO });
     }
   }
 }

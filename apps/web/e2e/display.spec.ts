@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { TARGET_CIRCLES } from '@hyzerlines/core';
 
 import {
   course,
@@ -91,16 +92,30 @@ test.describe('drawing aids', () => {
     await expectDrawn(page, 'derived-corridor').toBeGreaterThan(0);
   });
 
+  /*
+   * Counted across the three ring layers rather than one.
+   *
+   * Each circle is its own layer now, because each can carry its own dash and
+   * `line-dasharray` takes no data-driven expression — see `derivedLayers`. The
+   * question the test asks is unchanged: how many rings are on the map.
+   */
+  const drawnCircles = async (page: Page): Promise<number> => {
+    const counts = await Promise.all(
+      TARGET_CIRCLES.map((circle) => drawn(page, `derived-circle-${circle.id}`)),
+    );
+    return counts.reduce((sum, n) => sum + n, 0);
+  };
+
   test('each putting circle has its own switch', async ({ page }) => {
     await courseWithAHole(page);
 
-    await expectDrawn(page, 'derived-circle').toBe(3);
+    await expect.poll(() => drawnCircles(page)).toBe(3);
 
     await setSwitch(page, 'Circle 2', false);
-    await expectDrawn(page, 'derived-circle').toBe(2);
+    await expect.poll(() => drawnCircles(page)).toBe(2);
 
     await setSwitch(page, 'Putting circles', false);
-    await expectDrawn(page, 'derived-circle').toBe(0);
+    await expect.poll(() => drawnCircles(page)).toBe(0);
   });
 
   /*

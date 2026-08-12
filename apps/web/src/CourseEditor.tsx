@@ -775,6 +775,7 @@ export function CourseEditor({
         handles={editing.handles}
         selectable={nav.effective === 'select'}
         focus={focus}
+        style={course.style}
       />
 
       {/* The zoom region, drawn over the canvas in screen space. Not a map
