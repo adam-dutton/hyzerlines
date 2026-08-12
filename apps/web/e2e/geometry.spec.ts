@@ -45,6 +45,19 @@ const derivedOnMap = (page: Page): Promise<string[]> =>
     return [...seen.values()].sort();
   });
 
+/** Corridors the map is actually painting, as opposed to holding for clicks. */
+const drawnCorridors = (page: Page): Promise<string[]> =>
+  page.evaluate(() => {
+    const rendered = window.hyzerlinesMap?.querySourceFeatures('derived-geometry') ?? [];
+    const ids = new Set<string>();
+    for (const f of rendered) {
+      if (f.properties?.['derived'] !== 'corridor') continue;
+      if (f.properties?.['hidden'] === true) continue;
+      ids.add(String(f.properties?.['id']));
+    }
+    return [...ids];
+  });
+
 /** The stored fairway's coordinates. Empty while the line is still derived. */
 async function storedFairway(page: Page): Promise<[number, number][]> {
   const { features } = await course(page);
@@ -151,6 +164,21 @@ async function bendFairway(page: Page): Promise<void> {
   const third = await shotAt(page, 1 / 3);
   await dragHandle(page, third, { x: third.x - 140, y: third.y + 110 }, 'edit-vertex');
   await expect.poll(async () => (await storedFairway(page)).length).toBe(4);
+}
+
+/** A point a fraction of the way along the hole's shot, in screen pixels. */
+async function shotPoint(page: Page, t: number): Promise<{ x: number; y: number }> {
+  const [from, to] = await shotEnds(page);
+  return page.evaluate(
+    ([a, b, at]) => {
+      const map = window.hyzerlinesMap!;
+      const start = map.project(a as [number, number]);
+      const end = map.project(b as [number, number]);
+      const f = at as number;
+      return { x: start.x + (end.x - start.x) * f, y: start.y + (end.y - start.y) * f };
+    },
+    [from, to, t] as const,
+  );
 }
 
 /** Press and release at a point, without moving. */
@@ -625,5 +653,50 @@ test.describe('the pair picker', () => {
     await setSwitch(page, 'Lines', false);
     await expect.poll(() => drawn('alternative')).toEqual([]);
     await expect.poll(() => drawn('centreline')).toEqual([]);
+  });
+});
+
+/**
+ * A hidden fairway is still where the hole is.
+ *
+ * Turning corridors off is about what the map shows — a designer reading the
+ * canopy under hole 7 does not want a translucent band over it. It was silently
+ * also about what the map answers.
+ */
+test.describe('a hole you cannot see the fairway of', () => {
+  test('still selects from the ground its shot runs over', async ({ page }) => {
+    await openEditor(page, { zoom: 16 });
+    await place(page, 'Tee pad', 480, 500);
+    await place(page, 'Target', 800, 260);
+    await page.getByRole('button', { name: 'Add hole' }).click();
+
+    /*
+     * Two thirds of the way down the shot: clear of the pad, the basket and the
+     * hole number, and out where the corridor has tapered wide enough to hit.
+     *
+     * Projected rather than guessed at. A corridor starts as narrow as the pad
+     * — two metres, which is about one pixel at this zoom — so "beside the
+     * centreline" is not a place that exists near the tee, and a hard-coded
+     * point a few pixels off the line lands on nothing at all.
+     */
+    const onCorridor = await shotPoint(page, 0.65);
+
+    const holePanel = page.getByRole('textbox', { name: 'Hole name' });
+    const selectFromTheCorridor = async () => {
+      await page.keyboard.press('Escape');
+      await expect(holePanel).toBeHidden();
+      await clickAt(page, onCorridor.x, onCorridor.y);
+    };
+
+    await selectFromTheCorridor();
+    await expect(holePanel).toBeVisible();
+
+    // Hide it, from the panel the click just opened. The routed line is kept
+    // and so, now, is the target.
+    await setSwitch(page, 'Show fairway', false);
+    await expect.poll(() => drawnCorridors(page)).toEqual([]);
+
+    await selectFromTheCorridor();
+    await expect(holePanel).toBeVisible();
   });
 });

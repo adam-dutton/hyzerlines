@@ -15,6 +15,7 @@ import {
   courseFairways,
   fairwayLine,
   holePairings,
+  mandoBearingFor,
   pairElevationKey,
   pairView,
   representativePair,
@@ -620,5 +621,57 @@ describe('elevations in a pair view', () => {
       flat.suggestion!.effectiveMeters + 36,
       6,
     );
+  });
+});
+
+/**
+ * Which way play runs past a mandatory.
+ *
+ * Everything a mandatory means depends on this. Get it wrong and the wall lands
+ * on the side the disc was supposed to go, which is the one failure mode that
+ * looks completely deliberate on screen.
+ */
+describe('mandoBearingFor', () => {
+  const mandoOn = (course: Course, at: [number, number], holeId: string | null) => {
+    const mando = createFeature('mando', point(at), { holeId });
+    return { course: { ...course, features: [...course.features, mando] }, mando };
+  };
+
+  it("takes the hole's own shot", () => {
+    const { course: base, hole } = twoPinHole();
+    // The shot runs due north; a mandatory halfway up it runs north too.
+    const { course, mando } = mandoOn(base, north(45), hole.id);
+    expect(mandoBearingFor(course, mando.id)).toBeCloseTo(0, 4);
+  });
+
+  it('follows the leg nearest the object once the fairway bends', () => {
+    const { course: base, hole, tee, pinA } = twoPinHole();
+    // A dogleg: north, then east for the last stretch.
+    const corner = north(45);
+    const east: [number, number] = [corner[0] + 0.0012, corner[1]];
+    const bent = applyOp(
+      base,
+      shapeFairway(base, tee.id, pinA.id, [AT, corner, east], hole.id),
+    ).course;
+
+    const nearFirst = mandoOn(bent, north(20), hole.id);
+    expect(mandoBearingFor(nearFirst.course, nearFirst.mando.id)).toBeCloseTo(0, 4);
+
+    const nearSecond = mandoOn(bent, [corner[0] + 0.0008, corner[1] + 0.00002], hole.id);
+    expect(mandoBearingFor(nearSecond.course, nearSecond.mando.id)).toBeCloseTo(90, 0);
+  });
+
+  it('borrows nothing from a neighbouring hole', () => {
+    const { course: base } = twoPinHole();
+    // Course-level, sitting right beside hole 1's shot. Still no answer: a
+    // confident direction taken from somebody else's hole is worse than none.
+    const { course, mando } = mandoOn(base, north(45), null);
+    expect(mandoBearingFor(course, mando.id)).toBeNull();
+  });
+
+  it('has no answer for something that is not a mandatory', () => {
+    const { course, tee } = twoPinHole();
+    expect(mandoBearingFor(course, tee.id)).toBeNull();
+    expect(mandoBearingFor(course, 'no such feature')).toBeNull();
   });
 });

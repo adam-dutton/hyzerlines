@@ -16,6 +16,7 @@ import { courseSkillLevel } from './layouts.js';
 import { DEFAULT_SKILL_LEVEL, type SkillLevel } from './pdga.js';
 import { activeLayout, featureIndex, type Course } from './schema.js';
 import {
+  bearingNearest,
   defaultCorridorWidths,
   fairwayCorridor,
   fromLocal,
@@ -518,6 +519,40 @@ export function fairwayBearingFor(course: Course, teeId: string): number | null 
 }
 
 /**
+ * Which way play runs past a mandatory, when the designer has not said.
+ *
+ * The hole's own shot, taken at the leg that passes closest to the object — see
+ * `bearingNearest` for why the nearest leg and not the whole line. Left and
+ * right are meaningless without it, so this is what decides which side of the
+ * object the mandatory line lands on.
+ *
+ * Null when the mandatory belongs to no hole, or its hole has no shot yet.
+ * There is nothing to fall back to: a mandatory drawn against an invented
+ * direction would put its wall on the wrong side of the tree and look
+ * deliberate doing it.
+ */
+export function mandoBearingFor(course: Course, mandoId: string): number | null {
+  const mando = featureIndex(course).get(mandoId);
+  if (!mando || mando.kind !== 'mando' || mando.geometry.type !== 'point') return null;
+
+  const at = mando.geometry.coordinates;
+  const fairways = courseFairways(course);
+
+  /*
+   * Its own hole's shot, and only that.
+   *
+   * Falling back to whichever fairway happens to run nearest would give a
+   * course-level mandatory a direction borrowed from a neighbouring hole — a
+   * confident answer to a question nobody asked, and wrong on exactly the tight
+   * sites where holes run beside each other.
+   */
+  const own = mando.holeId
+    ? fairways.find((fairway) => fairway.holeId === mando.holeId)
+    : undefined;
+  return own ? bearingNearest(own.line, at) : null;
+}
+
+/**
  * Where a hole's number belongs on the map.
  *
  * The midpoint of the shot rather than the centroid of everything the hole owns.
@@ -566,9 +601,29 @@ export function holeLabelPosition(
   ];
 }
 
-/** Which hole a feature belongs to, for click-to-select-the-hole on the map. */
+/**
+ * Which hole a feature is in, by either of the two routes the model has.
+ *
+ * A hole owns its tees and targets by *listing* them — `hole.teeIds`,
+ * `hole.targetIds` — and its fairways through the pairs. Everything else
+ * carries its own `holeId`, which is scope rather than membership: an OB line
+ * belonging to hole 4 is a different claim from a tee being one of hole 4's
+ * tees.
+ *
+ * **Both have to be consulted, and reading only one is a wrong answer rather
+ * than a partial one.** This looked only at membership, which meant a mandatory
+ * or a drop zone scoped to hole 4 was, to everything downstream, in no hole at
+ * all: clicking one on the map selected the feature instead of entering its
+ * hole, and the properties panel offered "Whole course" as the way back up from
+ * something the feature list had just shown filed under hole 4. Two parts of the
+ * interface disagreeing about the same shape.
+ *
+ * The other direction is just as real. `addHole` claims a loose tee and basket
+ * by putting their ids in the hole's arrays and never touches `holeId`, so a
+ * `holeId`-only answer files a freshly built hole's own tee under the course.
+ */
 export function holeOfFeature(course: Course, featureId: string): Hole | undefined {
-  return course.holes.find(
+  const byMembership = course.holes.find(
     (hole) =>
       hole.teeIds.includes(featureId) ||
       hole.targetIds.includes(featureId) ||
@@ -579,6 +634,10 @@ export function holeOfFeature(course: Course, featureId: string): Hole | undefin
           hole.targetIds.includes(pair.targetId),
       ),
   );
+  if (byMembership) return byMembership;
+
+  const scoped = featureIndex(course).get(featureId)?.holeId;
+  return scoped ? course.holes.find((hole) => hole.id === scoped) : undefined;
 }
 
 /**

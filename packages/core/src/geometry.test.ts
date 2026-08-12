@@ -5,11 +5,14 @@ import { bearing, distance } from './measure.js';
 import type { Position } from './geo.js';
 import {
   FAIRWAY_CORRIDOR,
+  MANDO_LINE,
   PLACED_RECTANGLE_DEFAULTS,
+  bearingNearest,
   circleRing,
   defaultCorridorWidths,
   fairwayCorridor,
   footprintOf,
+  mandoLineOf,
   ringSelfIntersects,
 } from './geometry.js';
 import { TEEING_AREA, TEE_PAD_M } from './pdga.js';
@@ -287,5 +290,81 @@ describe('rings', () => {
     const ring = circleRing(AT, 10, 32);
     expect(ring).toHaveLength(32);
     for (const point of ring) expect(distance(AT, point)).toBeCloseTo(10, 1);
+  });
+});
+
+/**
+ * Mandatories.
+ *
+ * The one property that matters and is easy to get backwards: which side of the
+ * object the line lands on. "Pass left" puts the wall on the player's RIGHT, so
+ * these tests fix a bearing, place a mando, and assert on the compass direction
+ * the drawn line actually runs — not on a sign in the implementation.
+ */
+describe('mandatory lines', () => {
+  const mando = (props: Record<string, string | number>) =>
+    createFeature('mando', { type: 'point', coordinates: AT }, { props });
+
+  it('puts the line on the opposite side from the one the disc must pass', () => {
+    // Play running due north. Left is west, right is east.
+    const left = mandoLineOf(mando({ side: 'left', bearing: 0 }))!;
+    const right = mandoLineOf(mando({ side: 'right', bearing: 0 }))!;
+
+    // Pass left, and the wall is to the east.
+    expect(bearing(left.line[0], left.line[1])).toBeCloseTo(90, 0);
+    // Pass right, and it is to the west.
+    expect(bearing(right.line[0], right.line[1])).toBeCloseTo(270, 0);
+  });
+
+  it('starts at the object and runs one way, not through it', () => {
+    const line = mandoLineOf(mando({ side: 'left', bearing: 0 }))!;
+    expect(line.line[0]).toEqual(AT);
+    expect(apart(line.line[0], line.line[1])).toBeCloseTo(MANDO_LINE.defaultReachM, 0);
+  });
+
+  it("turns with the hole, so left stays the player's left", () => {
+    // Play running due east. The player's right is now south.
+    const line = mandoLineOf(mando({ side: 'left', bearing: 90 }))!;
+    expect(bearing(line.line[0], line.line[1])).toBeCloseTo(180, 0);
+  });
+
+  it('takes a reach from the feature, and falls back to Circle 1 across', () => {
+    const set = mandoLineOf(mando({ side: 'right', bearing: 0, reach: 45 }))!;
+    expect(apart(set.line[0], set.line[1])).toBeCloseTo(45, 0);
+    expect(set.reachM).toBe(45);
+
+    const unset = mandoLineOf(mando({ side: 'right', bearing: 0 }))!;
+    expect(unset.reachM).toBe(MANDO_LINE.defaultReachM);
+  });
+
+  it('draws nothing for a mandatory that has no side, no bearing, or is over', () => {
+    expect(mandoLineOf(mando({ bearing: 0 }))).toBeNull();
+    expect(mandoLineOf(mando({ side: 'left' }))).toBeNull();
+    expect(mandoLineOf(mando({ side: 'over', bearing: 0 }))).toBeNull();
+  });
+
+  it("uses the caller's bearing only when the feature has none of its own", () => {
+    expect(mandoLineOf(mando({ side: 'left' }), 90)!.bearingDeg).toBe(90);
+    expect(mandoLineOf(mando({ side: 'left', bearing: 10 }), 90)!.bearingDeg).toBe(10);
+  });
+});
+
+describe('the nearest leg of a line', () => {
+  /*
+   * A dogleg: north for 100 m, then east for 100 m. A point beside the second
+   * leg must read as east, which is the whole reason this is not the bearing
+   * from the first vertex to the last.
+   */
+  const north: Position = [AT[0], AT[1] + 0.0009];
+  const east: Position = [AT[0] + 0.0013, AT[1] + 0.0009];
+  const dogleg = [AT, north, east];
+
+  it('answers with the leg that passes closest, not the overall direction', () => {
+    expect(bearingNearest(dogleg, [AT[0] + 0.0001, AT[1] + 0.0002])).toBeCloseTo(0, 0);
+    expect(bearingNearest(dogleg, [AT[0] + 0.0009, AT[1] + 0.001])).toBeCloseTo(90, 0);
+  });
+
+  it('has no answer for a line with no segments', () => {
+    expect(bearingNearest([AT], AT)).toBeNull();
   });
 });

@@ -1,8 +1,13 @@
 import type { LayerSpecification, ExpressionSpecification } from 'maplibre-gl';
 import { feature as featureColors, type FeatureKind } from '@hyzerlines/design';
-import { FEATURE_KINDS, type Feature } from '@hyzerlines/core';
+import {
+  EARTH_RADIUS,
+  FEATURE_KINDS,
+  PLACED_RECTANGLE_DEFAULTS,
+  type Feature,
+} from '@hyzerlines/core';
 
-import { BASKET_ICON, BASKET_ICON_SELECTED } from './icons';
+import { MARKER_SIZE_PX, markerIcon, type MarkerName } from './icons';
 
 /**
  * How course features are drawn.
@@ -158,6 +163,16 @@ const ALTERNATIVE_OPACITY = 0.45;
  * the terrain from — every tree line and every fall of ground goes through it.
  * A dotted outline says the same thing and takes nothing away.
  */
+/**
+ * The mandatory line's dash.
+ *
+ * Dashed because the plane is not a thing on the ground: there is nothing at
+ * the site to walk along, only a rule about where a disc may go. Long dashes
+ * with short gaps, so it still reads as a barrier rather than as the dotted
+ * hairline a property line uses — the two claims could not be further apart.
+ */
+const MANDO_DASH = [3, 1.5] as const;
+
 const BOUNDARY_DASH = [1, 2] as const;
 const BOUNDARY_WIDTH = 1.25;
 const BOUNDARY_CASING_WIDTH = BOUNDARY_WIDTH * CASING_RATIO;
@@ -176,38 +191,50 @@ const isBoundary: ExpressionSpecification = ['==', ['get', 'kind'], 'boundary'];
 const CORRIDOR_OPACITY = 0.75;
 
 /**
- * The plain point marker is suppressed once a feature has a footprint.
+ * The plain circle is suppressed once a feature has a picture of its own.
  *
- * Permanently, not just once the pad is legible: `derived-front` — the front
- * line of the pad itself — now owns the job of standing in for a footprint
- * that is too small to see. A dot and a front line both fading in and out at
- * once would be two markers answering the same question.
+ * Permanently, not just once that picture is legible: a tee's glyph stands in
+ * for its pad below the zoom the pad reads at, and takes over from it above.
+ * A dot underneath either would be two markers answering the same question.
  */
 const POINT_OPACITY: ExpressionSpecification = [
   'case',
-  ['coalesce', ['get', 'hasFootprint'], false],
+  ['coalesce', ['get', 'hasMarker'], false],
   0,
   1,
 ];
 
 /**
- * The front line fades in as the pad it stands for fades out of legibility.
+ * The zoom at which a tee pad outgrows the glyph standing in for it.
  *
- * The crossover is z18: below it the pad is a smudge and the line is what
- * reads, above it the pad itself is big enough to see and the line steps
- * aside. `zoom` has to be the direct input to a top-level `interpolate` —
- * MapLibre rejects it wrapped in anything else, which fails the whole layer
- * silently rather than just this expression.
+ * Below it the marker is drawn and the real footprint is not; above it they
+ * swap. Which is the honest arrangement, because below this zoom the pad is
+ * *smaller than its own marker* — drawing both puts a three-pixel rectangle
+ * inside a thirty-pixel one and asks the reader to believe the small one is the
+ * measurement.
+ *
+ * Arithmetic rather than a number somebody picked. Web Mercator's ground
+ * resolution is `2πR / (256 · 2^z)` metres per pixel at the equator, times
+ * `cos(latitude)`, so the pad's length in pixels equals the marker's height
+ * when:
+ *
+ *     2^z = markerPx · (2πR / 256) · cos(latitude) / padLength
+ *
+ * The latitude has to be fixed for a style built once, so it is the middle of
+ * the band courses are actually in. Nearer the poles the swap happens a
+ * fraction of a zoom late, which nobody can see.
+ *
+ * It is `minzoom`/`maxzoom` on the layers rather than a fade in opacity, and
+ * that is forced rather than chosen: selection is a feature-state expression,
+ * `zoom` may only be the direct input to a top-level `interpolate`, and the two
+ * cannot be multiplied together in one property.
  */
-const FRONT_OPACITY: ExpressionSpecification = [
-  'interpolate',
-  ['linear'],
-  ['zoom'],
-  17,
-  1,
-  18,
-  0,
-];
+const REFERENCE_LATITUDE = 45;
+const M_PER_PIXEL_AT_ZOOM_0 = (2 * Math.PI * EARTH_RADIUS) / 256;
+const PAD_LEGIBLE_ZOOM = Math.log2(
+  (MARKER_SIZE_PX * M_PER_PIXEL_AT_ZOOM_0 * Math.cos((REFERENCE_LATITUDE * Math.PI) / 180)) /
+    PLACED_RECTANGLE_DEFAULTS.lengthM,
+);
 
 /**
  * Derived geometry: tee and drop-zone pads, fairway corridors and centrelines.
@@ -227,7 +254,7 @@ const FRONT_OPACITY: ExpressionSpecification = [
 export function derivedLayers(): LayerSpecification[] {
   const isCorridor: ExpressionSpecification = ['==', ['get', 'derived'], 'corridor'];
   const isFootprint: ExpressionSpecification = ['==', ['get', 'derived'], 'footprint'];
-  const isFront: ExpressionSpecification = ['==', ['get', 'derived'], 'front'];
+  const isMandoLine: ExpressionSpecification = ['==', ['get', 'derived'], 'mandoLine'];
   const isCentreline: ExpressionSpecification = ['==', ['get', 'derived'], 'centreline'];
 
   return [
@@ -298,7 +325,12 @@ export function derivedLayers(): LayerSpecification[] {
         'fill-color': selectableColor('fill'),
         // Fainter than a drawn area of the same kind: it is the room the shot
         // has, not a thing in its own right.
-        'fill-opacity': CORRIDOR_OPACITY,
+        //
+        // Zero when the designer has switched fairways off — see `derived.ts`.
+        // The shape stays on the map so the ground a hole's shot runs over
+        // still selects that hole; hiding the drawing must not take the target
+        // away with it.
+        'fill-opacity': ['case', ['coalesce', ['get', 'hidden'], false], 0, CORRIDOR_OPACITY],
       },
     },
     /*
@@ -337,36 +369,38 @@ export function derivedLayers(): LayerSpecification[] {
       },
     },
     /*
-     * The front line: what stands for a pad before it is big enough to see.
+     * The mandatory line: the plane the disc may not cross.
      *
-     * A single stroke along the pad's own front edge — front-left corner to
-     * front-right, exactly the tee line [RULES] measures from — rather than a
-     * dot, so that even the substitute marker is a real measurement rather
-     * than an arbitrary circle. Solid, not dashed: like the pad itself, this
-     * is a physical edge, not a drawing aid.
+     * Solid and full weight, unlike everything else the derived source draws.
+     * A corridor is a drawing aid and says so with a dashed hairline; this is a
+     * rule about where the disc may go, and a rule that reads as a suggestion
+     * is worse than no mark at all.
+     *
+     * Under the glyph, so the marker that says which side you must pass sits on
+     * top of the wall that says which side you may not.
      */
     {
-      id: 'derived-front-casing',
+      id: 'derived-mando-line-casing',
       type: 'line',
       source: DERIVED_SOURCE,
-      filter: isFront,
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      filter: isMandoLine,
+      layout: { 'line-join': 'round', 'line-cap': 'butt' },
       paint: {
         'line-color': CASING_COLOR,
-        'line-width': CENTRELINE_CASING_WIDTH,
-        'line-opacity': FRONT_OPACITY,
+        'line-width': LINE_CASING_WIDTH,
+        'line-dasharray': casingDash(MANDO_DASH, CASING_RATIO),
       },
     },
     {
-      id: 'derived-front',
+      id: 'derived-mando-line',
       type: 'line',
       source: DERIVED_SOURCE,
-      filter: isFront,
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      filter: isMandoLine,
+      layout: { 'line-join': 'round', 'line-cap': 'butt' },
       paint: {
         'line-color': selectableColor('stroke'),
-        'line-width': CENTRELINE_WIDTH,
-        'line-opacity': FRONT_OPACITY,
+        'line-width': LINE_WIDTH,
+        'line-dasharray': [...MANDO_DASH],
       },
     },
     /*
@@ -383,6 +417,7 @@ export function derivedLayers(): LayerSpecification[] {
       type: 'line',
       source: DERIVED_SOURCE,
       filter: isFootprint,
+      minzoom: PAD_LEGIBLE_ZOOM,
       layout: { 'line-join': 'round' },
       paint: { 'line-color': CASING_COLOR, 'line-width': 3.5 },
     },
@@ -391,34 +426,136 @@ export function derivedLayers(): LayerSpecification[] {
       type: 'fill',
       source: DERIVED_SOURCE,
       filter: isFootprint,
+      minzoom: PAD_LEGIBLE_ZOOM,
       paint: { 'fill-color': selectableColor('fill'), 'fill-opacity': 1 },
     },
+
+    /*
+     * The glyphs.
+     *
+     * A tee and a drop zone are anchored at the TOP of their drawing, not its
+     * centre, and that is the same fact `footprintOf` is built on: the stored
+     * point is the front centre of the pad and the pad extends backwards from
+     * it. Anchored at the top and turned to the pad's bearing, the glyph lies
+     * exactly where the rectangle it stands in for does — centring it would
+     * hang half the marker out in front of the tee line.
+     *
+     * A mandatory is anchored at its centre, because the object really is in
+     * the middle of the marker, and it is not hidden by zoom: unlike a pad
+     * there is no larger drawing coming to replace it.
+     */
+    ...markerLayers('derived-marker-tee', 'tee', {
+      source: DERIVED_SOURCE,
+      filter: markerOfKind('tee'),
+      anchor: 'top',
+      rotate: ['get', 'bearing'],
+      maxzoom: PAD_LEGIBLE_ZOOM,
+    }),
+    ...markerLayers('derived-marker-dropzone', 'dropzone', {
+      source: DERIVED_SOURCE,
+      filter: markerOfKind('dropzone'),
+      anchor: 'top',
+      rotate: ['get', 'bearing'],
+      maxzoom: PAD_LEGIBLE_ZOOM,
+    }),
+    /*
+     * One layer per side, because which way the marker points *is* the ruling.
+     *
+     * Not one drawing mirrored: the pair keeps its M upright while the point
+     * moves, which a flip would not. Both are turned to the direction of play,
+     * so the point lands on the player's left or right rather than on the
+     * screen's.
+     */
+    ...markerLayers('derived-marker-mando-left', 'mandoLeft', {
+      source: DERIVED_SOURCE,
+      filter: ['all', markerOfKind('mando'), ['==', ['get', 'side'], 'left']],
+      anchor: 'center',
+      rotate: ['get', 'bearing'],
+    }),
+    ...markerLayers('derived-marker-mando-right', 'mandoRight', {
+      source: DERIVED_SOURCE,
+      filter: ['all', markerOfKind('mando'), ['==', ['get', 'side'], 'right']],
+      anchor: 'center',
+      rotate: ['get', 'bearing'],
+    }),
   ];
 }
 
-function basketLayer(
+/**
+ * A glyph marker, as the pair of layers selection needs.
+ *
+ * It has to be a pair. `icon-image` is a LAYOUT property, and MapLibre refuses
+ * feature-state expressions in layout properties — the whole layer fails
+ * validation and never installs, which presents as markers simply not drawing.
+ * `icon-opacity` is paint, where feature-state is allowed, so the selected
+ * glyph is a second layer faded in over the first.
+ *
+ * `sizedTo` is what makes one drawing serve a basket and a tee. A basket stands
+ * on its point and the marker is anchored at the bottom of the art; everything
+ * else marks the ground it sits on and is anchored at its centre.
+ */
+function markerLayers(
   id: string,
-  icon: string,
-  opacity: ExpressionSpecification,
-): LayerSpecification {
-  return {
-    id,
+  name: MarkerName,
+  options: {
+    source: string;
+    filter: ExpressionSpecification;
+    anchor: 'top' | 'bottom' | 'center';
+    /** Data-driven rotation, for glyphs that carry a direction. */
+    rotate?: ExpressionSpecification;
+    /** Hidden at and above this zoom, for a glyph standing in for a shape. */
+    maxzoom?: number;
+  },
+): LayerSpecification[] {
+  return ([false, true] as const).map((isSelected) => ({
+    id: isSelected ? `${id}-selected` : id,
     type: 'symbol',
-    source: FEATURES_SOURCE,
-    filter: ['all', ['==', ['geometry-type'], 'Point'], ['==', ['get', 'kind'], 'target']],
+    source: options.source,
+    filter: options.filter,
+    ...(options.maxzoom === undefined ? {} : { maxzoom: options.maxzoom }),
     layout: {
-      'icon-image': icon,
-      // The pole's base sits on the coordinate, because that is where the
-      // basket actually stands.
-      'icon-anchor': 'bottom',
-      // Baskets on adjacent pin positions must all stay visible; MapLibre would
+      'icon-image': markerIcon(name, isSelected),
+      'icon-anchor': options.anchor,
+      ...(options.rotate
+        ? {
+            'icon-rotate': options.rotate,
+            /*
+             * The angle is a compass bearing, so it has to be measured against
+             * the ground rather than the screen.
+             *
+             * Left alone, MapLibre aligns icon rotation to the viewport: a tee
+             * facing 90° is drawn a quarter turn clockwise on screen no matter
+             * which way the map is pointing. Selecting a hole turns the map to
+             * face its shot, and every pad and mandatory on it then pointed
+             * somewhere the ground did not. `map` alignment makes the marker
+             * turn with the terrain, which is what the basket does by having no
+             * rotation to get wrong.
+             */
+            'icon-rotation-alignment': 'map' as const,
+          }
+        : {}),
+      // Markers on adjacent pin positions must all stay visible; MapLibre would
       // otherwise drop whichever it decided was less important.
       'icon-allow-overlap': true,
       'icon-ignore-placement': true,
     },
-    paint: { 'icon-opacity': opacity },
-  };
+    paint: { 'icon-opacity': ['case', selected, isSelected ? 1 : 0, isSelected ? 0 : 1] },
+  }));
 }
+
+/** A point in the features source, of one kind. */
+const pointOfKind = (kind: string): ExpressionSpecification => [
+  'all',
+  ['==', ['geometry-type'], 'Point'],
+  ['==', ['get', 'kind'], kind],
+];
+
+/** A derived glyph marker, for one kind. */
+const markerOfKind = (kind: string): ExpressionSpecification => [
+  'all',
+  ['==', ['get', 'derived'], 'marker'],
+  ['==', ['get', 'kind'], kind],
+];
 
 export function featureLayers(): LayerSpecification[] {
   const isArea: ExpressionSpecification = ['==', ['geometry-type'], 'Polygon'];
@@ -562,8 +699,13 @@ export function featureLayers(): LayerSpecification[] {
      * drawing. `icon-opacity` is paint, where feature-state is allowed, so the
      * selected glyph is a second layer faded in over the first.
      */
-    basketLayer('features-target', BASKET_ICON, ['case', selected, 0, 1]),
-    basketLayer('features-target-selected', BASKET_ICON_SELECTED, ['case', selected, 1, 0]),
+    ...markerLayers('features-target', 'target', {
+      source: FEATURES_SOURCE,
+      filter: pointOfKind('target'),
+      // The pole's base sits on the coordinate, because that is where the
+      // basket actually stands.
+      anchor: 'bottom',
+    }),
   ];
 }
 
@@ -653,15 +795,21 @@ export function vertexLayers(): LayerSpecification[] {
 /**
  * Layers that should respond to clicks, topmost first.
  *
- * `derived-footprint` and `derived-front` are in here despite being derived
+ * The derived glyphs and the footprint are in here despite being derived
  * geometry, because a tee pad *is* its tee — they carry the tee's own id, and
- * the point beneath both is not drawn. They sit last so that anything
- * standing on a pad still wins the click. The two never overlap in visibility
- * — `FRONT_OPACITY` and the footprint's own size cross over at the same
- * zoom — so their order relative to each other does not matter.
+ * the point beneath them is not drawn. The mandatory glyphs are in for the same
+ * reason and are not optional: a mandatory with a ruling has no circle left to
+ * click.
  *
- * `derived-centreline` is not: a fairway with no stored feature has no id to
- * select, and clicking one should reach whatever is under it.
+ * They sit last so that anything standing on a pad still wins the click. A pad
+ * and its glyph never overlap in visibility — the glyph's `maxzoom` is the zoom
+ * the pad becomes legible at — so their order relative to each other does not
+ * matter.
+ *
+ * `derived-centreline` and `derived-mando-line` are not here. A fairway with no
+ * stored feature has no id to select, and a mandatory line is a consequence of
+ * the mandatory rather than a thing in its own right — clicking either should
+ * reach whatever is under it.
  */
 export const INTERACTIVE_LAYERS = [
   'hole-label-disc',
@@ -676,7 +824,10 @@ export const INTERACTIVE_LAYERS = [
    * feature id, so which one answers makes no difference to the caller.
    */
   'features-boundary-casing',
-  'derived-front',
+  'derived-marker-mando-left',
+  'derived-marker-mando-right',
+  'derived-marker-tee',
+  'derived-marker-dropzone',
   'derived-footprint',
   /*
    * The corridor is the biggest thing a hole owns, and until now the only part
@@ -730,7 +881,7 @@ export const DRAGGABLE_LAYERS = INTERACTIVE_LAYERS.filter(
  */
 export function toGeoJSON(
   features: readonly Feature[],
-  withFootprint: ReadonlySet<string> = new Set(),
+  withMarker: ReadonlySet<string> = new Set(),
 ): GeoJSON.FeatureCollection {
   return {
     type: 'FeatureCollection',
@@ -742,8 +893,8 @@ export function toGeoJSON(
         id: f.id,
         kind: f.kind,
         label: f.label,
-        // Suppresses the point marker: the derived pad is standing in for it.
-        hasFootprint: withFootprint.has(f.id),
+        // Suppresses the plain circle: a pad or a glyph is standing in for it.
+        hasMarker: withMarker.has(f.id),
       },
       geometry: toGeoJSONGeometry(f),
     })),

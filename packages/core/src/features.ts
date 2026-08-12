@@ -184,9 +184,17 @@ export const KIND_DEFINITIONS: Record<FeatureKind, KindDefinition> = {
 export interface FieldDefinition {
   key: string;
   label: string;
-  type: 'text' | 'number' | 'select' | 'boolean';
+  type: 'text' | 'number' | 'select' | 'boolean' | 'feature';
   /** For `select`. */
   options?: readonly { value: string; label: string }[];
+  /**
+   * For `feature`: which kinds may be picked.
+   *
+   * A reference to another feature in the same document, stored as its id. The
+   * options cannot be listed here because they are the course's own contents —
+   * the inspector builds them, and this says what to build them from.
+   */
+  kinds?: readonly FeatureKind[];
   /** For `number`. Values are stored metric; the UI converts for display. */
   unit?: 'meters' | 'degrees';
   min?: number;
@@ -297,12 +305,45 @@ export function fieldsFor(kind: FeatureKind): readonly FieldDefinition[] {
         // `standalone` is set by the hole picker rather than by a checkbox
         // of its own — see the note on the tee's fields above.
       ];
+    /*
+     * `side` is the whole feature, not a detail of it.
+     *
+     * A mandatory is a rule about which way round an object you may throw, and
+     * everything else here describes the object. It is what decides which side
+     * the drawn line lands on — see `mandoLineOf` — so leaving it unset leaves a
+     * marker with no ruling attached, which is the honest state for one nobody
+     * has decided about yet rather than a default worth guessing.
+     */
     case 'mando':
       return [
         { key: 'side', label: 'Rule', type: 'select', options: MANDO_SIDES },
         { key: 'type', label: 'Object', type: 'select', options: MANDO_TYPES },
         { key: 'height', label: 'Height', type: 'number', unit: 'meters', min: 0, max: 60 },
         { key: 'bearing', label: 'Facing', type: 'number', unit: 'degrees', min: 0, max: 360 },
+        /*
+         * How far the drawn line runs, not how far the plane reaches. The plane
+         * is unbounded — see MANDO_LINE — and this is the length that reads on
+         * a map, which is a decision about a site rather than about the rules.
+         */
+        {
+          key: 'reach',
+          label: 'Line length',
+          type: 'number',
+          unit: 'meters',
+          min: 1,
+          max: 500,
+        },
+        /*
+         * Where a missed mandatory sends you.
+         *
+         * [RULES] 804.01.C: "The lie for the next throw is the drop zone for
+         * that mandatory. If no drop zone has been designated, the lie for the
+         * next throw is the previous lie." A *specific* drop zone, which is why
+         * this is a reference to one rather than a flag saying there is one
+         * nearby — and why leaving it unset is a meaningful state rather than an
+         * omission: it is the second sentence.
+         */
+        { key: 'dropzoneId', label: 'Drop zone', type: 'feature', kinds: ['dropzone'] },
       ];
     /*
      * The two widths describe the CORRIDOR, not the line.

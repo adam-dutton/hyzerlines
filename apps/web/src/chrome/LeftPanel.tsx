@@ -67,22 +67,15 @@ import {
  */
 
 /**
- * Which hole a feature is in, by either of the two routes the model has.
+ * Which hole a feature is in.
  *
- * A hole owns its tees and targets by *listing* them — `hole.teeIds`,
- * `hole.targetIds` — and `holeOfFeature` resolves that, fairways included, by
- * looking through the pairs. Everything else carries its own `holeId`, which is
- * scope rather than membership: an OB line belonging to hole 4 is a different
- * claim from a tee being one of hole 4's tees.
- *
- * Both have to be consulted, and reading only one is a wrong answer rather than a
- * partial one. `addHole` claims a loose tee and basket by putting their ids in the
- * hole's arrays and never touches `holeId`, so a `holeId`-only filter shows a
- * freshly built hole as empty *and* files its tee under the whole course — the
- * feature list contradicting the hole panel about the same two shapes.
+ * Both routes the model has — membership and scope — which `holeOfFeature` now
+ * resolves on its own. This used to add the `holeId` fallback here, and that
+ * was the bug: the panel knew a scoped mandatory was hole 4's, and the map and
+ * the properties breadcrumb, which asked core directly, did not.
  */
 const holeIdOf = (course: Course, feature: Feature): string | null =>
-  holeOfFeature(course, feature.id)?.id ?? feature.holeId;
+  holeOfFeature(course, feature.id)?.id ?? null;
 
 /** A section heading inside the panel: a title, a count, and an action. */
 function SectionHeader({

@@ -36,6 +36,22 @@ import type { FeatureKind } from '@hyzerlines/core';
 export type LargeIconName = keyof typeof LARGE_ART;
 
 export const LARGE_ART = {
+  /**
+   * The tee pad as it is marked on the map: a plain rounded rectangle.
+   *
+   * Not the lettered box the tool bar uses. On the ground a tee *is* a
+   * rectangle, and once the pad is big enough to draw at its real size the
+   * glyph steps aside and the actual footprint takes over — so the marker's job
+   * is to stand in for that rectangle at the right angle, which a T in a box
+   * does less well than the rectangle itself.
+   *
+   * Authored from the top of the box downwards, because the marker is anchored
+   * at its top: the stored point is the front centre of the pad and the pad
+   * extends backwards from it.
+   */
+  teePad: [
+    'M8 0H16C17.1046 0 18 0.895431 18 2V16C18 17.1046 17.1046 18 16 18H8C6.89543 18 6 17.1046 6 16V2C6 0.895431 6.89543 0 8 0Z',
+  ],
   tee: [
     'M11 7H12V18H11V7Z',
     'M17 21V22H6V21H17ZM18 20V4C18 3.44772 17.5523 3 17 3H6C5.44772 3 5 3.44772 5 4V20C5 20.5523 5.44772 21 6 21V22L5.7959 21.9893C4.85435 21.8938 4.1062 21.1457 4.01074 20.2041L4 20V4C4 2.89543 4.89543 2 6 2H17C18.1046 2 19 2.89543 19 4V20L18.9893 20.2041C18.8938 21.1457 18.1457 21.8938 17.2041 21.9893L17 22V21C17.5523 21 18 20.5523 18 20Z',

@@ -16,7 +16,7 @@ import {
   vertexLayers,
 } from './featureLayers';
 import { VERTEX_LAYERS } from './useVertexEditing';
-import { addBasketIcons } from './icons';
+import { addMarkerIcons } from './icons';
 import type { DerivedGeometry } from './derived';
 
 const PREVIEW_SOURCE = 'drawing-preview';
@@ -97,7 +97,7 @@ export function FeatureLayer({
        * order and a tee pad must sit under the tee point it was computed from.
        * Installing it after would bury the thing you actually click.
        */
-      addBasketIcons(map);
+      addMarkerIcons(map);
 
       if (!map.getSource(DERIVED_SOURCE)) {
         // promoteId for the same reason the feature source needs it: a tee pad
@@ -115,7 +115,7 @@ export function FeatureLayer({
       if (!map.getSource(FEATURES_SOURCE)) {
         map.addSource(FEATURES_SOURCE, {
           type: 'geojson',
-          data: toGeoJSON(features, derived.withFootprint),
+          data: toGeoJSON(features, derived.withMarker),
           /*
            * Required for selection to work at all.
            *
@@ -193,8 +193,8 @@ export function FeatureLayer({
   useEffect(() => {
     if (!map) return;
     const source = map.getSource<GeoJSONSource>(FEATURES_SOURCE);
-    source?.setData(toGeoJSON(features, derived.withFootprint));
-  }, [map, features, derived.withFootprint]);
+    source?.setData(toGeoJSON(features, derived.withMarker));
+  }, [map, features, derived.withMarker]);
 
   useEffect(() => {
     if (!map) return;

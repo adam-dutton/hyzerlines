@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
 import {
+  course,
   openEditor,
   openSection,
   place,
@@ -28,7 +29,17 @@ import {
 const drawn = (page: Page, layer: string): Promise<number> =>
   page.evaluate((l) => {
     const hits = window.hyzerlinesMap!.queryRenderedFeatures({ layers: [l] });
-    return new Set(hits.map((f) => String(f.properties?.['id'] ?? f.id))).size;
+    /*
+     * Painted, not merely present.
+     *
+     * A corridor switched off stays on the map at zero opacity so the ground a
+     * hole's shot runs over still selects that hole — hiding the drawing must
+     * not take the click target away with it. `queryRenderedFeatures` finds it
+     * either way, which is the whole point, so a test about what the map *shows*
+     * has to skip the ones it is only holding.
+     */
+    const shown = hits.filter((f) => f.properties?.['hidden'] !== true);
+    return new Set(shown.map((f) => String(f.properties?.['id'] ?? f.id))).size;
   }, layer);
 
 /**
@@ -130,5 +141,62 @@ test.describe('drawing aids', () => {
     // Read off the map, not off the panel: what survived a reload is the
     // document's business, and the section it is set from starts closed again.
     await expectDrawn(page, 'derived-circle').toBe(0);
+  });
+});
+
+/**
+ * A tee pad and the glyph that stands in for it, and never both.
+ *
+ * Below the zoom where the real rectangle is bigger than its own marker, the
+ * rectangle is a smudge — three pixels inside a thirty-pixel glyph, asking the
+ * reader to believe the small one is the measurement. So one or the other.
+ */
+test.describe('the tee pad and its marker', () => {
+  const visible = (page: Page, layer: string): Promise<boolean> =>
+    page.evaluate(
+      (id) => (window.hyzerlinesMap?.queryRenderedFeatures({ layers: [id] }) ?? []).length > 0,
+      layer,
+    );
+
+  test('swaps at the zoom the pad outgrows the glyph', async ({ page }) => {
+    await openEditor(page, { zoom: 17 });
+    await place(page, 'Tee pad', 560, 500);
+    await place(page, 'Target', 700, 220);
+    await page.getByRole('button', { name: 'Add hole' }).click();
+    await page.keyboard.press('Escape');
+
+    // Zoomed out to a whole hole: the marker, and no rectangle.
+    await expect.poll(() => visible(page, 'derived-marker-tee')).toBe(true);
+    expect(await visible(page, 'derived-footprint')).toBe(false);
+
+    /*
+     * A 3 m pad reaches 36 px somewhere above zoom 20 — see PAD_LEGIBLE_ZOOM,
+     * which is arithmetic rather than a chosen number. 21 is comfortably past
+     * it and 18 comfortably short, so this asserts the swap without pinning the
+     * formula's exact answer.
+     *
+     * Centred on the pad each time, because zooming in four levels off-centre
+     * would put it a long way off screen and prove nothing about either layer.
+     */
+    const at = async (zoom: number) => {
+      const doc = await course(page);
+      const tee = doc.features.find((f) => f.kind === 'tee')!;
+      await page.evaluate(
+        ([centre, z]) =>
+          window.hyzerlinesMap!.jumpTo({
+            center: centre as [number, number],
+            zoom: z as number,
+          }),
+        [tee.geometry.coordinates as [number, number], zoom] as const,
+      );
+    };
+
+    await at(21);
+    await expect.poll(() => visible(page, 'derived-footprint')).toBe(true);
+    expect(await visible(page, 'derived-marker-tee')).toBe(false);
+
+    await at(18);
+    await expect.poll(() => visible(page, 'derived-marker-tee')).toBe(true);
+    expect(await visible(page, 'derived-footprint')).toBe(false);
   });
 });

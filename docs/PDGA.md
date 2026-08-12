@@ -711,11 +711,11 @@ merely being near one.
 
 ## Derived geometry — what is sourced and what is ours
 
-The app draws two shapes the document does not contain: the rectangle a tee pad
-occupies, and the corridor a fairway covers. Both are computed in
-`packages/core/src/geometry.ts`. Because both put a dimension on screen that a
-designer could measure off and quote, this records exactly where every number in
-them comes from.
+The app draws three shapes the document does not contain: the rectangle a tee pad
+occupies, the corridor a fairway covers, and the line a mandatory restricts. All
+are computed in `packages/core/src/geometry.ts`. Because each puts a dimension on
+screen that a designer could measure off and quote, this records exactly where
+every number in them comes from.
 
 ### The tee pad rectangle
 
@@ -758,6 +758,31 @@ The interpolation between them, the mitre limit of 2 at doglegs, and the square
 end caps are all app conventions with no PDGA basis, and none of them is
 presented as a standard anywhere in the interface. Every width is overridable per
 fairway (`widthStart`, `widthEnd`).
+
+### The mandatory line
+
+| Input     | Value                             | Authority                                                                              |
+| --------- | --------------------------------- | -------------------------------------------------------------------------------------- |
+| Anchor    | The object itself                 | `[RULES]` 804.01.B — the plane is "marked by one or more objects".                     |
+| Direction | Perpendicular to the line of play | Follows from the ruling: a plane the disc may not enter, on one side of the object.    |
+| Side      | Opposite the side the disc passes | The ruling itself. "Pass left" restricts the player's right.                           |
+| Reach     | 20 m when unset                   | **Ours.** `[RULES]` 806.01.A read as a diameter, the same figure the corridor borrows. |
+| Colour    | The same red as out of bounds     | Convention. A mandatory and OB make the same claim: cross this and it costs a throw.   |
+| `bearing` | **No default**                    | The hole's own shot at the nearest leg. With no shot, no line is drawn.                |
+
+**The plane is unbounded and the drawing is not.** 804.01.B bounds the plane at
+its marker and says nothing about the far end, because it does not need one —
+entering it anywhere is a stroke. So the reach is a length chosen for reading,
+not a transcription, and every mandatory can be given its own.
+
+Which side is restricted is _not_ an app convention: it is the ruling, and
+getting it backwards would put the wall across the gap the shot is meant to go
+through. That is why the direction of play is required rather than defaulted, and
+why a mandatory belonging to no hole draws nothing at all.
+
+`over` is a fourth ruling with no line in plan. The plane it describes is
+horizontal, and drawn on a map it would be a mark on top of the object saying
+nothing about where a disc may go.
 
 The honest framing: the corridor exists so a drawn line reads as ground rather
 than as a hairline. It is a drawing aid whose defaults happen to be anchored to
