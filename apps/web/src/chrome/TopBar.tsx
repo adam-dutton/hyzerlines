@@ -21,6 +21,7 @@ import { formatDistance, type UnitSystem } from '../units';
 import { useProfiles } from '../survey/useProfiles';
 import { useAutoLocation } from './useAutoLocation';
 import { CourseMenu } from './CourseMenu';
+import { LARGE_ART } from './iconArt';
 import { GAP, GUTTER, TOP_BAR_HEIGHT } from './layout';
 import type { SaveStatus } from '../document/CourseProvider';
 
@@ -82,26 +83,22 @@ function Mark() {
 /**
  * Undo and redo: an arrow curling back on itself.
  *
- * Replacement drawing, and the pair is a mirror rather than two drawings — the
- * only difference between them is which way the hook points, and letting them
- * drift apart is how a toolbar ends up with two arrows of different weights.
+ * Two drawings rather than one flipped, because they are not mirrors — the hook
+ * is on opposite ends but the tail curls the same way round in both, which is
+ * what keeps them reading as a pair of arrows rather than as one arrow and its
+ * reflection.
  *
- * Drawn at 24 and rendered at 24. The old pair was a 15-unit stroked path, which
- * is the one thing this icon set does not do: everything else here is a filled
- * outline, so a stroke among them reads as a different family at any size.
+ * The art is in `iconArt` with everything else. The old pair was a 15-unit
+ * stroked path, which is the one thing this icon set does not do: everything
+ * else is a filled outline, so a stroke among them reads as a different family
+ * at any size.
  */
-function UndoIcon() {
+function ArrowIcon({ name }: { name: 'undo' | 'redo' }) {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M17 13C17 11.4554 16.4923 10.2149 15.6387 9.36132C14.7851 8.50774 13.5445 7.99999 12 7.99999H6.70703L9.85352 11.1465C10.0488 11.3417 10.0488 11.6582 9.85352 11.8535C9.65825 12.0488 9.34175 12.0488 9.14648 11.8535L4.79297 7.49999L9.14648 3.14648C9.34175 2.95121 9.65825 2.95121 9.85352 3.14648C10.0488 3.34174 10.0488 3.65825 9.85352 3.85351L6.70703 6.99999H12C13.7692 6.99999 15.2787 7.58532 16.3467 8.65331C17.4147 9.72131 18 11.2308 18 13C18 14.7692 17.4147 16.2787 16.3467 17.3467C15.2787 18.4147 13.7692 19 12 19H9V18H12C13.5445 18 14.7851 17.4922 15.6387 16.6387C16.4923 15.7851 17 14.5445 17 13Z" />
-    </svg>
-  );
-}
-
-function RedoIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M6 13C6 11.2308 6.58533 9.72131 7.65332 8.65331C8.72131 7.58532 10.2308 6.99999 12 6.99999H17.293L14.1465 3.85351C13.9512 3.65825 13.9512 3.34174 14.1465 3.14648C14.3417 2.95121 14.6583 2.95122 14.8535 3.14648L19.207 7.49999L14.8535 11.8535C14.6583 12.0488 14.3417 12.0488 14.1465 11.8535C13.9512 11.6582 13.9512 11.3417 14.1465 11.1465L17.293 7.99999H12C10.4555 7.99999 9.21491 8.50774 8.36133 9.36132C7.50775 10.2149 7 11.4554 7 13C7 14.5445 7.50775 15.7851 8.36133 16.6387C9.21491 17.4922 10.4555 18 12 18H15V19H12C10.2308 19 8.72131 18.4147 7.65332 17.3467C6.58533 16.2787 6 14.7692 6 13Z" />
+      {LARGE_ART[name].map((d) => (
+        <path key={d} d={d} />
+      ))}
     </svg>
   );
 }
@@ -307,7 +304,7 @@ export function TopBar({
             disabled={!canUndo}
             onClick={onUndo}
           >
-            <UndoIcon />
+            <ArrowIcon name="undo" />
           </IconButton>
           <IconButton
             label="Redo"
@@ -316,7 +313,7 @@ export function TopBar({
             disabled={!canRedo}
             onClick={onRedo}
           >
-            <RedoIcon />
+            <ArrowIcon name="redo" />
           </IconButton>
 
           <TextAction label="Import" onClick={onImport} />
