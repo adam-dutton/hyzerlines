@@ -82,6 +82,18 @@ async function holeWithMando(page: Page) {
   await page.getByRole('button', { name: 'Add hole' }).click();
 
   await place(page, 'Mandatory', 610, 320);
+  await selectMando(page);
+}
+
+/**
+ * Select the mandatory itself, which takes two clicks.
+ *
+ * The first enters the hole it belongs to — a mandatory is scoped to a hole and
+ * clicking anything of a hole's selects the hole, which is the grouping idiom
+ * every vector editor uses. The second drills in.
+ */
+async function selectMando(page: Page) {
+  await clickMap(page, 610, 320);
   await clickMap(page, 610, 320);
   await expect(page.getByRole('combobox', { name: 'Rule' })).toBeVisible();
 }
@@ -174,6 +186,47 @@ test.describe('mandatories', () => {
       .toBe(true);
   });
 
+  /**
+   * A mandatory scoped to a hole is one of that hole's things.
+   *
+   * It was not, to anything that asked core: `holeOfFeature` resolved only
+   * membership — a hole's own tee and target arrays — so a mandatory or a drop
+   * zone carrying `holeId` came back in no hole at all. The feature list, which
+   * had its own answer, filed it under hole 1 while the map selected it
+   * directly and the panel offered "Whole course" as the way back up. Two parts
+   * of the interface disagreeing about the same shape.
+   */
+  test('a mandatory belongs to its hole everywhere, not just in the list', async ({ page }) => {
+    await holeWithMando(page);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+
+    // One click enters the hole, exactly as clicking its tee or its basket does.
+    await clickMap(page, 610, 320);
+    await expect(page.getByRole('textbox', { name: 'Hole name' })).toBeVisible();
+
+    // And the way back up from the mandatory is the hole, not the course.
+    await clickMap(page, 610, 320);
+    await expect(page.getByRole('button', { name: 'Back to Hole 1' })).toBeVisible();
+  });
+
+  test('the glyph turns with the ground, not with the screen', async ({ page }) => {
+    await holeWithMando(page);
+
+    /*
+     * `icon-rotate` takes a compass bearing, so it has to be measured against
+     * the map. Left on its default the icon rotates in screen space, and
+     * selecting a hole — which turns the map to face its shot — pointed every
+     * mandatory and every pad somewhere the ground did not.
+     */
+    const alignment = await page.evaluate(() =>
+      ['derived-marker-mando-left', 'derived-marker-tee', 'derived-marker-dropzone'].map((id) =>
+        window.hyzerlinesMap?.getLayoutProperty(id, 'icon-rotation-alignment'),
+      ),
+    );
+    expect(alignment).toEqual(['map', 'map', 'map']);
+  });
+
   test('a drop zone can be assigned to a mandatory', async ({ page }) => {
     await holeWithMando(page);
 
@@ -182,7 +235,7 @@ test.describe('mandatories', () => {
     await expect(page.getByText('None drawn yet')).toBeVisible();
 
     await placeDropzone(page, 520, 440);
-    await clickMap(page, 610, 320);
+    await selectMando(page);
 
     const picker = page.getByRole('combobox', { name: 'Drop zone' });
     await expect(picker).toBeVisible();

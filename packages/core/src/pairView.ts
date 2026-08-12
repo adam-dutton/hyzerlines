@@ -601,9 +601,29 @@ export function holeLabelPosition(
   ];
 }
 
-/** Which hole a feature belongs to, for click-to-select-the-hole on the map. */
+/**
+ * Which hole a feature is in, by either of the two routes the model has.
+ *
+ * A hole owns its tees and targets by *listing* them — `hole.teeIds`,
+ * `hole.targetIds` — and its fairways through the pairs. Everything else
+ * carries its own `holeId`, which is scope rather than membership: an OB line
+ * belonging to hole 4 is a different claim from a tee being one of hole 4's
+ * tees.
+ *
+ * **Both have to be consulted, and reading only one is a wrong answer rather
+ * than a partial one.** This looked only at membership, which meant a mandatory
+ * or a drop zone scoped to hole 4 was, to everything downstream, in no hole at
+ * all: clicking one on the map selected the feature instead of entering its
+ * hole, and the properties panel offered "Whole course" as the way back up from
+ * something the feature list had just shown filed under hole 4. Two parts of the
+ * interface disagreeing about the same shape.
+ *
+ * The other direction is just as real. `addHole` claims a loose tee and basket
+ * by putting their ids in the hole's arrays and never touches `holeId`, so a
+ * `holeId`-only answer files a freshly built hole's own tee under the course.
+ */
 export function holeOfFeature(course: Course, featureId: string): Hole | undefined {
-  return course.holes.find(
+  const byMembership = course.holes.find(
     (hole) =>
       hole.teeIds.includes(featureId) ||
       hole.targetIds.includes(featureId) ||
@@ -614,6 +634,10 @@ export function holeOfFeature(course: Course, featureId: string): Hole | undefin
           hole.targetIds.includes(pair.targetId),
       ),
   );
+  if (byMembership) return byMembership;
+
+  const scoped = featureIndex(course).get(featureId)?.holeId;
+  return scoped ? course.holes.find((hole) => hole.id === scoped) : undefined;
 }
 
 /**

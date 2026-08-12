@@ -209,6 +209,13 @@ styles them differently so the claim is visible.
 | `ob`, `hazard` | invert |
 | `water` | inPlay |
 
+A feature is in a hole by either of two routes, and both count. A hole _lists_
+its tees and targets (`hole.teeIds`, `hole.targetIds`) and reaches its fairways
+through the pairs; everything else carries its own `holeId`. `holeOfFeature`
+resolves both, and reading only one is a wrong answer rather than a partial one
+— a mandatory scoped to hole 4 has to be hole 4's on the map, in the feature
+list and in the properties breadcrumb alike.
+
 `mando.side` is the whole feature rather than a detail of it: it says which way
 round the object a disc must go, and it is what decides which side the drawn
 mandatory line lands on. `mando.dropzoneId` points at a _specific_ drop zone,

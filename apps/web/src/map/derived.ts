@@ -123,9 +123,9 @@ export function derivedGeometry(course: Course, choices?: FairwayChoices): Deriv
   const teeBearings = fairwayBearings(allFairways, alternatives);
 
   const holeById = new Map(course.holes.map((hole) => [hole.id, hole]));
-  const fairways = allFairways.filter(
-    (f) => f.holeId === null || (holeById.get(f.holeId)?.showFairway ?? true),
-  );
+  const shown = (fairway: HoleFairway) =>
+    fairway.holeId === null || (holeById.get(fairway.holeId)?.showFairway ?? true);
+  const fairways = allFairways.filter(shown);
 
   for (const feature of course.features) {
     if (!KIND_DEFINITIONS[feature.kind].placedRectangle) continue;
@@ -249,10 +249,25 @@ export function derivedGeometry(course: Course, choices?: FairwayChoices): Deriv
   const drawLines = showsFairwayLines(course.display);
   const drawAreas = showsFairwayAreas(course.display);
 
-  for (const fairway of fairways) {
+  /*
+   * Every corridor is emitted, drawn or not.
+   *
+   * Turning fairways off is about what the map *shows* — a designer reading the
+   * canopy under hole 7 does not want a translucent band over it. It was
+   * silently also about what the map *answers*: with the corridor gone, the
+   * ground where hole 7's shot runs stopped selecting hole 7, and the only
+   * targets left were the pad, the number and a hairline. The band is still the
+   * most obvious thing on screen that is hole 7, whether or not it is painted.
+   *
+   * So a hidden corridor is drawn at zero opacity rather than withheld.
+   * `queryRenderedFeatures` still finds it, which is what makes the click work,
+   * and nothing about the picture changes.
+   */
+  for (const fairway of allFairways) {
     const pair = `${fairway.teeId} ${fairway.targetId}`;
+    const visible = shown(fairway) && drawAreas;
 
-    if (fairway.corridor && drawAreas) {
+    if (fairway.corridor) {
       features.push({
         type: 'Feature',
         properties: {
@@ -260,6 +275,7 @@ export function derivedGeometry(course: Course, choices?: FairwayChoices): Deriv
           pair,
           kind: 'fairway',
           derived: 'corridor',
+          hidden: !visible,
           /*
            * What clicking it should select, which is not what its `id` says.
            *
@@ -285,7 +301,7 @@ export function derivedGeometry(course: Course, choices?: FairwayChoices): Deriv
      * shot goes. On a wide corridor over broken canopy the fill alone does not
      * read as a direction, and the line is also what carries the vertex handles.
      */
-    if (!drawLines) continue;
+    if (!drawLines || !shown(fairway)) continue;
     features.push({
       type: 'Feature',
       properties: {

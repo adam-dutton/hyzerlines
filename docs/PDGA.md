@@ -767,6 +767,7 @@ fairway (`widthStart`, `widthEnd`).
 | Direction | Perpendicular to the line of play | Follows from the ruling: a plane the disc may not enter, on one side of the object.    |
 | Side      | Opposite the side the disc passes | The ruling itself. "Pass left" restricts the player's right.                           |
 | Reach     | 20 m when unset                   | **Ours.** `[RULES]` 806.01.A read as a diameter, the same figure the corridor borrows. |
+| Colour    | The same red as out of bounds     | Convention. A mandatory and OB make the same claim: cross this and it costs a throw.   |
 | `bearing` | **No default**                    | The hole's own shot at the nearest leg. With no shot, no line is drawn.                |
 
 **The plane is unbounded and the drawing is not.** 804.01.B bounds the plane at

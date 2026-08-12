@@ -235,12 +235,26 @@ const mono = { stroke: WHITE, fill: WHITE_FILL, casing: CASING };
 const RED_FILL = 'rgb(255 107 100 / 0.22)';
 const ob = { stroke: primitive.red[400], fill: RED_FILL, casing: CASING };
 
+/**
+ * A mandatory is the second thing that earns red, and for OB's own reason.
+ *
+ * The two are the same claim to a player: cross this and it costs you a throw.
+ * Course maps have drawn mandatory arrows in red for as long as they have drawn
+ * OB in it, so the colour is read rather than learned — and a mandatory line is
+ * *specifically* a thing you must not cross, which is exactly what a white line
+ * on this map does not say.
+ *
+ * The same red as OB rather than a second one. Two reds a shade apart would be
+ * the map implying a distinction it does not mean.
+ */
+const mando = { stroke: primitive.red[400], fill: RED_FILL, casing: CASING };
+
 export const feature = {
   tee: mono,
   target: mono,
   fairway: mono,
   green: mono,
-  mando: mono,
+  mando,
   dropzone: mono,
 
   ob,

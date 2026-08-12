@@ -1,8 +1,13 @@
 import type { LayerSpecification, ExpressionSpecification } from 'maplibre-gl';
 import { feature as featureColors, type FeatureKind } from '@hyzerlines/design';
-import { FEATURE_KINDS, type Feature } from '@hyzerlines/core';
+import {
+  EARTH_RADIUS,
+  FEATURE_KINDS,
+  PLACED_RECTANGLE_DEFAULTS,
+  type Feature,
+} from '@hyzerlines/core';
 
-import { markerIcon, type MarkerName } from './icons';
+import { MARKER_SIZE_PX, markerIcon, type MarkerName } from './icons';
 
 /**
  * How course features are drawn.
@@ -158,6 +163,16 @@ const ALTERNATIVE_OPACITY = 0.45;
  * the terrain from — every tree line and every fall of ground goes through it.
  * A dotted outline says the same thing and takes nothing away.
  */
+/**
+ * The mandatory line's dash.
+ *
+ * Dashed because the plane is not a thing on the ground: there is nothing at
+ * the site to walk along, only a rule about where a disc may go. Long dashes
+ * with short gaps, so it still reads as a barrier rather than as the dotted
+ * hairline a property line uses — the two claims could not be further apart.
+ */
+const MANDO_DASH = [3, 1.5] as const;
+
 const BOUNDARY_DASH = [1, 2] as const;
 const BOUNDARY_WIDTH = 1.25;
 const BOUNDARY_CASING_WIDTH = BOUNDARY_WIDTH * CASING_RATIO;
@@ -190,19 +205,36 @@ const POINT_OPACITY: ExpressionSpecification = [
 ];
 
 /**
- * Where a pad stops being a smudge and starts being a rectangle.
+ * The zoom at which a tee pad outgrows the glyph standing in for it.
  *
- * Below this the glyph stands in for it; above it the pad itself is what you
- * read, and the glyph steps aside. The same crossover the front line used.
+ * Below it the marker is drawn and the real footprint is not; above it they
+ * swap. Which is the honest arrangement, because below this zoom the pad is
+ * *smaller than its own marker* — drawing both puts a three-pixel rectangle
+ * inside a thirty-pixel one and asks the reader to believe the small one is the
+ * measurement.
  *
- * It is the layer's `maxzoom` rather than a fade in `icon-opacity`, and that is
- * forced rather than chosen: selection is a feature-state expression, `zoom`
- * may only be the direct input to a top-level `interpolate`, and the two cannot
- * be multiplied together in one property. Given a hard swap or no selection
- * colour, the swap wins — it happens at a zoom where the pad is already drawn
- * underneath, so nothing blinks out of existence.
+ * Arithmetic rather than a number somebody picked. Web Mercator's ground
+ * resolution is `2πR / (256 · 2^z)` metres per pixel at the equator, times
+ * `cos(latitude)`, so the pad's length in pixels equals the marker's height
+ * when:
+ *
+ *     2^z = markerPx · (2πR / 256) · cos(latitude) / padLength
+ *
+ * The latitude has to be fixed for a style built once, so it is the middle of
+ * the band courses are actually in. Nearer the poles the swap happens a
+ * fraction of a zoom late, which nobody can see.
+ *
+ * It is `minzoom`/`maxzoom` on the layers rather than a fade in opacity, and
+ * that is forced rather than chosen: selection is a feature-state expression,
+ * `zoom` may only be the direct input to a top-level `interpolate`, and the two
+ * cannot be multiplied together in one property.
  */
-const PAD_LEGIBLE_ZOOM = 18;
+const REFERENCE_LATITUDE = 45;
+const M_PER_PIXEL_AT_ZOOM_0 = (2 * Math.PI * EARTH_RADIUS) / 256;
+const PAD_LEGIBLE_ZOOM = Math.log2(
+  (MARKER_SIZE_PX * M_PER_PIXEL_AT_ZOOM_0 * Math.cos((REFERENCE_LATITUDE * Math.PI) / 180)) /
+    PLACED_RECTANGLE_DEFAULTS.lengthM,
+);
 
 /**
  * Derived geometry: tee and drop-zone pads, fairway corridors and centrelines.
@@ -293,7 +325,12 @@ export function derivedLayers(): LayerSpecification[] {
         'fill-color': selectableColor('fill'),
         // Fainter than a drawn area of the same kind: it is the room the shot
         // has, not a thing in its own right.
-        'fill-opacity': CORRIDOR_OPACITY,
+        //
+        // Zero when the designer has switched fairways off — see `derived.ts`.
+        // The shape stays on the map so the ground a hole's shot runs over
+        // still selects that hole; hiding the drawing must not take the target
+        // away with it.
+        'fill-opacity': ['case', ['coalesce', ['get', 'hidden'], false], 0, CORRIDOR_OPACITY],
       },
     },
     /*
@@ -348,7 +385,11 @@ export function derivedLayers(): LayerSpecification[] {
       source: DERIVED_SOURCE,
       filter: isMandoLine,
       layout: { 'line-join': 'round', 'line-cap': 'butt' },
-      paint: { 'line-color': CASING_COLOR, 'line-width': LINE_CASING_WIDTH },
+      paint: {
+        'line-color': CASING_COLOR,
+        'line-width': LINE_CASING_WIDTH,
+        'line-dasharray': casingDash(MANDO_DASH, CASING_RATIO),
+      },
     },
     {
       id: 'derived-mando-line',
@@ -356,7 +397,11 @@ export function derivedLayers(): LayerSpecification[] {
       source: DERIVED_SOURCE,
       filter: isMandoLine,
       layout: { 'line-join': 'round', 'line-cap': 'butt' },
-      paint: { 'line-color': selectableColor('stroke'), 'line-width': LINE_WIDTH },
+      paint: {
+        'line-color': selectableColor('stroke'),
+        'line-width': LINE_WIDTH,
+        'line-dasharray': [...MANDO_DASH],
+      },
     },
     /*
      * A tee pad is solid ground, not an annotation, so it is drawn as one:
@@ -372,6 +417,7 @@ export function derivedLayers(): LayerSpecification[] {
       type: 'line',
       source: DERIVED_SOURCE,
       filter: isFootprint,
+      minzoom: PAD_LEGIBLE_ZOOM,
       layout: { 'line-join': 'round' },
       paint: { 'line-color': CASING_COLOR, 'line-width': 3.5 },
     },
@@ -380,6 +426,7 @@ export function derivedLayers(): LayerSpecification[] {
       type: 'fill',
       source: DERIVED_SOURCE,
       filter: isFootprint,
+      minzoom: PAD_LEGIBLE_ZOOM,
       paint: { 'fill-color': selectableColor('fill'), 'fill-opacity': 1 },
     },
 
@@ -469,7 +516,24 @@ function markerLayers(
     layout: {
       'icon-image': markerIcon(name, isSelected),
       'icon-anchor': options.anchor,
-      ...(options.rotate ? { 'icon-rotate': options.rotate } : {}),
+      ...(options.rotate
+        ? {
+            'icon-rotate': options.rotate,
+            /*
+             * The angle is a compass bearing, so it has to be measured against
+             * the ground rather than the screen.
+             *
+             * Left alone, MapLibre aligns icon rotation to the viewport: a tee
+             * facing 90° is drawn a quarter turn clockwise on screen no matter
+             * which way the map is pointing. Selecting a hole turns the map to
+             * face its shot, and every pad and mandatory on it then pointed
+             * somewhere the ground did not. `map` alignment makes the marker
+             * turn with the terrain, which is what the basket does by having no
+             * rotation to get wrong.
+             */
+            'icon-rotation-alignment': 'map' as const,
+          }
+        : {}),
       // Markers on adjacent pin positions must all stay visible; MapLibre would
       // otherwise drop whichever it decided was less important.
       'icon-allow-overlap': true,

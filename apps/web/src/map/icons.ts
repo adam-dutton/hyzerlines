@@ -24,6 +24,9 @@ import { LARGE_ART } from '../chrome/iconArt';
 /** The box every drawing is authored in. */
 const ART_SIZE = 24;
 
+/** The device pixel ratio the images are registered at. */
+const PIXEL_RATIO = 2;
+
 /**
  * How much bigger than the artwork a marker is drawn.
  *
@@ -33,6 +36,16 @@ const ART_SIZE = 24;
  * device pixels had left the chains translucent at the edges.
  */
 const SCALE = 3;
+
+/**
+ * How big a marker lands on screen, in CSS pixels.
+ *
+ * Exported because the map has to compare it against real ground: a tee pad is
+ * drawn at its true size only once the true size is bigger than this, and the
+ * zoom that happens at is arithmetic rather than a number somebody picked. See
+ * `PAD_LEGIBLE_ZOOM`.
+ */
+export const MARKER_SIZE_PX = (ART_SIZE * SCALE) / PIXEL_RATIO;
 
 interface Marker {
   art: readonly string[];
@@ -50,6 +63,20 @@ interface Marker {
    * basket off the ground it is standing on.
    */
   inkBottom?: number;
+  /**
+   * Fill the drawing's outer contour with the casing colour first.
+   *
+   * For a marker something is drawn *underneath*. The mandatory's line runs
+   * from the object outward, and the mandatory's glyph is an outline with the
+   * map showing through it — so the line ran visibly through the middle of the
+   * badge that is supposed to be marking its start. A backing makes the glyph
+   * opaque and the line emerges from its edge, at every zoom, without either
+   * having to know how big the other is on screen.
+   *
+   * `nonzero` rather than `evenodd`, deliberately: it fills the silhouette
+   * including the hole in the middle, which is the whole point.
+   */
+  backing?: true;
   /**
    * How wide the casing is stroked, in art units.
    *
@@ -76,10 +103,11 @@ interface Marker {
  */
 const MARKERS = {
   target: { art: LARGE_ART.basketFill, kind: 'target', inkBottom: 22, casingWidth: 2 },
-  tee: { art: LARGE_ART.tee, kind: 'tee' },
+  // A solid rectangle, like the basket, so it takes the basket's casing.
+  tee: { art: LARGE_ART.teePad, kind: 'tee', inkBottom: 18, casingWidth: 2 },
   dropzone: { art: LARGE_ART.dropzone, kind: 'dropzone' },
-  mandoLeft: { art: LARGE_ART.mandoLeft, kind: 'mando' },
-  mandoRight: { art: LARGE_ART.mandoRight, kind: 'mando' },
+  mandoLeft: { art: LARGE_ART.mandoLeft, kind: 'mando', backing: true },
+  mandoRight: { art: LARGE_ART.mandoRight, kind: 'mando', backing: true },
 } as const satisfies Record<string, Marker>;
 
 export type MarkerName = keyof typeof MARKERS;
@@ -114,6 +142,11 @@ function draw(ctx: CanvasRenderingContext2D, marker: Marker, color: string, casi
   ctx.scale(SCALE, SCALE);
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+
+  if (marker.backing) {
+    ctx.fillStyle = casing;
+    for (const path of paths) ctx.fill(path);
+  }
 
   ctx.strokeStyle = casing;
   ctx.lineWidth = marker.casingWidth ?? 1;
