@@ -90,5 +90,18 @@ export const HOLES_GRID_MAX_HEIGHT =
  */
 export const TOOL_BAR_BOTTOM = 76;
 
+/** A tool slot: the palette's 38px target. See the note on `ToolBar`. */
+export const TOOL_SLOT = 38;
+
+/**
+ * The tool bar's own height — a slot, plus 6px of air above and below it.
+ *
+ * Here because framing needs it. `TOOL_BAR_BOTTOM` is where the bar's *bottom*
+ * edge sits, so anything subtracting only that from the safe area leaves the bar
+ * itself lying over the map, and a hole fitted to the full box put its tee
+ * underneath the palette.
+ */
+export const TOOL_BAR_HEIGHT = TOOL_SLOT + 12;
+
 /** The line the attribution and the zoom cluster share, beneath the tool bar. */
 export const READOUT_BOTTOM = 20;

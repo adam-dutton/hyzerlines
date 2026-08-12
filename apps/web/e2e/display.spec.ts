@@ -104,12 +104,14 @@ test.describe('drawing aids', () => {
       .first()
       .click();
     await expect(switchControl(page, 'Show fairway')).toBeChecked();
-    await expectDrawn(page, 'edit-midpoint').toBeGreaterThan(0);
+    // `edit-vertex`, not `edit-midpoint`: a fairway has no midpoint handles —
+    // the middle one landed on the hole's number. See `vertexHandles`.
+    await expectDrawn(page, 'edit-vertex').toBeGreaterThan(0);
 
     await setSwitch(page, 'Show fairway', false);
     await expectDrawn(page, 'derived-corridor').toBe(0);
     await expectDrawn(page, 'derived-centreline').toBe(0);
-    await expectDrawn(page, 'edit-midpoint').toBe(0);
+    await expectDrawn(page, 'edit-vertex').toBe(0);
 
     // The hole is still a hole: its number stays on the map, at the midpoint of
     // a shot the map is no longer drawing.

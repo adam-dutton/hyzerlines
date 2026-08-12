@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   anchorOf,
   assignToHole,
+  bearing,
   checkCourse,
   chosenPair,
   focusOf,
   createFeature,
+  fairwayLine,
   createHole,
   findPair,
   geometryMatchesKind,
@@ -364,12 +366,42 @@ export function CourseEditor({
    * disorienting in a way that clicking a list row is not — you can already
    * see what you clicked.
    */
+  /**
+   * Which way the hole's shot runs, as a compass bearing.
+   *
+   * Down the first leg of the fairway rather than tee-to-basket, because that is
+   * the direction the tee pad faces and the direction the player is looking. On
+   * a dogleg the two disagree, and turning the map to the basket would point it
+   * at something nobody standing on the pad can see.
+   *
+   * Null when the hole has no measurable shot, which leaves the map's bearing
+   * alone rather than snapping it to north.
+   */
+  const shotBearing = useCallback(
+    (holeId: string): number | null => {
+      const hole = course.holes.find((h) => h.id === holeId);
+      if (!hole) return null;
+      const chosen = chosenPair(course, hole, pairChoices);
+      if (!chosen) return null;
+      const line = fairwayLine(course, chosen.teeId, chosen.targetId);
+      const [from, to] = line ?? [];
+      return from && to ? bearing(from, to) : null;
+    },
+    [course, pairChoices],
+  );
+
   const selectHoleFromList = useCallback(
     (id: string | null) => {
       selectHole(id);
-      if (id && map) frameFeatures(map, holeFeatures(id), { duration: 400 });
+      if (!id || !map) return;
+
+      const turn = shotBearing(id);
+      frameFeatures(map, holeFeatures(id), {
+        duration: 400,
+        ...(turn === null ? {} : { bearing: turn }),
+      });
     },
-    [holeFeatures, map, selectHole],
+    [holeFeatures, map, selectHole, shotBearing],
   );
 
   /**
@@ -754,12 +786,7 @@ export function CourseEditor({
         <>
           {shell({ focus, onFocusChange: changeFocus })}
 
-          <ToolBar
-            tool={nav.effective}
-            focus={focus}
-            invertZoom={nav.invertZoom}
-            onToolChange={setTool}
-          />
+          <ToolBar tool={nav.effective} focus={focus} onToolChange={setTool} />
 
           <LeftPanel
             course={course}

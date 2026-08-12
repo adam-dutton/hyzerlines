@@ -129,7 +129,10 @@ function EditorHeader({
 
       <div className="flex items-center gap-2">
         {icon && (
-          <span aria-hidden="true" className="shrink-0 text-text-secondary">
+          <span
+            aria-hidden="true"
+            className="grid w-4 shrink-0 place-items-center text-text-secondary"
+          >
             {icon}
           </span>
         )}

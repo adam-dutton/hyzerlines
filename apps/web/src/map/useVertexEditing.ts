@@ -80,6 +80,24 @@ export function vertexHandles(shape: EditableShape | null): GeoJSON.FeatureColle
     });
   });
 
+  /*
+   * Fairways get no midpoint handles.
+   *
+   * The derived line is split into thirds precisely so the two solid handles
+   * land a third in from each end and miss the hole's number, which
+   * `holeLabelPosition` puts at the middle of the shot. The midpoints then
+   * undid that: three of them, and the middle one sits exactly on the label —
+   * so every hole read as a numeral with a hollow ring punched through it.
+   *
+   * Nothing is lost. Those two vertex handles are the routing affordance the
+   * thirds were introduced to provide, and Alt-click still removes a corner
+   * once one exists.
+   *
+   * Polygons and paths keep theirs: nothing is drawn at their midpoints, and
+   * they have no interior handles of their own to fall back on.
+   */
+  if (shape.fixedEnds) return { type: 'FeatureCollection', features };
+
   // A polygon's ring is stored open, so its closing edge needs a handle too.
   const edges = closed ? coordinates.length : coordinates.length - 1;
   for (let i = 0; i < edges; i++) {

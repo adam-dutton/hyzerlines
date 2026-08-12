@@ -1,6 +1,8 @@
 import type maplibregl from 'maplibre-gl';
 import { boundsOf, type Feature } from '@hyzerlines/core';
 
+import { COLUMN, GAP, PANEL_TOP, TOOL_BAR_BOTTOM, TOOL_BAR_HEIGHT } from '../chrome/layout';
+
 /**
  * Putting the work on screen.
  *
@@ -11,18 +13,27 @@ import { boundsOf, type Feature } from '@hyzerlines/core';
  */
 
 /**
- * Room left for the docked chrome.
+ * The safe area: the map you can actually see, with the chrome subtracted.
  *
- * Panels float over the map rather than displacing it, which means fitting to
- * the raw viewport would tuck the outermost tees underneath them. These are the
- * panel widths plus a margin, clamped below so the padding can never exceed the
- * space available on a narrow window — MapLibre throws when it does.
+ * Panels float over the map rather than displacing it, so fitting to the raw
+ * viewport tucks the outermost tees underneath them. Framing means framing into
+ * *this*, not into the canvas.
  *
- * Top is the larger of the two now that the tool rail is up there with the
- * recenter button beneath it; the bottom carries only a credit line and the
- * camera controls in one corner.
+ * Derived from the shell's own metrics rather than restated. They were literals
+ * here — 288px columns and a 128px top — describing a layout two rewrites ago:
+ * the columns are 268 now and the chrome above and below is a top bar and a
+ * tool bar, so every fit was being padded for furniture that had moved. Read
+ * from `layout.ts` and the numbers cannot drift again.
  */
-const CHROME_PADDING = { top: 128, bottom: 64, left: 288, right: 288 };
+const CHROME_PADDING = {
+  top: PANEL_TOP,
+  // The whole tool bar — the gap under it, the bar itself, and a gap above.
+  // Subtracting only `TOOL_BAR_BOTTOM` clears the attribution line and leaves
+  // the palette sitting on the map, which is where a fitted tee ended up.
+  bottom: TOOL_BAR_BOTTOM + TOOL_BAR_HEIGHT + GAP,
+  left: COLUMN,
+  right: COLUMN,
+};
 
 /** A course this small is a single tee, not an extent worth fitting to. */
 const DEGENERATE_SPAN_DEGREES = 1e-6;
@@ -90,6 +101,19 @@ export function courseIsAdrift(map: maplibregl.Map, features: readonly Feature[]
 export interface FrameOptions {
   /** 0 jumps. Use a duration for a deliberate gesture, not for a document load. */
   duration?: number;
+  /**
+   * Turn the map so this compass bearing points up the screen.
+   *
+   * For a hole, the bearing from the tee to the basket — so the shot runs away
+   * from the reader the way it runs away from the player standing on the pad.
+   * A designer judging whether a gap is throwable is imagining the view from
+   * the tee, and a north-up map asks them to do that rotation in their head
+   * for every hole on the course.
+   *
+   * Omitted leaves the current bearing alone. Framing the whole course must not
+   * spin the map — there is no single direction a course faces.
+   */
+  bearing?: number;
 }
 
 /**
@@ -99,12 +123,13 @@ export interface FrameOptions {
 export function frameFeatures(
   map: maplibregl.Map,
   features: readonly Feature[],
-  { duration = 0 }: FrameOptions = {},
+  { duration = 0, bearing }: FrameOptions = {},
 ): boolean {
   const bounds = boundsOf(features);
   if (!bounds) return false;
 
   const [west, south, east, north] = bounds;
+  const turn = bearing === undefined ? {} : { bearing };
 
   /*
    * A single point has no extent, and fitBounds on a zero-size box runs to
@@ -113,23 +138,41 @@ export function frameFeatures(
    */
   if (east - west < DEGENERATE_SPAN_DEGREES && north - south < DEGENERATE_SPAN_DEGREES) {
     const center: [number, number] = [(west + east) / 2, (south + north) / 2];
-    if (duration > 0) map.easeTo({ center, zoom: SINGLE_FEATURE_ZOOM, duration });
-    else map.jumpTo({ center, zoom: SINGLE_FEATURE_ZOOM });
+    const camera = { center, zoom: SINGLE_FEATURE_ZOOM, ...turn };
+    if (duration > 0) map.easeTo({ ...camera, duration });
+    else map.jumpTo(camera);
     return true;
   }
 
-  map.fitBounds(
+  /*
+   * The fit is computed rather than applied, so the bearing is part of the same
+   * calculation instead of a second move after it.
+   *
+   * `fitBounds` with a bearing fits the box *as rotated*, which is what a hole
+   * needs: a shot running east is a wide flat box north-up and a tall narrow one
+   * once the map has turned to face it, and fitting the unrotated box would
+   * leave two thirds of the screen empty. Turning after the fit would also frame
+   * it twice and animate through a wrong camera on the way.
+   */
+  const camera = map.cameraForBounds(
     [
       [west, south],
       [east, north],
     ],
     {
       padding: padding(map),
-      // Not maxZoom 21: filling the screen with two tees a metre apart is
-      // technically a fit and practically useless.
-      maxZoom: SINGLE_FEATURE_ZOOM,
-      duration,
+      ...turn,
     },
   );
+
+  if (!camera) return false;
+
+  map.easeTo({
+    ...camera,
+    // Not maxZoom 21: filling the screen with two tees a metre apart is
+    // technically a fit and practically useless.
+    zoom: Math.min(camera.zoom ?? SINGLE_FEATURE_ZOOM, SINGLE_FEATURE_ZOOM),
+    duration,
+  });
   return true;
 }

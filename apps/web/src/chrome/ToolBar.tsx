@@ -86,20 +86,6 @@ const PALETTE: readonly FeatureKind[] = [
 ];
 
 /** A magnifier. The sign inside follows what a click would actually do. */
-function ZoomIcon({ out }: { out: boolean }) {
-  return (
-    <svg width="24" height="24" viewBox="0 0 15 15" aria-hidden="true">
-      <circle cx="6.6" cy="6.6" r="4.1" fill="none" stroke="currentColor" strokeWidth="1.3" />
-      <path d="M9.7 9.7 13 13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-      <path
-        d={out ? 'M4.6 6.6h4' : 'M4.6 6.6h4M6.6 4.6v4'}
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
 
 /**
  * A 38px tool target.
@@ -210,27 +196,22 @@ function FlyoutHandle({
   );
 }
 
-const Divider = () => (
-  <span className="mx-0.5 h-6 w-px shrink-0 bg-border-subtle" aria-hidden="true" />
-);
-
 export function ToolBar({
   tool,
   focus,
-  invertZoom,
   onToolChange,
 }: {
   /**
    * The *effective* tool, not the chosen one.
    *
-   * While Z is held the map behaves differently from what was clicked, and the
-   * palette has to say so — a highlighted Select button over a map that is about
-   * to zoom is the palette lying about the mode.
+   * While Z is held the map zooms rather than doing what was clicked, and the
+   * palette has to say so — a lit Select button over a map about to zoom is the
+   * palette lying about the mode. With no zoom button to light instead, nothing
+   * is lit for the duration of the hold, which is the honest reading: no drawing
+   * tool is armed.
    */
   tool: Tool;
   focus: Focus;
-  /** Alt is down, so the zoom tool would zoom out. Mirrors the cursor. */
-  invertZoom: boolean;
   onToolChange: (tool: Tool) => void;
 }) {
   const kinds = FOCUS_DEFINITIONS[focus].kinds;
@@ -262,7 +243,7 @@ export function ToolBar({
       <Panel
         elevation="solid"
         padding="none"
-        className="flex max-w-full items-center gap-2 px-2 py-1.5"
+        className="flex max-w-full items-center gap-3 px-2.5 py-1.5"
         role="toolbar"
         aria-label="Tools"
       >
@@ -274,21 +255,6 @@ export function ToolBar({
         >
           <SelectIcon size={24} />
         </ToolButton>
-
-        {/* No `command`: Z is a hold, and rendering it as a plain key in the
-            tooltip would say "press this", which is not what it does. */}
-        <ToolButton
-          label="Zoom — hold Z, drag a region, Alt to zoom out"
-          active={tool === 'zoom'}
-          onClick={() => onToolChange('zoom')}
-        >
-          <ZoomIcon out={tool === 'zoom' && invertZoom} />
-        </ToolButton>
-
-        {/* The divider goes with the tools: a focus that draws nothing — routing
-            and simulation, so far — should not leave a rule floating against the
-            gap where its palette would have been. */}
-        {slots.length > 0 && <Divider />}
 
         {slots.map((kind) => {
           const flyout = FLYOUTS[kind];

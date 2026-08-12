@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
+import { bearing } from '@hyzerlines/core';
 
-import { openEditor, place, rail } from './fixtures';
+import { course, openEditor, place, rail } from './fixtures';
 
 /**
  * Where the chrome is, and what is reachable from it.
@@ -30,6 +31,20 @@ const box = async (page: Page, name: string) => {
   const rect = await locator.boundingBox();
   if (!rect) throw new Error(`${name} has no box`);
   return rect;
+};
+
+/**
+ * Where a placed tee or basket actually landed, in longitude and latitude.
+ *
+ * Read back from the document rather than derived from the click coordinates:
+ * the framing tests care about the ground, and the camera they are testing has
+ * moved by the time they ask.
+ */
+const end = async (page: Page, kind: 'tee' | 'target'): Promise<[number, number]> => {
+  const doc = await course(page);
+  const feature = doc.features.find((candidate) => candidate.kind === kind);
+  if (!feature) throw new Error(`no ${kind} in the document`);
+  return feature.geometry.coordinates as [number, number];
 };
 
 /** The top bar, as a scope. Undo, redo, Import and Export all live in it. */
@@ -310,6 +325,82 @@ test.describe('finding the course again', () => {
     await page.waitForTimeout(700);
 
     expect(await center()).not.toEqual(before);
+  });
+
+  /*
+   * The map turns to face the shot.
+   *
+   * A designer asking whether a gap is throwable is picturing the view from the
+   * pad, and a north-up map asks them to do that rotation in their head on every
+   * hole. Turning the map to the tee-to-basket bearing does it for them: the
+   * shot runs away up the screen the way it runs away from the player.
+   *
+   * Framing the whole course must not do this — there is no one direction a
+   * course faces — which is why the bearing is per-hole and optional.
+   */
+  test('selecting a hole turns the map to face the shot', async ({ page }) => {
+    await openEditor(page, { zoom: 16 });
+
+    // Up and to the right on screen: a shot running north-east on the ground, so
+    // a north-up map has a real turn to make rather than a rounding error.
+    await place(page, 'Tee pad', 520, 560);
+    await place(page, 'Target', 800, 300);
+    await page.getByRole('button', { name: 'Add hole' }).click();
+    await page.keyboard.press('Escape');
+
+    const heading = () => page.evaluate(() => window.hyzerlinesMap!.getBearing());
+    expect(await heading()).toBe(0);
+
+    const shot = bearing(await end(page, 'tee'), await end(page, 'target'));
+
+    await page.getByRole('button', { name: 'Hole 1', exact: true }).click();
+    await page.waitForTimeout(700);
+
+    // `getBearing` reports −180..180 and a course bearing is 0..360.
+    expect(Math.abs(((((await heading()) % 360) + 360) % 360) - shot)).toBeLessThan(1);
+  });
+
+  /**
+   * And it frames the hole into the map you can actually see.
+   *
+   * The panels float over the canvas rather than displacing it, so fitting to
+   * the raw viewport tucks the ends of the shot underneath them — which is
+   * exactly what happened while the padding still described a layout two
+   * rewrites ago. Measured against the chrome's real boxes rather than against
+   * the constants, because the constants being wrong is the failure.
+   */
+  test('a selected hole is framed clear of the chrome', async ({ page }) => {
+    await openEditor(page, { zoom: 16 });
+
+    await place(page, 'Tee pad', 520, 560);
+    await place(page, 'Target', 800, 300);
+    await page.getByRole('button', { name: 'Add hole' }).click();
+    await page.keyboard.press('Escape');
+
+    const ends = [await end(page, 'tee'), await end(page, 'target')];
+
+    await page.getByRole('button', { name: 'Hole 1', exact: true }).click();
+    await page.waitForTimeout(700);
+
+    const left = await box(page, 'Play');
+    const properties = await box(page, 'Properties');
+    const top = await box(page, 'Course');
+    const tools = await box(page, 'Tools');
+
+    const screen = await page.evaluate((points: [number, number][]) => {
+      const map = window.hyzerlinesMap!;
+      return points.map((point) => {
+        const at = map.project(point);
+        return { x: at.x, y: at.y };
+      });
+    }, ends);
+
+    for (const point of screen) {
+      expect(point.x).toBeGreaterThan(left.x + left.width);
+      expect(point.x).toBeLessThan(properties.x);
+      expect(point.y).toBeGreaterThan(top.y + top.height);
+      expect(point.y).toBeLessThan(tools.y);
+    }
   });
 });
 

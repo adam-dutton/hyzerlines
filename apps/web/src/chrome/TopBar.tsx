@@ -21,6 +21,7 @@ import { formatDistance, type UnitSystem } from '../units';
 import { useProfiles } from '../survey/useProfiles';
 import { useAutoLocation } from './useAutoLocation';
 import { CourseMenu } from './CourseMenu';
+import { LARGE_ART } from './iconArt';
 import { GAP, GUTTER, TOP_BAR_HEIGHT } from './layout';
 import type { SaveStatus } from '../document/CourseProvider';
 
@@ -79,32 +80,25 @@ function Mark() {
   );
 }
 
-function UndoIcon() {
+/**
+ * Undo and redo: an arrow curling back on itself.
+ *
+ * Two drawings rather than one flipped, because they are not mirrors — the hook
+ * is on opposite ends but the tail curls the same way round in both, which is
+ * what keeps them reading as a pair of arrows rather than as one arrow and its
+ * reflection.
+ *
+ * The art is in `iconArt` with everything else. The old pair was a 15-unit
+ * stroked path, which is the one thing this icon set does not do: everything
+ * else is a filled outline, so a stroke among them reads as a different family
+ * at any size.
+ */
+function ArrowIcon({ name }: { name: 'undo' | 'redo' }) {
   return (
-    <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
-      <path
-        d="M3 7.5h6.2a3 3 0 0 1 0 6H7M3 7.5 6 4.5M3 7.5l3 3"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function RedoIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 15 15" aria-hidden="true">
-      <path
-        d="M12 7.5H5.8a3 3 0 0 0 0 6H8M12 7.5 9 4.5M12 7.5l-3 3"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      {LARGE_ART[name].map((d) => (
+        <path key={d} d={d} />
+      ))}
     </svg>
   );
 }
@@ -310,7 +304,7 @@ export function TopBar({
             disabled={!canUndo}
             onClick={onUndo}
           >
-            <UndoIcon />
+            <ArrowIcon name="undo" />
           </IconButton>
           <IconButton
             label="Redo"
@@ -319,7 +313,7 @@ export function TopBar({
             disabled={!canRedo}
             onClick={onRedo}
           >
-            <RedoIcon />
+            <ArrowIcon name="redo" />
           </IconButton>
 
           <TextAction label="Import" onClick={onImport} />
