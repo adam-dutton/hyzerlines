@@ -304,6 +304,20 @@ const mandoSide = (value: unknown): MandoSide | null =>
 export function mandoLineOf(
   feature: Feature,
   fallbackBearingDeg: number | null = null,
+  /**
+   * How far from the object the line starts, in metres.
+   *
+   * The object is marked with a glyph about thirty pixels across, and a line
+   * drawn from its centre runs out through the middle of the badge that is
+   * supposed to be marking where it starts. Backing the glyph made it opaque
+   * and hid the overlap; it did not stop the line being drawn there.
+   *
+   * Metres rather than pixels because the geometry is on the ground, which
+   * means the gap is right at the zoom a hole is designed at and closes as you
+   * zoom out. That is the honest trade: a gap that held its pixel size would
+   * have to be recomputed on every camera move.
+   */
+  gapM = 0,
 ): MandoLine | null {
   if (feature.kind !== 'mando' || feature.geometry.type !== 'point') return null;
 
@@ -323,8 +337,15 @@ export function mandoLineOf(
   // Pass left, and the wall is on the right. The sign is the whole ruling.
   const away = side === 'left' ? 1 : -1;
 
+  const along = (meters: number): Position =>
+    fromLocal(plane, [right[0] * away * meters, right[1] * away * meters]);
+
+  // A gap wider than the line is a line that does not exist; clamped so an
+  // over-large gap shortens the wall rather than turning it inside out.
+  const start = Math.min(Math.max(gapM, 0), reachM * 0.9);
+
   return {
-    line: [at, fromLocal(plane, [right[0] * away * reachM, right[1] * away * reachM])],
+    line: [along(start), along(reachM)],
     side,
     bearingDeg,
     reachM,

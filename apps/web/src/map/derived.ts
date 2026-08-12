@@ -111,6 +111,8 @@ export function derivedGeometry(
   choices?: FairwayChoices,
   /** How far off the shot the hole numbers sit. See `holeNumberStyleSchema`. */
   offset = 0,
+  /** Where a mandatory's line starts, out from the object. See `mandoLineOf`. */
+  lineGap = 0,
 ): DerivedGeometry {
   const featureById = featureIndex(course);
   const features: GeoJSON.Feature[] = [];
@@ -233,7 +235,8 @@ export function derivedGeometry(
   for (const feature of course.features) {
     if (feature.kind !== 'mando') continue;
 
-    const mando = mandoLineOf(feature, mandoBearingFor(course, feature.id));
+    if (feature.geometry.type !== 'point') continue;
+    const mando = mandoLineOf(feature, mandoBearingFor(course, feature.id), lineGap);
     if (!mando) continue;
 
     withMarker.add(feature.id);
@@ -256,7 +259,25 @@ export function derivedGeometry(
         side: mando.side,
         bearing: mando.bearingDeg,
       },
-      geometry: { type: 'Point', coordinates: mando.line[0] },
+      geometry: { type: 'Point', coordinates: feature.geometry.coordinates },
+    });
+
+    /*
+     * The arrowhead, at the far end and pointing out along the wall.
+     *
+     * The line says where the plane is; this says which way it faces. On a hole
+     * with two mandatories a wall with no direction is one you have to work out
+     * from a glyph forty pixels away.
+     */
+    features.push({
+      type: 'Feature',
+      properties: {
+        id: feature.id,
+        kind: 'mando',
+        derived: 'mandoArrow',
+        bearing: bearing(mando.line[0], mando.line[1]),
+      },
+      geometry: { type: 'Point', coordinates: mando.line[1] },
     });
   }
 

@@ -1,6 +1,7 @@
 import { feature as featureColors } from '@hyzerlines/design';
 import type { FeatureKind } from '@hyzerlines/core';
 
+import { LARGE_ART } from '../chrome/iconArt';
 import {
   DEFAULT_FEATURE_STYLES,
   builtInGlyphsFor,
@@ -80,7 +81,7 @@ interface Marker {
    * setting of its own, which is what keeps "pass left" and "pass right"
    * looking like a pair.
    */
-  variant?: 'opposite';
+  variant?: 'opposite' | 'arrow';
   /**
    * Fill the drawing's outer contour with the casing colour first.
    *
@@ -126,6 +127,13 @@ const MARKERS = {
   dropzone: { kind: 'dropzone' },
   mandoLeft: { kind: 'mando', backing: true },
   mandoRight: { kind: 'mando', variant: 'opposite', backing: true },
+  /*
+   * The arrowhead is not a glyph anybody picks, so it is not in the built-in
+   * lists and takes no `glyph` from the style. It takes the mandatory's colours
+   * and its own size, because it is part of the line rather than a second
+   * marker for the object.
+   */
+  mandoArrow: { kind: 'mando', variant: 'arrow', solid: true },
 } as const satisfies Record<string, Marker>;
 
 export type MarkerName = keyof typeof MARKERS;
@@ -222,6 +230,9 @@ function artFor(name: MarkerName, style: ResolvedStyle): GlyphArt | null {
   const chosen = style.features[marker.kind].glyph;
   const fallback = () => style.glyphPaths(DEFAULT_GLYPH_OF[marker.kind] ?? '');
 
+  if (marker.variant === 'arrow')
+    return { paths: LARGE_ART.arrowhead, viewBox: [0, 0, 24, 24] };
+
   if (marker.variant === 'opposite') {
     /*
      * The built-in list holds *pairs*, left then right, and the pair is what a
@@ -277,6 +288,7 @@ export function addMarkerIcons(
     if (!art) continue;
 
     const drawn = style.features[marker.kind];
+    const size = marker.variant === 'arrow' ? drawn.arrowSize : drawn.glyphSize;
     const variants: [string, string, string][] = [
       [markerIcon(name), drawn.stroke, drawn.casing],
       /*
@@ -294,7 +306,7 @@ export function addMarkerIcons(
     ];
 
     for (const [id, color, casing] of variants) {
-      const image = render(marker, art, drawn.glyphSize, color, casing);
+      const image = render(marker, art, size, color, casing);
       if (!image) continue;
       if (map.hasImage(id)) map.removeImage(id);
       map.addImage(id, image, { pixelRatio: PIXEL_RATIO });

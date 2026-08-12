@@ -472,6 +472,17 @@ export function derivedLayers(style: ResolvedStyle): LayerSpecification[] {
      * so the point lands on the player's left or right rather than on the
      * screen's.
      */
+    /*
+     * The arrowhead, above the line and below the glyph. Turned to the wall
+     * rather than to the direction of play, so it points the way the plane
+     * runs — and map-aligned, so it keeps doing that when the camera spins.
+     */
+    ...markerLayers('derived-marker-mando-arrow', 'mandoArrow', {
+      source: DERIVED_SOURCE,
+      filter: ['all', ['==', ['get', 'derived'], 'mandoArrow'], mandoArrowShown(mando)],
+      anchor: 'center',
+      rotate: ['get', 'bearing'],
+    }),
     ...markerLayers('derived-marker-mando-left', 'mandoLeft', {
       source: DERIVED_SOURCE,
       filter: ['all', markerOfKind('mando'), ['==', ['get', 'side'], 'left']],
@@ -557,6 +568,16 @@ const pointOfKind = (kind: string): ExpressionSpecification => [
 ];
 
 /** A derived glyph marker, for one kind. */
+/**
+ * The arrowhead is filtered out rather than faded.
+ *
+ * `icon-opacity` would leave it in `queryRenderedFeatures`, and an invisible
+ * arrow answering a click on the ground beside a mandatory is the kind of
+ * target nobody can find and nobody meant.
+ */
+const mandoArrowShown = (mando: { arrow: boolean }): ExpressionSpecification =>
+  mando.arrow ? ['literal', true] : ['literal', false];
+
 const markerOfKind = (kind: string): ExpressionSpecification => [
   'all',
   ['==', ['get', 'derived'], 'marker'],

@@ -38,6 +38,7 @@ import { RightPanel } from './chrome/RightPanel';
 import type { SelectedPair } from './chrome/HoleProperties';
 import { LeftPanel } from './chrome/LeftPanel';
 import { StyleSubjectPanel, type StyleSubject } from './chrome/StyleProperties';
+import { DEFAULT_FEATURE_STYLES } from './map/mapStyle';
 import { useShortcuts } from './keyboard/useShortcuts';
 import type { UnitSystem } from './units';
 import { useCourse } from './document/CourseProvider';
@@ -296,8 +297,18 @@ export function CourseEditor({
       // pin B would re-measure the hole while the fairway stayed on pin A — and
       // passing only the selected hole's choice snapped every other hole back
       // the moment the selection moved.
-      derivedGeometry(visible, pairChoices, course.style.holeNumber.offset ?? 0),
-    [visible, pairChoices, course.style.holeNumber.offset],
+      derivedGeometry(
+        visible,
+        pairChoices,
+        course.style.holeNumber.offset ?? 0,
+        course.style.features.mando?.lineGap ?? DEFAULT_FEATURE_STYLES.mando.lineGap,
+      ),
+    [
+      visible,
+      pairChoices,
+      course.style.holeNumber.offset,
+      course.style.features.mando?.lineGap,
+    ],
   );
 
   /**

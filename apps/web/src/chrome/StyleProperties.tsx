@@ -367,6 +367,40 @@ export function StyleProperties({
         </div>
       )}
 
+      {kind === 'mando' && (
+        <div className={sectionClass}>
+          <SectionTitle>The line</SectionTitle>
+          <NumberRow
+            label="Starts at"
+            value={current.lineGap ?? base.lineGap}
+            inherited={current.lineGap === undefined}
+            suffix="m"
+            step={0.5}
+            onChange={(lineGap) => set({ lineGap })}
+            onReset={() => clear('lineGap')}
+          />
+          <ToggleRow
+            label="Arrowhead"
+            checked={current.arrow ?? base.arrow}
+            onChange={(arrow) => set({ arrow })}
+          />
+          <NumberRow
+            label="Arrow size"
+            value={current.arrowSize ?? base.arrowSize}
+            inherited={current.arrowSize === undefined}
+            suffix="px"
+            step={1}
+            onChange={(arrowSize) => set({ arrowSize })}
+            onReset={() => clear('arrowSize')}
+          />
+          <p className="mt-2 text-2xs leading-4 text-text-muted">
+            Where the wall starts, measured out from the object, so it clears the marker rather
+            than running through it. Metres rather than pixels because the line is on the ground
+            — the gap is right at the zoom a hole is designed at and closes as you zoom out.
+          </p>
+        </div>
+      )}
+
       {hasPattern(kind) && (
         <div className={sectionClass}>
           <SectionTitle>Lettering</SectionTitle>

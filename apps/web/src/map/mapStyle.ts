@@ -49,6 +49,9 @@ export interface ResolvedFeatureStyle {
   /** A built-in name or an uploaded glyph's id. Empty for kinds with no point. */
   glyph: string;
   glyphSize: number;
+  arrow: boolean;
+  arrowSize: number;
+  lineGap: number;
   fillOutside: boolean;
   pattern: boolean;
   patternSize: number;
@@ -240,6 +243,18 @@ function defaultFeatureStyle(kind: FeatureKind): ResolvedFeatureStyle {
      * which rule. An unlettered shaded area is the half of that which cannot be
      * read.
      */
+    /*
+     * An arrowhead at the far end, on by default.
+     *
+     * The line says where the plane is; the arrow says which way it faces, and
+     * on a hole with two mandatories a wall with no direction is a wall you
+     * have to work out from the glyph forty pixels away.
+     */
+    arrow: isRule,
+    arrowSize: 14,
+    /* Clear of the glyph, which is about thirty pixels across at the zoom a
+       hole is designed at. */
+    lineGap: isRule ? 4 : 0,
     pattern: hasPattern(kind),
     ...PATTERN_DEFAULTS,
   };
@@ -349,6 +364,9 @@ export function resolveStyle(style: MapStyle): ResolvedStyle {
           casingOn: over.casingOn ?? base.casingOn,
           fill: over.fill ?? base.fill,
           fillOpacity: over.fillOpacity ?? base.fillOpacity,
+          arrow: over.arrow ?? base.arrow,
+          arrowSize: over.arrowSize ?? base.arrowSize,
+          lineGap: over.lineGap ?? base.lineGap,
           fillOutside: over.fillOutside ?? base.fillOutside,
           glyph: over.glyph ?? base.glyph,
           glyphSize: over.glyphSize ?? base.glyphSize,

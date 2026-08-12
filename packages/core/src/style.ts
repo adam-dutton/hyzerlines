@@ -110,6 +110,17 @@ export const featureStyleSchema = z.object({
    */
   pattern: z.boolean().optional(),
   /**
+   * A mandatory's own three, shown only on that kind.
+   *
+   * They live in the same record as everything else for the reason the record
+   * is one shape for fifteen kinds: adding a property is one field here and one
+   * control there, rather than a second schema that drifts.
+   */
+  arrow: z.boolean().optional(),
+  arrowSize: z.number().min(6).max(48).optional(),
+  /** Where the mandatory line starts, measured out from the object, in metres. */
+  lineGap: z.number().min(0).max(50).optional(),
+  /**
    * Fill the ground *outside* the shape rather than inside it.
    *
    * What a property boundary means. A parcel line says "the site is in here",
