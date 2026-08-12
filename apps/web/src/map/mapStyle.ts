@@ -49,6 +49,7 @@ export interface ResolvedFeatureStyle {
   /** A built-in name or an uploaded glyph's id. Empty for kinds with no point. */
   glyph: string;
   glyphSize: number;
+  fillOutside: boolean;
   pattern: boolean;
   patternSize: number;
   patternSpacing: number;
@@ -215,7 +216,6 @@ function defaultFeatureStyle(kind: FeatureKind): ResolvedFeatureStyle {
     casing: casing.color,
     casingOpacity: casing.opacity,
     casingOn: true,
-    fill: fill.color,
     /*
      * The token's own alpha, multiplied by how solid this kind's areas are.
      *
@@ -224,7 +224,14 @@ function defaultFeatureStyle(kind: FeatureKind): ResolvedFeatureStyle {
      * outline gone the fill is the only thing saying where the corridor is, and
      * the room a shot has is one of the two things this map is for.
      */
-    fillOpacity: fill.opacity * (geometry === 'polygon' ? 1 : 0.9),
+    /*
+     * A boundary's fill is the *outside*, and it is a wash rather than a tint:
+     * light enough to read imagery through, dark enough to say which side of
+     * the line the site is on.
+     */
+    fill: isNote ? '#000000' : fill.color,
+    fillOpacity: isNote ? 0.28 : fill.opacity * (geometry === 'polygon' ? 1 : 0.9),
+    fillOutside: isNote,
     glyph: DEFAULT_GLYPHS[kind] ?? '',
     glyphSize: DEFAULT_GLYPH_SIZE,
     /*
@@ -285,6 +292,8 @@ export const DEFAULT_CIRCLE_STYLES: Record<TargetCircleId, ResolvedCircleStyle> 
 /** The hole number's disc and its numeral. */
 export interface ResolvedHoleNumberStyle {
   text: string;
+  offset: number;
+  weight: 'regular' | 'bold';
   /** Null when the numeral is drawn bare, with no pill behind it. */
   disc: string | null;
   size: number;
@@ -292,6 +301,8 @@ export interface ResolvedHoleNumberStyle {
 
 export const DEFAULT_HOLE_NUMBER: ResolvedHoleNumberStyle = {
   text: splitAlpha(featureColors.tee.stroke).color,
+  offset: 0,
+  weight: 'bold',
   disc: splitAlpha(featureColors.tee.casing).color,
   size: 13,
 };
@@ -338,6 +349,7 @@ export function resolveStyle(style: MapStyle): ResolvedStyle {
           casingOn: over.casingOn ?? base.casingOn,
           fill: over.fill ?? base.fill,
           fillOpacity: over.fillOpacity ?? base.fillOpacity,
+          fillOutside: over.fillOutside ?? base.fillOutside,
           glyph: over.glyph ?? base.glyph,
           glyphSize: over.glyphSize ?? base.glyphSize,
           pattern: over.pattern ?? base.pattern,
@@ -373,6 +385,8 @@ export function resolveStyle(style: MapStyle): ResolvedStyle {
       disc:
         style.holeNumber.disc === undefined ? DEFAULT_HOLE_NUMBER.disc : style.holeNumber.disc,
       size: style.holeNumber.size ?? DEFAULT_HOLE_NUMBER.size,
+      offset: style.holeNumber.offset ?? DEFAULT_HOLE_NUMBER.offset,
+      weight: style.holeNumber.weight ?? DEFAULT_HOLE_NUMBER.weight,
     },
     /*
      * Built-in first, then the uploads.

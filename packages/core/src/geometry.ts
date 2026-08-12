@@ -219,6 +219,18 @@ export const MANDO_LINE = {
 } as const;
 
 /**
+ * A point a distance and a bearing away from another, on the local plane.
+ *
+ * Metres, so the result holds its relationship to the ground rather than to the
+ * screen. Used to nudge a hole's number off the shot it labels.
+ */
+export function offsetFrom(from: Position, bearingDeg: number, meters: number): Position {
+  const plane = planeAt(from);
+  const { forward } = axes(bearingDeg);
+  return fromLocal(plane, [forward[0] * meters, forward[1] * meters]);
+}
+
+/**
  * Which way play runs where it passes a point: the bearing of the nearest leg.
  *
  * The nearest leg rather than the line's overall direction, because a mandatory

@@ -220,7 +220,24 @@ export function derivedLayers(style: ResolvedStyle): LayerSpecification[] {
   const isMandoLine: ExpressionSpecification = ['==', ['get', 'derived'], 'mandoLine'];
   const isCentreline: ExpressionSpecification = ['==', ['get', 'derived'], 'centreline'];
 
+  const boundary = style.features.boundary;
+
   return [
+    /*
+     * The ground outside a property line, under everything including the
+     * alternatives. It is a ground rather than a mark: the site is what is
+     * being read, and this exists to say where the site stops.
+     */
+    {
+      id: 'derived-outside',
+      type: 'fill',
+      source: DERIVED_SOURCE,
+      filter: ['==', ['get', 'derived'], 'outside'],
+      paint: {
+        'fill-color': boundary.fill,
+        'fill-opacity': boundary.fillOutside ? boundary.fillOpacity : 0,
+      },
+    },
     /*
      * The alternatives, first and therefore underneath everything.
      *
@@ -593,7 +610,9 @@ export function featureLayers(style: ResolvedStyle): LayerSpecification[] {
         filter,
         paint: {
           'fill-color': selectable(drawn.fill, 'fill'),
-          'fill-opacity': drawn.fillOpacity,
+          // Nothing inside when the fill is the outside — `derived-outside`
+          // is drawing it, and both at once would shade the whole world.
+          'fill-opacity': drawn.fillOutside ? 0 : drawn.fillOpacity,
         },
       },
       {
@@ -754,7 +773,7 @@ export function featureLayers(style: ResolvedStyle): LayerSpecification[] {
  */
 export function holeLabelLayers(style: ResolvedStyle): LayerSpecification[] {
   const isLabel: ExpressionSpecification = ['==', ['get', 'derived'], 'holeLabel'];
-  const { text, disc, size } = style.holeNumber;
+  const { text, disc, size, weight } = style.holeNumber;
   // The disc grows with the numeral, so a bigger number does not outgrow the
   // shape that exists to make it readable.
   const radius = size * 0.92;
@@ -787,6 +806,13 @@ export function holeLabelLayers(style: ResolvedStyle): LayerSpecification[] {
       layout: {
         'text-field': ['get', 'number'],
         'text-size': size,
+        /*
+         * The font server's own names. It publishes a regular and a bold of
+         * each family, and `text-font` naming a face it cannot serve renders as
+         * no text at all rather than as a fallback — which is why the weights
+         * on offer are its list rather than a design decision.
+         */
+        'text-font': [weight === 'bold' ? 'Noto Sans Bold' : 'Noto Sans Regular'],
         // Never dropped for collision: a course where 7 and 8 sit close together
         // is exactly when you need to tell them apart.
         'text-allow-overlap': true,

@@ -57,6 +57,16 @@ interface FeatureLayerProps {
   focus: Focus;
   /** How the course is drawn. See `mapStyle`. */
   style: MapStyle;
+  /**
+   * What a click means while the style focus is on.
+   *
+   * A different question from `onSelect`, which is why it is a different
+   * callback. Everywhere else a click asks "which object is this" and the
+   * answer narrows to a hole; in Style it asks "which of these am I looking at
+   * the drawing of", and the answer is a *kind* — restyling out-of-bounds is
+   * one decision for every OB area on the course.
+   */
+  onPickStyle: (kind: FeatureKind | 'holeNumber') => void;
 }
 
 /**
@@ -123,6 +133,7 @@ export function FeatureLayer({
   selectable,
   focus,
   style,
+  onPickStyle,
 }: FeatureLayerProps) {
   const { map } = useMap();
   /*
@@ -391,6 +402,28 @@ export function FeatureLayer({
        * the thing that knows, rather than here.
        */
       const properties = hits[0]?.properties;
+
+      /*
+       * In Style, the click lands on the feature itself and on its kind.
+       *
+       * `selectAs` is deliberately skipped: it exists so that clicking a hole's
+       * corridor selects the *hole*, which is the right answer while you are
+       * designing and the wrong one while you are drawing — a corridor is the
+       * fairway's drawing, and clicking it should be how you restyle fairways.
+       *
+       * The hole number is the one hit that is not a feature. It resolves to
+       * its own subject, so clicking a number is how you reach the numbers.
+       */
+      if (focus === 'style' && properties) {
+        const kind = properties['kind'];
+        if (properties['derived'] === 'holeLabel') onPickStyle('holeNumber');
+        else if (typeof kind === 'string') onPickStyle(kind as FeatureKind);
+
+        const own = properties['id'];
+        onSelect(typeof own === 'string' && !own.startsWith('hole ') ? own : null);
+        return;
+      }
+
       const id = properties?.['selectAs'] ?? properties?.['id'];
       onSelect(typeof id === 'string' ? id : null);
     };
@@ -410,7 +443,7 @@ export function FeatureLayer({
       map.off('mousemove', handleMove);
       map.getCanvas().style.cursor = '';
     };
-  }, [map, selectable, onSelect, focus]);
+  }, [map, selectable, onSelect, onPickStyle, focus]);
 
   return null;
 }

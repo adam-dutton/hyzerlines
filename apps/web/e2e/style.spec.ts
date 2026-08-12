@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
-import { openEditor, place, waitForSave } from './fixtures';
+import { clickMap, course, openEditor, place, waitForSave } from './fixtures';
 
 /**
  * Restyling the map.
@@ -117,6 +117,29 @@ test.describe('map style', () => {
     await expect
       .poll(() => paint(page, 'hole-label-disc', 'circle-radius'))
       .toBeGreaterThan(20);
+  });
+
+  test('a click picks the drawing, not the hole', async ({ page }) => {
+    await styleFocus(page);
+
+    /*
+     * Everywhere else a click asks "which object is this" and narrows to a
+     * hole. In Style it asks "which of these am I looking at the drawing of",
+     * and the answer is a kind — so the basket opens Target rather than
+     * selecting hole 1, and `selectAs` on a corridor is deliberately skipped.
+     */
+    const doc = await course(page);
+    const target = doc.features.find((f) => f.kind === 'target')!;
+    const at = await page.evaluate(
+      (position) => {
+        const point = window.hyzerlinesMap!.project(position as [number, number]);
+        return { x: Math.round(point.x), y: Math.round(point.y) };
+      },
+      target.geometry.coordinates as [number, number],
+    );
+
+    await clickMap(page, at.x, at.y);
+    await expect(page.getByRole('heading', { name: 'Target' })).toBeVisible();
   });
 
   test('the style focus draws nothing and hides nothing', async ({ page }) => {

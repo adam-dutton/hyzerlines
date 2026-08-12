@@ -5,6 +5,8 @@ import {
   KIND_DEFINITIONS,
   TARGET_CIRCLES,
   featureStyleOf,
+  isDefaultStyle,
+  resetStyle,
   type FeatureKind,
   type MapStyle,
   type Op,
@@ -33,6 +35,12 @@ import { subjectKey, type StyleSubject } from './StyleProperties';
  * Each row previews what it is describing rather than naming a colour, because
  * a swatch answers "which one is the OB line" in a way `#ff6b64` does not.
  */
+
+/** The sheet `setStyle` carries: everything but the glyph library. */
+const resetSheet = (style: MapStyle) => {
+  const { glyphs: _keep, ...sheet } = resetStyle(style);
+  return sheet;
+};
 
 /** A line of the drawing, at the weight and colour it is drawn at. */
 function Swatch({ kind, style }: { kind: FeatureKind; style: MapStyle }) {
@@ -154,8 +162,35 @@ export function StyleList({
     onOp({ type: 'addGlyph', glyph: result.glyph });
   };
 
+  const touched = !isDefaultStyle(style);
+
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2.5">
+      {/*
+        Everything back to the defaults, at once.
+        
+        The uploaded glyphs and the palette survive it, and that is deliberate:
+        they are the designer's *materials* rather than their decisions. "Put
+        this course back to how it arrived" should not throw away the drawings
+        they imported and the colours they collected on the way — and it is one
+        undo, so the cost of being wrong about it is a keystroke.
+      */}
+      {touched && (
+        <div className="px-2 pt-1">
+          <button
+            type="button"
+            onClick={() => onOp({ type: 'setStyle', style: resetSheet(style) })}
+            className={cn(
+              'w-full rounded-md px-2 py-1 text-left text-2xs text-text-muted',
+              'transition-colors duration-fast hover:bg-surface-hover hover:text-text-primary',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+            )}
+          >
+            Reset the whole style
+          </button>
+        </div>
+      )}
+
       <section className="mt-1">
         <h3 className="px-2 pb-0.5 pt-1 text-[10px] text-text-muted">Features</h3>
         <ul>

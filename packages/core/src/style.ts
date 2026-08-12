@@ -109,6 +109,16 @@ export const featureStyleSchema = z.object({
    * and the outline of one area can never disagree about which area it is.
    */
   pattern: z.boolean().optional(),
+  /**
+   * Fill the ground *outside* the shape rather than inside it.
+   *
+   * What a property boundary means. A parcel line says "the site is in here",
+   * and shading the site is the one thing that cannot help: a designer reads
+   * terrain through that fill for the whole job. Shading everything *else*
+   * makes the same statement and takes nothing away — it is how every site plan
+   * is drawn, and it is why the boundary had no fill at all until now.
+   */
+  fillOutside: z.boolean().optional(),
   /** Cap height of the lettering, in pixels. */
   patternSize: z.number().min(6).max(48).optional(),
   /** Centre to centre, in pixels. Bigger is sparser. */
@@ -138,6 +148,26 @@ export type FeatureStyle = z.infer<typeof featureStyleSchema>;
  */
 export const holeNumberStyleSchema = z.object({
   text: colorSchema.optional(),
+  /**
+   * How far off the shot the number sits, in metres on the ground.
+   *
+   * Metres rather than pixels, because the number is placed relative to the
+   * *hole*: it should keep the same relationship to the corridor at every zoom,
+   * the way the corridor keeps its width. A pixel offset would swing the label
+   * across the fairway as you zoomed out.
+   *
+   * Positive is the player's right, looking down the shot. Zero puts it on the
+   * line, which is where it has always been.
+   */
+  offset: z.number().min(-200).max(200).optional(),
+  /**
+   * The weight the numeral is set in.
+   *
+   * Two, and that is the font server's list rather than a design decision: the
+   * glyph source publishes a regular and a bold of each family, and offering a
+   * weight it cannot serve would render as no text at all.
+   */
+  weight: z.enum(['regular', 'bold']).optional(),
   /**
    * The filled pill behind the numeral, or `null` for no pill at all.
    *

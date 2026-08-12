@@ -6,8 +6,10 @@ import {
   courseFairways,
   featureIndex,
   footprintOf,
+  bearingNearest,
   holeLabelPosition,
   holeName,
+  offsetFrom,
   KIND_DEFINITIONS,
   mandoBearingFor,
   mandoLineOf,
@@ -104,7 +106,12 @@ function bearingToTarget(
   return target ? bearing(anchorOf(feature), anchorOf(target)) : null;
 }
 
-export function derivedGeometry(course: Course, choices?: FairwayChoices): DerivedGeometry {
+export function derivedGeometry(
+  course: Course,
+  choices?: FairwayChoices,
+  /** How far off the shot the hole numbers sit. See `holeNumberStyleSchema`. */
+  offset = 0,
+): DerivedGeometry {
   const featureById = featureIndex(course);
   const features: GeoJSON.Feature[] = [];
   const withMarker = new Set<string>();
@@ -171,6 +178,42 @@ export function derivedGeometry(course: Course, choices?: FairwayChoices): Deriv
         bearing: footprint.bearingDeg,
       },
       geometry: { type: 'Point', coordinates: feature.geometry.coordinates },
+    });
+  }
+
+  /*
+   * The ground outside a property line.
+   *
+   * A polygon of the whole world with the boundary punched out of it, which is
+   * what a hole in a GeoJSON ring is for. The alternative — shading the site
+   * itself — is the one thing a site plan cannot do: a designer reads terrain
+   * through that fill for the entire job, and every tree line and fall of
+   * ground goes through it.
+   *
+   * The world ring stops at ±85° rather than ±90 because that is where Web
+   * Mercator stops; a coordinate beyond it has no position on this map.
+   */
+  for (const feature of course.features) {
+    if (feature.kind !== 'boundary' || feature.geometry.type !== 'polygon') continue;
+    const ring = feature.geometry.coordinates;
+    if (ring.length < 3) continue;
+
+    features.push({
+      type: 'Feature',
+      properties: { id: feature.id, kind: 'boundary', derived: 'outside' },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [
+          [
+            [-180, -85],
+            [180, -85],
+            [180, 85],
+            [-180, 85],
+            [-180, -85],
+          ],
+          [...ring, ring[0]!],
+        ],
+      },
     });
   }
 
@@ -352,8 +395,20 @@ export function derivedGeometry(course: Course, choices?: FairwayChoices): Deriv
    */
   const byHole = new Map(allFairways.filter((f) => f.holeId).map((f) => [f.holeId!, f]));
   for (const hole of course.holes) {
-    const at = holeLabelPosition(course, hole, byHole.get(hole.id));
-    if (!at) continue;
+    const centre = holeLabelPosition(course, hole, byHole.get(hole.id));
+    if (!centre) continue;
+
+    /*
+     * Nudged off the shot, in metres on the ground.
+     *
+     * The number sits at the midpoint of the corridor, which is the right place
+     * and also directly on the line — so on a narrow hole it covers the thing
+     * it labels. The offset moves it square to the shot, which keeps it beside
+     * the same stretch of fairway however far you zoom.
+     */
+    const line = byHole.get(hole.id)?.line;
+    const along = line ? bearingNearest(line, centre) : null;
+    const at = offset === 0 || along === null ? centre : offsetFrom(centre, along + 90, offset);
     features.push({
       type: 'Feature',
       properties: {

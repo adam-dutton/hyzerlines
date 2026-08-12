@@ -137,6 +137,32 @@ export function StyleProperties({
             onChange={(size) => set({ size })}
             onReset={() => clear('size')}
           />
+          <SelectRow
+            label="Weight"
+            value={current.weight ?? base.weight}
+            options={[
+              { value: 'regular' as const, label: 'Regular' },
+              { value: 'bold' as const, label: 'Bold' },
+            ]}
+            inherited={current.weight === undefined}
+            onChange={(weight) => set({ weight })}
+            onReset={() => clear('weight')}
+          />
+          <NumberRow
+            label="Off the shot"
+            value={current.offset ?? base.offset}
+            inherited={current.offset === undefined}
+            suffix="m"
+            step={1}
+            onChange={(offset) => set({ offset })}
+            onReset={() => clear('offset')}
+          />
+          <p className="mt-2 text-2xs leading-4 text-text-muted">
+            The number sits at the middle of the shot, which is the right place and also
+            directly on the line. Metres rather than pixels, so it keeps the same relationship
+            to the corridor at every zoom; positive is the player&rsquo;s right, looking down
+            the hole.
+          </p>
         </div>
 
         <div className={sectionClass}>
@@ -319,6 +345,11 @@ export function StyleProperties({
       {geometry === 'polygon' && (
         <div className={sectionClass}>
           <SectionTitle>Fill</SectionTitle>
+          <ToggleRow
+            label="Fill outside it"
+            checked={current.fillOutside ?? base.fillOutside}
+            onChange={(fillOutside) => set({ fillOutside })}
+          />
           <ColorRow
             label="Colour"
             value={current.fill ?? base.fill}

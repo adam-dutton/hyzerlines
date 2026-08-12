@@ -296,8 +296,8 @@ export function CourseEditor({
       // pin B would re-measure the hole while the fairway stayed on pin A — and
       // passing only the selected hole's choice snapped every other hole back
       // the moment the selection moved.
-      derivedGeometry(visible, pairChoices),
-    [visible, pairChoices],
+      derivedGeometry(visible, pairChoices, course.style.holeNumber.offset ?? 0),
+    [visible, pairChoices, course.style.holeNumber.offset],
   );
 
   /**
@@ -787,6 +787,11 @@ export function CourseEditor({
         selectable={nav.effective === 'select'}
         focus={focus}
         style={course.style}
+        onPickStyle={(kind) =>
+          setStyleSubject(
+            kind === 'holeNumber' ? { type: 'holeNumber' } : { type: 'kind', kind },
+          )
+        }
       />
 
       {/* The zoom region, drawn over the canvas in screen space. Not a map
