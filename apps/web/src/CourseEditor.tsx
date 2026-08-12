@@ -37,6 +37,7 @@ import { ToolBar } from './chrome/ToolBar';
 import { RightPanel } from './chrome/RightPanel';
 import type { SelectedPair } from './chrome/HoleProperties';
 import { LeftPanel } from './chrome/LeftPanel';
+import { StyleSubjectPanel, type StyleSubject } from './chrome/StyleProperties';
 import { useShortcuts } from './keyboard/useShortcuts';
 import type { UnitSystem } from './units';
 import { useCourse } from './document/CourseProvider';
@@ -130,6 +131,16 @@ export function CourseEditor({
     }
     setTool(kind);
   }, []);
+
+  /*
+   * What the style focus is describing.
+   *
+   * Its own state rather than part of the selection, because it is not a thing
+   * on the ground: a designer restyling out-of-bounds has no OB area selected
+   * and should not — the map stays clickable while they work, which is the
+   * point of a focus that claims no kinds.
+   */
+  const [styleSubject, setStyleSubject] = useState<StyleSubject | null>(null);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedHoleId, setSelectedHoleId] = useState<string | null>(null);
@@ -807,6 +818,8 @@ export function CourseEditor({
             findings={findings}
             choices={pairChoices}
             focus={focus}
+            styleSubject={styleSubject}
+            onSelectStyleSubject={setStyleSubject}
             hiddenIds={hiddenIds}
             selectedFeatureId={selectedId}
             onSelectFeature={selectFeature}
@@ -834,6 +847,16 @@ export function CourseEditor({
             onSelectHole={selectHole}
             onSelectPair={choosePair}
             onStepHole={stepHole}
+            styleSubject={
+              focus === 'style' && styleSubject ? (
+                <StyleSubjectPanel
+                  subject={styleSubject}
+                  style={course.style}
+                  onOp={dispatch}
+                  onClose={() => setStyleSubject(null)}
+                />
+              ) : null
+            }
             onDrawFeature={armKind}
             onClearSelection={() => {
               setSelectedId(null);

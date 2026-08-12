@@ -211,6 +211,9 @@ export function FeatureLayer({
       }
 
       readyRef.current = true;
+      // What the scene was built from, so the restyle effect below can tell a
+      // stylesheet it has already drawn from one it has not.
+      appliedRef.current = resolved;
     };
 
     if (map.isStyleLoaded()) install();
@@ -237,13 +240,20 @@ export function FeatureLayer({
    * Skipped entirely on the first pass, when `install` has just used this same
    * stylesheet.
    */
-  const installedRef = useRef<string | null>(null);
+  const appliedRef = useRef<ResolvedStyle | null>(null);
   useEffect(() => {
     if (!map || !readyRef.current) return;
-    if (installedRef.current === null) {
-      installedRef.current = 'installed';
-      return;
-    }
+    /*
+     * Skipped when the scene was already built from this sheet.
+     *
+     * Compared by identity against what `install` recorded, not by a "have I
+     * run before" flag — which is what this was, and it was wrong: this effect
+     * runs once before the style is ready and returns early, so the flag was
+     * still unset when the *first real* restyle arrived and swallowed it. A
+     * designer's first colour change did nothing and their second worked.
+     */
+    if (appliedRef.current === resolved) return;
+    appliedRef.current = resolved;
 
     const scene = sceneLayers(resolved);
     /*

@@ -201,6 +201,7 @@ export function RightPanel({
   onStepHole,
   onDrawFeature,
   courseProperties,
+  styleSubject,
 }: {
   course: Course;
   units: UnitSystem;
@@ -231,6 +232,14 @@ export function RightPanel({
    * the panel it lands in changed.
    */
   courseProperties: ReactNode;
+  /**
+   * What the style focus is describing, when it is describing anything.
+   *
+   * It takes the panel ahead of a selected feature, which is the same rule the
+   * rest of this component follows — narrowest subject wins — read one level
+   * up: while you are styling, the thing you are working on is the stylesheet.
+   */
+  styleSubject: ReactNode;
 }) {
   /*
    * Which hole a selected feature belongs to, if any.
@@ -260,7 +269,9 @@ export function RightPanel({
         className="flex min-h-0 flex-col overflow-hidden"
         aria-label="Properties"
       >
-        {feature ? (
+        {styleSubject ? (
+          styleSubject
+        ) : feature ? (
           <>
             <EditorHeader
               parent={{

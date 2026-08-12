@@ -60,6 +60,7 @@ interface Course {
   activeLayoutId: string | null;
   dismissedRules: string[];
   display: Display; // which drawing aids the map shows
+  style: MapStyle; // how it draws them — see below
 }
 
 interface Feature {
@@ -176,6 +177,40 @@ because it is still somewhere a designer put it deliberately. Deleting it is a
 different action and lives on the feature itself. The hole panel lists every tee
 and every basket with both — the mark that says which shot is being measured, and
 the control that takes an end out of the hole.
+
+### The stylesheet is overrides, not values
+
+`course.style` says how this course is drawn, and **every value in it is
+optional**. Unset means "whatever the app draws by default", not transparent and
+not zero. Three things follow, all of them worth having:
+
+- A course nobody has styled carries an empty object, so the file stays small
+  and says nothing it does not mean.
+- Improving a default reaches every course that never overrode it, which is how
+  a default earns the name.
+- The interface can show the difference between a value somebody chose and one
+  they inherited — and `Reset` is then a deletion rather than a second guess at
+  what the default used to be.
+
+The defaults are deliberately **not** in the document or in core. They are the
+design tokens, which live in the design package because they are also the
+interface's own colours; core holds what the designer said and knows nothing
+about hue. `resolveStyle` in the web app folds one over the other.
+
+Colours are validated hex. That is not tidiness: they are handed to MapLibre as
+paint values, and a colour it cannot parse fails the _whole layer_ rather than
+the one property — which presents as a feature kind silently not drawing.
+
+An uploaded glyph stores path data and nothing else. An SVG file is a document
+format with scripts and external references in it; what survives the import is
+the `d` attribute of its paths, which is a string of coordinates that `Path2D`
+turns into a shape. Nothing in an uploaded file can _do_ anything, because
+nothing but the coordinates is kept.
+
+Style lives in the document for the same reason `display` does: a designer who
+hands a park board a file with the fairways in green meant them to see it that
+way, and a look that lived in whichever browser last touched the file would
+arrive as somebody else's defaults.
 
 ---
 
