@@ -37,9 +37,12 @@ import { LARGE_ART } from '../chrome/iconArt';
 /** Everything the map needs to draw one kind, with nothing left unanswered. */
 export interface ResolvedFeatureStyle {
   stroke: string;
+  strokeOpacity: number;
   strokeWidth: number;
   dash: Dash;
   casing: string;
+  casingOpacity: number;
+  casingOn: boolean;
   fill: string;
   fillOpacity: number;
   /** A built-in name or an uploaded glyph's id. Empty for kinds with no point. */
@@ -72,18 +75,23 @@ export const CASING_RATIO = 2.2;
  * "dotted" is saying *this is a note about the land* — and the lengths that
  * express it are a rendering decision that should stay free to change.
  */
-export const DASH_PATTERNS: Record<Dash, readonly [number, number] | null> = {
+export const DASH_PATTERNS: Record<Dash, readonly number[] | null> = {
   // Null, not [1, 0]: MapLibre wants the property absent for a solid line, and
   // a zero-length gap renders as a row of degenerate segments.
   solid: null,
   dashed: [3, 1.5],
   dotted: [1, 2],
+  // Four numbers, because a pattern is dash-gap-dash-gap and this one alternates
+  // two different dashes. The survey convention for a boundary that is inferred
+  // rather than surveyed, and the reason the list is names and not numbers.
+  dotDash: [4, 1.5, 1, 1.5],
+  longDash: [6, 2],
 };
 
 /** The casing's dash for a stroke's dash, breaking in the same places. */
-export function casingDash(dash: Dash): [number, number] | null {
+export function casingDash(dash: Dash): number[] | null {
   const pattern = DASH_PATTERNS[dash];
-  return pattern ? [pattern[0] / CASING_RATIO, pattern[1] / CASING_RATIO] : null;
+  return pattern ? pattern.map((n) => n / CASING_RATIO) : null;
 }
 
 /**
@@ -109,10 +117,17 @@ const DEFAULT_GLYPHS: Partial<Record<FeatureKind, string>> = {
  * added to whichever list the kind has — see `glyphOptionsFor`.
  */
 const BUILT_IN_GLYPHS: Partial<Record<FeatureKind, readonly string[]>> = {
-  target: ['basketFill', 'basket'],
-  tee: ['teePad', 'tee'],
+  target: ['basketFill', 'basketSolid', 'basket'],
+  tee: ['teePad', 'teeFill', 'tee'],
   dropzone: ['dropzone', 'teePad'],
-  mando: ['mandoLeft', 'mandoRight'],
+  /*
+   * Pairs, and the order is what makes them pairs.
+   *
+   * A mandatory's right-hand marker is the entry *after* the chosen one, so the
+   * outlined pair and the filled pair have to sit next to each other in that
+   * order — see `artFor`. Picking either half of a pair picks both.
+   */
+  mando: ['mandoLeft', 'mandoRight', 'mandoLeftFill', 'mandoRightFill'],
 };
 
 /** Whether a kind is marked with a glyph at all. */
@@ -139,18 +154,45 @@ const DEFAULT_GLYPH_SIZE = 36;
  */
 const STROKE_WIDTH = { feature: 2.5, aid: 2.5, note: 1.25 } as const;
 
+/**
+ * The tokens, as hex plus an opacity of its own.
+ *
+ * The tokens carry their alpha inside the colour — `rgb(8 9 11 / 0.85)` for the
+ * casing, a translucent white for a fill. That is right for CSS and wrong here
+ * for two reasons. A colour picker cannot show it: `input type="color"` takes
+ * `#rrggbb` and nothing else, so the casing well came up **white** while the map
+ * drew it near-black, which is the interface lying about the value it is
+ * editing. And an opacity slider beside it would then multiply against an alpha
+ * already baked into the colour, so dragging it to 1 would not reach opaque.
+ *
+ * Split at the boundary instead: hex in the picker, alpha in the slider, and
+ * the two recombined by the renderer.
+ */
+function splitAlpha(token: string): { color: string; opacity: number } {
+  const rgb = /^rgb\(\s*(\d+)\s+(\d+)\s+(\d+)\s*(?:\/\s*([\d.]+)\s*)?\)$/.exec(token);
+  if (rgb) {
+    const [, r, g, b, alpha] = rgb;
+    const hex = [r, g, b].map((n) => Number(n).toString(16).padStart(2, '0')).join('');
+    return { color: `#${hex}`, opacity: alpha === undefined ? 1 : Number(alpha) };
+  }
+  // Already hex with alpha: `#rrggbbaa`.
+  if (/^#[0-9a-fA-F]{8}$/.test(token)) {
+    return { color: token.slice(0, 7), opacity: parseInt(token.slice(7), 16) / 255 };
+  }
+  return { color: token, opacity: 1 };
+}
+
 function defaultFeatureStyle(kind: FeatureKind): ResolvedFeatureStyle {
   const colors = featureColors[kind];
   const geometry = KIND_DEFINITIONS[kind].geometry;
+  const stroke = splitAlpha(colors.stroke);
+  const casing = splitAlpha(colors.casing);
+  const fill = splitAlpha(colors.fill);
 
   /*
-   * A property boundary is a note about the land, not a thing on it.
-   *
-   * So it gets the thinnest dotted line on the map and no fill at all. The fill
-   * was the real problem: a boundary is routinely the largest shape on screen,
-   * and a translucent wash over the whole site dims the imagery a designer is
-   * reading the terrain from — every tree line and every fall of ground goes
-   * through it. A dotted outline says the same thing and takes nothing away.
+   * A property boundary is a note about the land, not a thing on it — so it
+   * gets the thinnest line on the map. Its fill is the *outside*: see
+   * `INVERTED_FILL_KINDS`.
    */
   const isNote = kind === 'boundary';
   /* A fairway is a drawing aid the app worked out, not a thing on the ground,
@@ -161,22 +203,23 @@ function defaultFeatureStyle(kind: FeatureKind): ResolvedFeatureStyle {
   const isRule = kind === 'mando';
 
   return {
-    stroke: colors.stroke,
+    stroke: stroke.color,
+    strokeOpacity: stroke.opacity,
     strokeWidth: isNote ? STROKE_WIDTH.note : STROKE_WIDTH.feature,
     dash: isNote ? 'dotted' : isAid || isRule ? 'dashed' : 'solid',
-    casing: colors.casing,
-    fill: colors.fill,
+    casing: casing.color,
+    casingOpacity: casing.opacity,
+    casingOn: true,
+    fill: fill.color,
     /*
-     * Opaque at the value the fill token already carries its own alpha at, so
-     * the two do not multiply into nothing. A boundary is the exception and
-     * gets none: see above.
+     * The token's own alpha, multiplied by how solid this kind's areas are.
      *
-     * The corridor is more solid than a plain area. It was 0.5, tuned against a
+     * A corridor is more solid than a plain area. It was 0.5, tuned against a
      * corridor that also had a dashed outline holding its shape; with the
      * outline gone the fill is the only thing saying where the corridor is, and
      * the room a shot has is one of the two things this map is for.
      */
-    fillOpacity: isNote ? 0 : geometry === 'polygon' ? 0.7 : 0.75,
+    fillOpacity: fill.opacity * (geometry === 'polygon' ? 1 : 0.9),
     glyph: DEFAULT_GLYPHS[kind] ?? '',
     glyphSize: DEFAULT_GLYPH_SIZE,
   };
@@ -200,27 +243,29 @@ export const DEFAULT_FEATURE_STYLES: Record<FeatureKind, ResolvedFeatureStyle> =
  * Outline only — three filled rings stacked around every basket would sit on
  * the imagery a designer is reading the terrain from.
  */
-const DEFAULT_CIRCLE_STYLES: Record<TargetCircleId, ResolvedCircleStyle> = Object.fromEntries(
-  TARGET_CIRCLES.map((circle) => [
-    circle.id,
-    {
-      stroke: featureColors.target.stroke,
-      strokeWidth: circle.id === 'c1' ? 1.5 : 1,
-      dash: 'dotted' as Dash,
-    },
-  ]),
-) as Record<TargetCircleId, ResolvedCircleStyle>;
+export const DEFAULT_CIRCLE_STYLES: Record<TargetCircleId, ResolvedCircleStyle> =
+  Object.fromEntries(
+    TARGET_CIRCLES.map((circle) => [
+      circle.id,
+      {
+        stroke: splitAlpha(featureColors.target.stroke).color,
+        strokeWidth: circle.id === 'c1' ? 1.5 : 1,
+        dash: 'dotted' as Dash,
+      },
+    ]),
+  ) as Record<TargetCircleId, ResolvedCircleStyle>;
 
 /** The hole number's disc and its numeral. */
 export interface ResolvedHoleNumberStyle {
   text: string;
-  disc: string;
+  /** Null when the numeral is drawn bare, with no pill behind it. */
+  disc: string | null;
   size: number;
 }
 
-const DEFAULT_HOLE_NUMBER: ResolvedHoleNumberStyle = {
-  text: featureColors.tee.stroke,
-  disc: featureColors.tee.casing,
+export const DEFAULT_HOLE_NUMBER: ResolvedHoleNumberStyle = {
+  text: splitAlpha(featureColors.tee.stroke).color,
+  disc: splitAlpha(featureColors.tee.casing).color,
   size: 13,
 };
 
@@ -258,9 +303,12 @@ export function resolveStyle(style: MapStyle): ResolvedStyle {
         kind,
         {
           stroke: over.stroke ?? base.stroke,
+          strokeOpacity: over.strokeOpacity ?? base.strokeOpacity,
           strokeWidth: over.strokeWidth ?? base.strokeWidth,
           dash: over.dash ?? base.dash,
           casing: over.casing ?? base.casing,
+          casingOpacity: over.casingOpacity ?? base.casingOpacity,
+          casingOn: over.casingOn ?? base.casingOn,
           fill: over.fill ?? base.fill,
           fillOpacity: over.fillOpacity ?? base.fillOpacity,
           glyph: over.glyph ?? base.glyph,
@@ -290,7 +338,9 @@ export function resolveStyle(style: MapStyle): ResolvedStyle {
     circles,
     holeNumber: {
       text: style.holeNumber.text ?? DEFAULT_HOLE_NUMBER.text,
-      disc: style.holeNumber.disc ?? DEFAULT_HOLE_NUMBER.disc,
+      // `null` is a value here, not an absence — see `holeNumberStyleSchema`.
+      disc:
+        style.holeNumber.disc === undefined ? DEFAULT_HOLE_NUMBER.disc : style.holeNumber.disc,
       size: style.holeNumber.size ?? DEFAULT_HOLE_NUMBER.size,
     },
     /*

@@ -45,7 +45,7 @@ test.describe('map style', () => {
 
     await expect.poll(() => paint(page, 'derived-centreline', 'line-width')).toBe(2.5);
 
-    await page.getByRole('slider', { name: 'Width' }).fill('9');
+    await page.getByRole('spinbutton', { name: 'Width' }).fill('9');
     await expect.poll(() => paint(page, 'derived-centreline', 'line-width')).toBe(9);
 
     /*
@@ -106,7 +106,7 @@ test.describe('map style', () => {
 
     await expect.poll(() => paint(page, 'hole-label', 'text-color')).toBe('#ffffff');
 
-    await page.getByRole('slider', { name: 'Size' }).fill('30');
+    await page.getByRole('spinbutton', { name: 'Size' }).fill('30');
     await expect
       .poll(() =>
         page.evaluate(() => window.hyzerlinesMap?.getLayoutProperty('hole-label', 'text-size')),

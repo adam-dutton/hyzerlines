@@ -58,7 +58,7 @@ export const colorSchema = z
  * express it are a rendering decision that should be free to change — see
  * `DASH_PATTERNS` in the web app.
  */
-export const DASHES = ['solid', 'dashed', 'dotted'] as const;
+export const DASHES = ['solid', 'dashed', 'dotted', 'dotDash', 'longDash'] as const;
 export const dashSchema = z.enum(DASHES);
 export type Dash = z.infer<typeof dashSchema>;
 
@@ -73,6 +73,7 @@ export type Dash = z.infer<typeof dashSchema>;
 export const featureStyleSchema = z.object({
   /** The line, the outline of an area, and the ink of a glyph. */
   stroke: colorSchema.optional(),
+  strokeOpacity: z.number().min(0).max(1).optional(),
   /** In screen pixels: an annotation stays legible at every zoom. */
   strokeWidth: z.number().min(0).max(24).optional(),
   dash: dashSchema.optional(),
@@ -85,6 +86,17 @@ export const featureStyleSchema = z.object({
    * stroke dark, which is not reachable by changing the stroke alone.
    */
   casing: colorSchema.optional(),
+  casingOpacity: z.number().min(0).max(1).optional(),
+  /**
+   * Whether the casing is drawn at all.
+   *
+   * A boolean rather than an opacity of zero, because they are different
+   * statements: "no contrast floor on this kind" is a decision, and a slider
+   * dragged to the end is a value that happens to be invisible. On a printed
+   * plan or a light basemap the floor is often not wanted at all, and turning
+   * it off should be one click that can be clicked back.
+   */
+  casingOn: z.boolean().optional(),
   fill: colorSchema.optional(),
   fillOpacity: z.number().min(0).max(1).optional(),
   /**
@@ -110,7 +122,16 @@ export type FeatureStyle = z.infer<typeof featureStyleSchema>;
  */
 export const holeNumberStyleSchema = z.object({
   text: colorSchema.optional(),
-  disc: colorSchema.optional(),
+  /**
+   * The filled pill behind the numeral, or `null` for no pill at all.
+   *
+   * Three states rather than two, and the third is the point: absent means the
+   * default disc, a colour means that disc, and `null` means the number is
+   * drawn bare. Over a light plan or a printed sign the disc is often not
+   * wanted, and "off" has to be distinguishable from "not yet set" or turning
+   * it off would read as never having chosen.
+   */
+  disc: colorSchema.nullable().optional(),
   size: z.number().min(8).max(48).optional(),
 });
 
@@ -152,6 +173,17 @@ const TARGET_CIRCLE_IDS = TARGET_CIRCLES.map((circle) => circle.id) as [
   ...TargetCircleId[],
 ];
 
+/**
+ * Colours the designer keeps to hand.
+ *
+ * A course has a palette whether or not the app has one — the four or five
+ * colours the whole map is built from — and without somewhere to put it that
+ * palette lives in a designer's head and gets retyped, slightly wrong, into
+ * every picker. Stored with the style rather than with the browser for the same
+ * reason the style is in the document: it belongs to this course.
+ */
+export const paletteSchema = z.array(colorSchema).max(24);
+
 export const mapStyleSchema = z.object({
   /** Overrides by kind. Absent kinds draw at their defaults. */
   features: z.record(featureKindSchema, featureStyleSchema).default({}),
@@ -159,6 +191,8 @@ export const mapStyleSchema = z.object({
   /** Keyed by `TargetCircleId`, so a new ring is a compile error rather than
       a circle nobody can restyle. */
   circles: z.record(z.enum(TARGET_CIRCLE_IDS), circleStyleSchema).default({}),
+  /** Colours to pick from, in every picker. Empty until somebody keeps one. */
+  palette: paletteSchema.default([]),
   /** The uploaded library, referenced by `featureStyle.glyph`. */
   glyphs: z.array(customGlyphSchema).default([]),
 });
@@ -207,4 +241,20 @@ export const isDefaultStyle = (style: MapStyle): boolean =>
   Object.keys(style.features).length === 0 &&
   Object.keys(style.holeNumber).length === 0 &&
   Object.keys(style.circles).length === 0 &&
+  style.palette.length === 0 &&
   style.glyphs.length === 0;
+
+/**
+ * Everything back to the defaults, keeping what is not a default.
+ *
+ * The uploaded glyphs and the palette survive, and that is the whole reason
+ * this is a function rather than `DEFAULT_MAP_STYLE`. Those two are the
+ * designer's *materials*, not their decisions: "put this course back to how it
+ * arrived" should not throw away the drawings they imported and the colours
+ * they collected on the way.
+ */
+export const resetStyle = (style: MapStyle): MapStyle => ({
+  ...DEFAULT_MAP_STYLE,
+  palette: style.palette,
+  glyphs: style.glyphs,
+});

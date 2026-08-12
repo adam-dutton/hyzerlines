@@ -81,7 +81,7 @@ function casingColor(casing: string): ExpressionSpecification {
  * row of degenerate segments, which reads as a line that is somehow both solid
  * and broken.
  */
-const dashPaint = (dash: readonly [number, number] | null) =>
+const dashPaint = (dash: readonly number[] | null) =>
   dash ? { 'line-dasharray': [...dash] } : {};
 
 /** Layer ids, named once so the interactive and draggable lists cannot drift. */
@@ -329,6 +329,7 @@ export function derivedLayers(style: ResolvedStyle): LayerSpecification[] {
       layout: { 'line-join': 'round', 'line-cap': 'butt' },
       paint: {
         'line-color': casingColor(fairway.casing),
+        'line-opacity': fairway.casingOn ? fairway.casingOpacity : 0,
         'line-width': fairway.strokeWidth * CASING_RATIO,
         ...dashPaint(casingDash(fairway.dash)),
       },
@@ -341,6 +342,7 @@ export function derivedLayers(style: ResolvedStyle): LayerSpecification[] {
       layout: { 'line-join': 'round', 'line-cap': 'butt' },
       paint: {
         'line-color': selectable(fairway.stroke, 'stroke'),
+        'line-opacity': fairway.strokeOpacity,
         'line-width': fairway.strokeWidth,
         ...dashPaint(fairwayDash),
       },
@@ -364,6 +366,7 @@ export function derivedLayers(style: ResolvedStyle): LayerSpecification[] {
       layout: { 'line-join': 'round', 'line-cap': 'butt' },
       paint: {
         'line-color': casingColor(mando.casing),
+        'line-opacity': mando.casingOn ? mando.casingOpacity : 0,
         'line-width': mando.strokeWidth * CASING_RATIO,
         ...dashPaint(casingDash(mando.dash)),
       },
@@ -376,6 +379,7 @@ export function derivedLayers(style: ResolvedStyle): LayerSpecification[] {
       layout: { 'line-join': 'round', 'line-cap': 'butt' },
       paint: {
         'line-color': selectable(mando.stroke, 'stroke'),
+        'line-opacity': mando.strokeOpacity,
         'line-width': mando.strokeWidth,
         ...dashPaint(mandoDash),
       },
@@ -396,7 +400,11 @@ export function derivedLayers(style: ResolvedStyle): LayerSpecification[] {
       filter: isFootprint,
       minzoom: PAD_LEGIBLE_ZOOM,
       layout: { 'line-join': 'round' },
-      paint: { 'line-color': casingColor(tee.casing), 'line-width': tee.strokeWidth * 1.4 },
+      paint: {
+        'line-color': casingColor(tee.casing),
+        'line-opacity': tee.casingOn ? tee.casingOpacity : 0,
+        'line-width': tee.strokeWidth * 1.4,
+      },
     },
     {
       id: 'derived-footprint',
@@ -404,7 +412,10 @@ export function derivedLayers(style: ResolvedStyle): LayerSpecification[] {
       source: DERIVED_SOURCE,
       filter: isFootprint,
       minzoom: PAD_LEGIBLE_ZOOM,
-      paint: { 'fill-color': selectable(tee.stroke, 'fill'), 'fill-opacity': 1 },
+      paint: {
+        'fill-color': selectable(tee.stroke, 'fill'),
+        'fill-opacity': tee.strokeOpacity,
+      },
     },
 
     /*
@@ -592,8 +603,9 @@ export function featureLayers(style: ResolvedStyle): LayerSpecification[] {
         layout: { 'line-join': 'round', 'line-cap': dash ? 'butt' : 'round' },
         paint: {
           'line-color': casingColor(drawn.casing),
+          'line-opacity': drawn.casingOn ? drawn.casingOpacity : 0,
           'line-width': drawn.strokeWidth * CASING_RATIO,
-          ...(under ? { 'line-dasharray': under } : {}),
+          ...(under ? { 'line-dasharray': [...under] } : {}),
         },
       },
       {
@@ -604,6 +616,7 @@ export function featureLayers(style: ResolvedStyle): LayerSpecification[] {
         layout: { 'line-join': 'round', 'line-cap': dash ? 'butt' : 'round' },
         paint: {
           'line-color': selectable(drawn.stroke, 'stroke'),
+          'line-opacity': drawn.strokeOpacity,
           'line-width': drawn.strokeWidth,
           ...(dash ? { 'line-dasharray': [...dash] } : {}),
         },
@@ -635,8 +648,9 @@ export function featureLayers(style: ResolvedStyle): LayerSpecification[] {
         layout: { 'line-join': 'round', 'line-cap': dash ? 'butt' : 'round' },
         paint: {
           'line-color': casingColor(drawn.casing),
+          'line-opacity': drawn.casingOn ? drawn.casingOpacity : 0,
           'line-width': drawn.strokeWidth * CASING_RATIO,
-          ...(under ? { 'line-dasharray': under } : {}),
+          ...(under ? { 'line-dasharray': [...under] } : {}),
         },
       },
       {
@@ -647,6 +661,7 @@ export function featureLayers(style: ResolvedStyle): LayerSpecification[] {
         layout: { 'line-join': 'round', 'line-cap': dash ? 'butt' : 'round' },
         paint: {
           'line-color': selectable(drawn.stroke, 'stroke'),
+          'line-opacity': drawn.strokeOpacity,
           'line-width': drawn.strokeWidth,
           ...(dash ? { 'line-dasharray': [...dash] } : {}),
         },
@@ -724,10 +739,18 @@ export function holeLabelLayers(style: ResolvedStyle): LayerSpecification[] {
       source: DERIVED_SOURCE,
       filter: isLabel,
       paint: {
-        'circle-color': ['case', selected, featureColors.selected.casing, disc],
+        'circle-color': ['case', selected, featureColors.selected.casing, disc ?? '#000000'],
         'circle-radius': radius,
         'circle-stroke-color': text,
         'circle-stroke-width': 1,
+        /*
+         * Off, not absent. The disc is still on the map at zero opacity because
+         * it is the hole's click target — `hole-label-disc` is the first entry
+         * in `INTERACTIVE_LAYERS`, and the most direct way to select a hole is
+         * to click its number. Removing the shape would take that with it.
+         */
+        'circle-opacity': disc === null ? 0 : 1,
+        'circle-stroke-opacity': disc === null ? 0 : 1,
       },
     },
     {

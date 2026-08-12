@@ -223,20 +223,38 @@ function artFor(name: MarkerName, style: ResolvedStyle): GlyphArt | null {
   const fallback = () => style.glyphPaths(DEFAULT_GLYPH_OF[marker.kind] ?? '');
 
   if (marker.variant === 'opposite') {
+    /*
+     * The built-in list holds *pairs*, left then right, and the pair is what a
+     * designer picks. So the drawing is found by clearing the low bit to get
+     * the pair and adding one for its right-hand half — picking either side of
+     * the outlined pair selects both sides of the outlined pair, and the same
+     * for the filled one.
+     *
+     * Stepping to the *next* entry instead, which is what this did while there
+     * were only two, walks off the end of a pair as soon as there is more than
+     * one: choosing the outlined right-hand drawing gave you the filled
+     * left-hand one on the other side of the hole.
+     *
+     * An uploaded glyph is one drawing with no opposite number, so both sides
+     * use it and the line is what says which side you must pass. Inventing a
+     * mirror image would be the app claiming to know which way somebody else's
+     * artwork points.
+     */
     const pair = builtInGlyphsFor(marker.kind);
     const index = pair.indexOf(chosen);
-    /*
-     * Only a built-in has an opposite number.
-     *
-     * An uploaded glyph is one drawing, so both sides of a mandatory use it and
-     * the line is what says which side you must pass. Inventing a mirror image
-     * would be the app claiming to know which way somebody's artwork points.
-     */
-    const opposite = index === -1 ? chosen : (pair[(index + 1) % pair.length] ?? chosen);
+    const opposite = index === -1 ? chosen : (pair[(index & ~1) + 1] ?? chosen);
     return style.glyphPaths(opposite) ?? fallback();
   }
 
-  return style.glyphPaths(chosen) ?? fallback();
+  /* And the left-hand marker takes the pair's first half, however the designer
+     named it: picking the right-hand drawing still means the pair. */
+  const pair = builtInGlyphsFor(marker.kind);
+  const index = pair.indexOf(chosen);
+  const own =
+    marker.variant === undefined && index !== -1 && MARKERS[name].kind === 'mando'
+      ? (pair[index & ~1] ?? chosen)
+      : chosen;
+  return style.glyphPaths(own) ?? fallback();
 }
 
 /**
