@@ -100,15 +100,15 @@ export const featureStyleSchema = z.object({
   fill: colorSchema.optional(),
   fillOpacity: z.number().min(0).max(1).optional(),
   /**
-   * The repeating lettering over a regulated area.
+   * Fill the ground *outside* the shape rather than inside it.
    *
-   * What the letters *say* is not in here: OB, HZ, CAS and REL are what those
-   * areas are called, not a label somebody types, and a designer who could
-   * write "OOB" over an out-of-bounds area could write anything over anything.
-   * The colour is not in here either — it follows the line, so the lettering
-   * and the outline of one area can never disagree about which area it is.
+   * What a property boundary means. A parcel line says "the site is in here",
+   * and shading the site is the one thing that cannot help: a designer reads
+   * terrain through that fill for the whole job. Shading everything *else*
+   * makes the same statement and takes nothing away — it is how every site plan
+   * is drawn, and it is why the boundary had no fill at all until now.
    */
-  pattern: z.boolean().optional(),
+  fillOutside: z.boolean().optional(),
   /**
    * A mandatory's own three, shown only on that kind.
    *
@@ -120,22 +120,6 @@ export const featureStyleSchema = z.object({
   arrowSize: z.number().min(6).max(48).optional(),
   /** Where the mandatory line starts, measured out from the object, in metres. */
   lineGap: z.number().min(0).max(50).optional(),
-  /**
-   * Fill the ground *outside* the shape rather than inside it.
-   *
-   * What a property boundary means. A parcel line says "the site is in here",
-   * and shading the site is the one thing that cannot help: a designer reads
-   * terrain through that fill for the whole job. Shading everything *else*
-   * makes the same statement and takes nothing away — it is how every site plan
-   * is drawn, and it is why the boundary had no fill at all until now.
-   */
-  fillOutside: z.boolean().optional(),
-  /** Cap height of the lettering, in pixels. */
-  patternSize: z.number().min(6).max(48).optional(),
-  /** Centre to centre, in pixels. Bigger is sparser. */
-  patternSpacing: z.number().min(16).max(400).optional(),
-  /** Degrees clockwise. The lettering runs at this angle across the area. */
-  patternAngle: z.number().min(-90).max(90).optional(),
   /**
    * Which drawing marks a point of this kind.
    *
@@ -239,12 +223,37 @@ const TARGET_CIRCLE_IDS = TARGET_CIRCLES.map((circle) => circle.id) as [
  * every picker. Stored with the style rather than with the browser for the same
  * reason the style is in the document: it belongs to this course.
  */
+/**
+ * The repeating lettering over the regulated areas.
+ *
+ * **One setting for all four**, not one per kind. OB, HZ, CAS and REL are the
+ * same annotation doing the same job at four different rulings, and a designer
+ * who sets the lettering sparse on out-of-bounds and dense on hazards has not
+ * made a distinction — they have made the map inconsistent and will now go and
+ * fix the other three by hand. What legitimately differs between them is what
+ * the letters *say* and what colour they are, and neither of those is in here:
+ * the text is the kind's own name, and the colour follows its line.
+ */
+export const letteringSchema = z.object({
+  on: z.boolean().optional(),
+  /** Cap height, in pixels. */
+  size: z.number().min(6).max(48).optional(),
+  /** Centre to centre on the ground, in metres. Bigger is sparser. */
+  spacing: z.number().min(5).max(400).optional(),
+  /** Degrees clockwise. Tilts the grid, not the letters. */
+  angle: z.number().min(-90).max(90).optional(),
+});
+
+export type Lettering = z.infer<typeof letteringSchema>;
+
 export const paletteSchema = z.array(colorSchema).max(24);
 
 export const mapStyleSchema = z.object({
   /** Overrides by kind. Absent kinds draw at their defaults. */
   features: z.record(featureKindSchema, featureStyleSchema).default({}),
   holeNumber: holeNumberStyleSchema.default({}),
+  /** Shared by the four regulated areas. See `letteringSchema`. */
+  lettering: letteringSchema.default({}),
   /** Keyed by `TargetCircleId`, so a new ring is a compile error rather than
       a circle nobody can restyle. */
   circles: z.record(z.enum(TARGET_CIRCLE_IDS), circleStyleSchema).default({}),
@@ -298,6 +307,7 @@ export const isDefaultStyle = (style: MapStyle): boolean =>
   Object.keys(style.features).length === 0 &&
   Object.keys(style.holeNumber).length === 0 &&
   Object.keys(style.circles).length === 0 &&
+  Object.keys(style.lettering).length === 0 &&
   style.palette.length === 0 &&
   style.glyphs.length === 0;
 

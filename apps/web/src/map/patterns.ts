@@ -1,6 +1,5 @@
+import { pointInRing, planeAt, fromLocal, toLocal, type Position } from '@hyzerlines/core';
 import type { FeatureKind } from '@hyzerlines/core';
-
-import type { ResolvedStyle } from './mapStyle';
 
 /**
  * The repeating lettering over a regulated area.
@@ -10,19 +9,29 @@ import type { ResolvedStyle } from './mapStyle';
  * idea are four things you have to remember, where OB, HZ, CAS and REL are four
  * things you can read.
  *
- * ## A tiled image, because MapLibre has no repeating text
+ * ## Labels on a grid, not a tiled image
  *
- * `symbol-placement` offers `point`, `line` and `line-center` — one label per
- * feature, not a field of them. What does exist is `fill-pattern`, which tiles
- * an image across a polygon and clips it to the shape, so the lettering is
- * drawn once onto a square canvas and MapLibre repeats it.
+ * `fill-pattern` was the obvious tool and is the wrong one. A fill pattern is
+ * rendered in tile space, so it **turns with the map** — and selecting a hole
+ * spins the camera to face the shot, which left every OB area written sideways
+ * or upside down. Text that has to stay upright has to be a symbol layer, which
+ * is viewport-aligned by default and stays the right way up however the camera
+ * moves.
  *
- * The consequences are worth knowing. The tile is in *screen* pixels, so the
- * lettering stays the same size as you zoom rather than growing with the ground
- * — right for an annotation, the same argument line widths make. And the angle
- * has to be baked into the image rather than applied to the layer, which is why
- * the tile is drawn nine times over: a rotated tile has to carry its
- * neighbours' overflow or the pattern breaks at every seam.
+ * So the labels are generated here: a grid of points across each area, clipped
+ * to it, and handed to a symbol layer as ordinary features.
+ *
+ * ## The grid starts at the middle
+ *
+ * Seeded from the polygon's own centre rather than from a global origin, and
+ * that is what makes a *small* area readable — a grid anchored anywhere else
+ * lands its letters wherever they happen to fall, and a pond narrower than the
+ * spacing gets none at all. Starting at the centre guarantees one, which is the
+ * one that matters.
+ *
+ * Spacing is in metres, because it is a density over the land: how much ground
+ * one "OB" is responsible for. A pixel spacing would multiply the labels every
+ * time you zoomed out, which is the opposite of what a designer means by it.
  */
 
 /** What each regulated area is called, in the letters a course map uses. */
@@ -35,85 +44,75 @@ export const PATTERN_TEXT: Partial<Record<FeatureKind, string>> = {
 
 export const hasPattern = (kind: FeatureKind): boolean => kind in PATTERN_TEXT;
 
-export const patternImage = (kind: FeatureKind) => `pattern-${kind}`;
+export const letteringLayer = (kind: FeatureKind): string => `features-${kind}-lettering`;
 
-/** Rendered at twice the size and registered at `pixelRatio: 2`, like the markers. */
-const PIXEL_RATIO = 2;
+/**
+ * How many labels one area may produce.
+ *
+ * A guard rather than a design decision. Spacing is a distance and an area is
+ * whatever somebody drew, so the two together can ask for a number bounded only
+ * by patience — a five-metre spacing over a property-sized polygon is tens of
+ * thousands of symbols and a frozen tab. Reaching this cap means the lettering
+ * is far too dense to read anyway, so stopping is also the right *drawing*.
+ */
+const MAX_LABELS = 600;
 
-function render(
-  text: string,
-  size: number,
-  spacing: number,
-  angleDeg: number,
-  color: string,
-): ImageData | null {
-  const side = Math.max(16, Math.round(spacing));
-  const canvas = document.createElement('canvas');
-  canvas.width = side * PIXEL_RATIO;
-  canvas.height = side * PIXEL_RATIO;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-
-  ctx.scale(PIXEL_RATIO, PIXEL_RATIO);
-  ctx.translate(side / 2, side / 2);
-  ctx.rotate((angleDeg * Math.PI) / 180);
-
-  ctx.fillStyle = color;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  /*
-   * A system stack rather than the interface's own face. Canvas cannot use a
-   * webfont that has not finished loading, and a pattern that silently fell
-   * back mid-session would change the map's look without anybody touching it.
-   */
-  ctx.font = `700 ${size}px system-ui, -apple-system, "Segoe UI", sans-serif`;
-
-  /*
-   * Nine copies: the tile itself and its eight neighbours.
-   *
-   * Rotation moves ink across the tile's edges, and a tile that drew only its
-   * own copy would lose whatever crossed the boundary — a pattern with a bite
-   * out of it at every seam. Drawing the ring around it puts that ink back.
-   */
-  for (let row = -1; row <= 1; row++) {
-    for (let column = -1; column <= 1; column++) {
-      ctx.fillText(text, column * side, row * side);
-    }
+/**
+ * The centre of a ring, as the average of its vertices.
+ *
+ * Not a true centroid, and it does not need to be: this is where a grid starts,
+ * so what matters is that it is inside the shape for the shapes people actually
+ * draw. A vertex average is that for anything convex and close enough for the
+ * rest, and it is stable as a polygon is edited.
+ */
+function centreOf(ring: readonly Position[]): Position {
+  let lng = 0;
+  let lat = 0;
+  for (const [x, y] of ring) {
+    lng += x;
+    lat += y;
   }
-
-  return ctx.getImageData(0, 0, canvas.width, canvas.height);
+  return [lng / ring.length, lat / ring.length];
 }
 
 /**
- * Register a pattern image for every kind that has lettering.
+ * Where the letters go for one area.
  *
- * Re-registers rather than skipping, for the reason the markers do: `addImage`
- * refuses a name it already holds, so a changed pattern has to replace the old
- * one explicitly.
+ * Walks a grid outward from the centre in a square big enough to cover the
+ * ring's extent, keeping the points that land inside it.
  */
-export function addPatternImages(
-  map: {
-    hasImage: (id: string) => boolean;
-    addImage: (id: string, image: ImageData, options?: { pixelRatio?: number }) => void;
-    removeImage: (id: string) => void;
-  },
-  style: ResolvedStyle,
-): void {
-  for (const [kind, text] of Object.entries(PATTERN_TEXT) as [FeatureKind, string][]) {
-    const drawn = style.features[kind];
-    const image = render(
-      text,
-      drawn.patternSize,
-      drawn.patternSpacing,
-      drawn.patternAngle,
-      // The lettering takes the line's colour, so an area's outline and its
-      // letters can never disagree about which area it is.
-      drawn.stroke,
-    );
-    if (!image) continue;
+export function letteringPoints(
+  ring: readonly Position[],
+  spacingM: number,
+  angleDeg: number,
+): Position[] {
+  if (ring.length < 3 || spacingM <= 0) return [];
 
-    const id = patternImage(kind);
-    if (map.hasImage(id)) map.removeImage(id);
-    map.addImage(id, image, { pixelRatio: PIXEL_RATIO });
+  const centre = centreOf(ring);
+  const plane = planeAt(centre);
+  const local = ring.map((position) => toLocal(plane, position));
+
+  // How far the ring reaches from its centre, so the grid covers it and no more.
+  let reach = 0;
+  for (const [east, north] of local) reach = Math.max(reach, Math.hypot(east, north));
+  if (reach === 0) return [];
+
+  const steps = Math.ceil(reach / spacingM);
+  const radians = (angleDeg * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+
+  const points: Position[] = [];
+  for (let row = -steps; row <= steps && points.length < MAX_LABELS; row++) {
+    for (let column = -steps; column <= steps && points.length < MAX_LABELS; column++) {
+      // The grid is rotated, so the letters march at an angle across the area
+      // while each one stays upright — the angle tilts the pattern, not the text.
+      const east = column * spacingM * cos - row * spacingM * sin;
+      const north = column * spacingM * sin + row * spacingM * cos;
+      const at = fromLocal(plane, [east, north]);
+      if (pointInRing(ring, at)) points.push(at);
+    }
   }
+
+  return points;
 }

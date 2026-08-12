@@ -13,7 +13,7 @@ import {
 
 import { MARKER_SIZE_PX, markerIcon, type MarkerName } from './icons';
 import { CASING_RATIO, DASH_PATTERNS, casingDash, type ResolvedStyle } from './mapStyle';
-import { hasPattern, patternImage } from './patterns';
+import { hasPattern, letteringLayer } from './patterns';
 
 /**
  * How course features are drawn.
@@ -665,27 +665,35 @@ export function featureLayers(style: ResolvedStyle): LayerSpecification[] {
     );
 
     /*
-     * The lettering, as a second fill above the first.
+     * The lettering, as upright labels rather than a tiled fill.
      *
-     * A layer of its own rather than a pattern on the fill itself, because they
-     * are two different things: the fill is how solid the shading is, and the
-     * lettering says which rule applies. A designer who wants the letters over
-     * clear ground can take the fill's opacity to nothing and keep them.
+     * `fill-pattern` was the obvious tool and is the wrong one: a fill pattern
+     * is rendered in tile space, so it turns with the map — and selecting a
+     * hole spins the camera to face the shot, which left every OB area written
+     * sideways. A symbol layer is viewport-aligned, so the letters stay upright
+     * however the camera moves. The points come from `letteringPoints`.
      *
-     * Not in `INTERACTIVE_LAYERS`: it sits exactly on top of the fill that is,
-     * carries the same feature, and adding it would only mean answering the
-     * same click twice.
+     * Not in `INTERACTIVE_LAYERS`: they sit on the fill that is, carry the same
+     * feature, and would only mean answering the same click twice.
      */
     if (hasPattern(kind)) {
       layers.push({
-        id: `features-${kind}-pattern`,
-        type: 'fill',
-        source: FEATURES_SOURCE,
-        filter,
-        paint: {
-          'fill-pattern': patternImage(kind),
-          'fill-opacity': drawn.pattern ? 1 : 0,
+        id: letteringLayer(kind),
+        type: 'symbol',
+        source: DERIVED_SOURCE,
+        filter: ['all', ['==', ['get', 'derived'], 'lettering'], ['==', ['get', 'kind'], kind]],
+        layout: {
+          'text-field': ['get', 'text'],
+          'text-size': style.lettering.size,
+          'text-font': ['Noto Sans Bold'],
+          // Never dropped for collision: a regular grid with gaps in it reads
+          // as a mistake rather than as a pattern.
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
         },
+        // The letters take the line's colour, so an area's outline and its
+        // lettering can never disagree about which area it is.
+        paint: { 'text-color': drawn.stroke, 'text-opacity': drawn.strokeOpacity },
       });
     }
   }
@@ -907,7 +915,19 @@ export const INTERACTIVE_LAYERS: readonly string[] = [
   'features-target',
   'features-point',
   ...lineKinds().map(lineStrokeLayer),
-  ...areaKinds().map(areaFillLayer),
+  /*
+   * Every area's fill answers a click, except a property boundary's.
+   *
+   * A boundary encloses the whole site, so its fill is the largest target on
+   * the map by a wide margin — clicking open ground in the middle of the course
+   * would select the parcel line every time, and the tee you were aiming at
+   * never. It is also the one kind whose fill is not *its* drawing: the shading
+   * belongs to the ground outside it. So the line is the boundary, and the line
+   * is what selects it.
+   */
+  ...areaKinds()
+    .filter((kind) => kind !== 'boundary')
+    .map(areaFillLayer),
   /*
    * A boundary has no fill, so its outline is the only thing to click, and the
    * casing is used rather than the stroke because it is the wider of the two —

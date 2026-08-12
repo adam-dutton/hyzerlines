@@ -15,10 +15,11 @@ import {
   DEFAULT_CIRCLE_STYLES,
   DEFAULT_FEATURE_STYLES,
   DEFAULT_HOLE_NUMBER,
+  DEFAULT_LETTERING_STYLE,
   builtInGlyphsFor,
   hasGlyph,
 } from '../map/mapStyle';
-import { PATTERN_TEXT, hasPattern } from '../map/patterns';
+import { hasPattern } from '../map/patterns';
 import { SectionTitle, ToggleRow, sectionClass } from './propertyRow';
 import { ColorRow, DASH_OPTIONS, FactRow, NumberRow, SelectRow } from './StyleControls';
 
@@ -88,6 +89,7 @@ export function StyleProperties({
     features: style.features,
     holeNumber: style.holeNumber,
     circles: style.circles,
+    lettering: style.lettering,
     palette: style.palette,
   };
   const commit = (next: typeof sheet) => onStyle({ type: 'setStyle', style: next });
@@ -98,6 +100,14 @@ export function StyleProperties({
    * schema — a palette is a shortlist, and one that grew without limit would be
    * a history of every colour anybody tried.
    */
+  /* One lettering for the four regulated areas — see `letteringSchema`. */
+  const setLettering = (changes: Partial<typeof style.lettering>) =>
+    commit({ ...sheet, lettering: { ...style.lettering, ...changes } });
+  const clearLettering = (key: keyof typeof style.lettering) => {
+    const { [key]: _gone, ...rest } = style.lettering;
+    commit({ ...sheet, lettering: rest });
+  };
+
   const keep = (colour: string) => {
     if (style.palette.includes(colour)) return;
     commit({ ...sheet, palette: [...style.palette, colour].slice(-24) });
@@ -405,42 +415,44 @@ export function StyleProperties({
         <div className={sectionClass}>
           <SectionTitle>Lettering</SectionTitle>
           <ToggleRow
-            label={`Repeat "${PATTERN_TEXT[kind] ?? ''}"`}
-            checked={current.pattern ?? base.pattern}
-            onChange={(pattern) => set({ pattern })}
+            label="Repeat the letters"
+            checked={style.lettering.on ?? DEFAULT_LETTERING_STYLE.on}
+            onChange={(on) => setLettering({ on })}
           />
           <NumberRow
             label="Text size"
-            value={current.patternSize ?? base.patternSize}
-            inherited={current.patternSize === undefined}
+            value={style.lettering.size ?? DEFAULT_LETTERING_STYLE.size}
+            inherited={style.lettering.size === undefined}
             suffix="px"
             step={1}
-            onChange={(patternSize) => set({ patternSize })}
-            onReset={() => clear('patternSize')}
+            onChange={(size) => setLettering({ size })}
+            onReset={() => clearLettering('size')}
           />
           <NumberRow
             label="Spacing"
-            value={current.patternSpacing ?? base.patternSpacing}
-            inherited={current.patternSpacing === undefined}
-            suffix="px"
-            step={8}
-            onChange={(patternSpacing) => set({ patternSpacing })}
-            onReset={() => clear('patternSpacing')}
+            value={style.lettering.spacing ?? DEFAULT_LETTERING_STYLE.spacingM}
+            inherited={style.lettering.spacing === undefined}
+            suffix="m"
+            step={5}
+            onChange={(spacing) => setLettering({ spacing })}
+            onReset={() => clearLettering('spacing')}
           />
           <NumberRow
             label="Angle"
-            value={current.patternAngle ?? base.patternAngle}
-            inherited={current.patternAngle === undefined}
+            value={style.lettering.angle ?? DEFAULT_LETTERING_STYLE.angle}
+            inherited={style.lettering.angle === undefined}
             suffix="°"
             step={5}
-            onChange={(patternAngle) => set({ patternAngle })}
-            onReset={() => clear('patternAngle')}
+            onChange={(angle) => setLettering({ angle })}
+            onReset={() => clearLettering('angle')}
           />
           <p className="mt-2 text-2xs leading-4 text-text-muted">
-            The letters take the line&rsquo;s colour, so an area&rsquo;s outline and its
-            lettering can never disagree about which area it is. What they say is the
-            kind&rsquo;s own name rather than something typed — an area lettered anything at all
-            would say nothing reliable.
+            One setting for out of bounds, hazards, casual areas and required relief — they are
+            the same annotation at four different rulings, and lettering that differed between
+            them would read as an inconsistency rather than a distinction. What does differ is
+            what the letters say, which is the kind&rsquo;s own name, and their colour, which
+            follows its line. Spacing is on the ground, so it is a density over the land; the
+            grid starts at the middle of each area, so even a small one gets a set.
           </p>
         </div>
       )}

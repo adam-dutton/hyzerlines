@@ -219,6 +219,28 @@ export const MANDO_LINE = {
 } as const;
 
 /**
+ * Whether a point is inside a ring, by ray casting.
+ *
+ * Counts the ring's edges crossed by a ray running east from the point: an odd
+ * number means inside. Works on an open ring — the closing edge is taken as
+ * last-to-first — and needs no winding convention, which is what makes it safe
+ * against a polygon drawn either way round.
+ */
+export function pointInRing(ring: readonly Position[], point: Position): boolean {
+  const [x, y] = point;
+  let inside = false;
+
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i]!;
+    const [xj, yj] = ring[j]!;
+    // Only edges that straddle the ray's latitude can cross it.
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+
+  return inside;
+}
+
+/**
  * A point a distance and a bearing away from another, on the local plane.
  *
  * Metres, so the result holds its relationship to the ground rather than to the

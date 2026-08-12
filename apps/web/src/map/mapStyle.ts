@@ -14,7 +14,6 @@ import {
 } from '@hyzerlines/core';
 
 import { LARGE_ART } from '../chrome/iconArt';
-import { hasPattern } from './patterns';
 
 /**
  * The defaults a stylesheet overrides, and the answer after it has.
@@ -53,10 +52,6 @@ export interface ResolvedFeatureStyle {
   arrowSize: number;
   lineGap: number;
   fillOutside: boolean;
-  pattern: boolean;
-  patternSize: number;
-  patternSpacing: number;
-  patternAngle: number;
 }
 
 export interface ResolvedCircleStyle {
@@ -238,41 +233,19 @@ function defaultFeatureStyle(kind: FeatureKind): ResolvedFeatureStyle {
     glyph: DEFAULT_GLYPHS[kind] ?? '',
     glyphSize: DEFAULT_GLYPH_SIZE,
     /*
-     * On for the four regulated areas, because that is what a course map looks
-     * like: the shading says *something rules this ground* and the letters say
-     * which rule. An unlettered shaded area is the half of that which cannot be
-     * read.
-     */
-    /*
-     * An arrowhead at the far end, on by default.
+     * An arrowhead at the far end of a mandatory's wall, on by default.
      *
      * The line says where the plane is; the arrow says which way it faces, and
-     * on a hole with two mandatories a wall with no direction is a wall you
-     * have to work out from the glyph forty pixels away.
+     * on a hole with two mandatories a wall with no direction is one you have
+     * to work out from a glyph forty pixels away.
      */
     arrow: isRule,
     arrowSize: 14,
     /* Clear of the glyph, which is about thirty pixels across at the zoom a
        hole is designed at. */
     lineGap: isRule ? 4 : 0,
-    pattern: hasPattern(kind),
-    ...PATTERN_DEFAULTS,
   };
 }
-
-/**
- * How the lettering is set, when nobody has said otherwise.
- *
- * Sparse and small. The pattern is a *ground*, not a label — it has to say
- * which area this is without competing with the tees, the corridor and the
- * numbers drawn over it, and lettering at label size repeated every forty
- * pixels is a texture nobody can see the map through.
- */
-const PATTERN_DEFAULTS = {
-  patternSize: 11,
-  patternSpacing: 96,
-  patternAngle: 0,
-} as const;
 
 /**
  * The default sheet, computed once.
@@ -323,7 +296,29 @@ export const DEFAULT_HOLE_NUMBER: ResolvedHoleNumberStyle = {
 };
 
 /** What is actually drawn: the defaults, with the document's overrides on top. */
+/**
+ * How the four regulated areas are lettered. One setting for all of them.
+ *
+ * Sparse and modest, because the lettering is a *ground* rather than a label:
+ * it has to say which area this is without competing with the tees, the
+ * corridor and the numbers drawn over it.
+ */
+export interface ResolvedLettering {
+  on: boolean;
+  size: number;
+  spacingM: number;
+  angle: number;
+}
+
+export const DEFAULT_LETTERING_STYLE: ResolvedLettering = {
+  on: true,
+  size: 11,
+  spacingM: 30,
+  angle: 0,
+};
+
 export interface ResolvedStyle {
+  lettering: ResolvedLettering;
   features: Record<FeatureKind, ResolvedFeatureStyle>;
   circles: Record<TargetCircleId, ResolvedCircleStyle>;
   holeNumber: ResolvedHoleNumberStyle;
@@ -370,10 +365,6 @@ export function resolveStyle(style: MapStyle): ResolvedStyle {
           fillOutside: over.fillOutside ?? base.fillOutside,
           glyph: over.glyph ?? base.glyph,
           glyphSize: over.glyphSize ?? base.glyphSize,
-          pattern: over.pattern ?? base.pattern,
-          patternSize: over.patternSize ?? base.patternSize,
-          patternSpacing: over.patternSpacing ?? base.patternSpacing,
-          patternAngle: over.patternAngle ?? base.patternAngle,
         } satisfies ResolvedFeatureStyle,
       ];
     }),
@@ -397,6 +388,12 @@ export function resolveStyle(style: MapStyle): ResolvedStyle {
   return {
     features,
     circles,
+    lettering: {
+      on: style.lettering.on ?? DEFAULT_LETTERING_STYLE.on,
+      size: style.lettering.size ?? DEFAULT_LETTERING_STYLE.size,
+      spacingM: style.lettering.spacing ?? DEFAULT_LETTERING_STYLE.spacingM,
+      angle: style.lettering.angle ?? DEFAULT_LETTERING_STYLE.angle,
+    },
     holeNumber: {
       text: style.holeNumber.text ?? DEFAULT_HOLE_NUMBER.text,
       // `null` is a value here, not an absence — see `holeNumberStyleSchema`.

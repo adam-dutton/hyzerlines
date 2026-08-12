@@ -1,3 +1,4 @@
+import { PATTERN_TEXT, letteringPoints } from './patterns';
 import {
   alternativeShots,
   anchorOf,
@@ -113,6 +114,12 @@ export function derivedGeometry(
   offset = 0,
   /** Where a mandatory's line starts, out from the object. See `mandoLineOf`. */
   lineGap = 0,
+  /** How the regulated areas are lettered. See `letteringPoints`. */
+  lettering: { on: boolean; spacingM: number; angle: number } = {
+    on: false,
+    spacingM: 30,
+    angle: 0,
+  },
 ): DerivedGeometry {
   const featureById = featureIndex(course);
   const features: GeoJSON.Feature[] = [];
@@ -181,6 +188,37 @@ export function derivedGeometry(
       },
       geometry: { type: 'Point', coordinates: feature.geometry.coordinates },
     });
+  }
+
+  /*
+   * The letters over a regulated area.
+   *
+   * Generated as points so they can be drawn by a symbol layer, which stays
+   * upright when the camera turns — see `letteringPoints` for why a tiled fill
+   * pattern could not.
+   */
+  if (lettering.on) {
+    for (const feature of course.features) {
+      const text = PATTERN_TEXT[feature.kind];
+      if (!text || feature.geometry.type !== 'polygon') continue;
+
+      for (const at of letteringPoints(
+        feature.geometry.coordinates,
+        lettering.spacingM,
+        lettering.angle,
+      )) {
+        features.push({
+          type: 'Feature',
+          properties: {
+            id: feature.id,
+            kind: feature.kind,
+            derived: 'lettering',
+            text,
+          },
+          geometry: { type: 'Point', coordinates: at },
+        });
+      }
+    }
   }
 
   /*

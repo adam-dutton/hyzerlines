@@ -111,19 +111,31 @@ interface Marker {
    * the safer of the two.
    */
   solid?: true;
-  /**
-   * The lowest the drawing's own ink reaches, as a fraction of its box.
-   *
-   * Only the basket needs it. Its pole stops short of the bottom edge, and the
-   * marker is anchored `bottom`, so empty box under the ink would float every
-   * basket off the ground it is standing on.
-   */
-  inkBottom?: number;
 }
 
+/**
+ * How far down its box a drawing's ink actually reaches, as a fraction.
+ *
+ * Keyed by the *drawing* rather than by the marker slot, and that is the fix
+ * for a real bug: it was a property of the slot, so a tee that had picked any
+ * pad other than the default was still cropped to the default's height and lost
+ * its bottom third. A slot can hold several drawings and an uploaded one can be
+ * anything, so the crop has to follow the artwork.
+ *
+ * It exists at all because a basket is anchored at its base: the pole stops
+ * short of the box's bottom edge, and empty box under the ink would float every
+ * basket off the ground it stands on. Anything not listed here fills its box.
+ */
+const INK_BOTTOM: Record<string, number> = {
+  basketFill: 22 / 24,
+  basketSolid: 22 / 24,
+  basket: 22 / 24,
+  teePad: 18 / 24,
+};
+
 const MARKERS = {
-  target: { kind: 'target', inkBottom: 22 / 24, solid: true },
-  tee: { kind: 'tee', inkBottom: 18 / 24, solid: true },
+  target: { kind: 'target', solid: true },
+  tee: { kind: 'tee', solid: true },
   dropzone: { kind: 'dropzone' },
   mandoLeft: { kind: 'mando', backing: true },
   mandoRight: { kind: 'mando', variant: 'opposite', backing: true },
@@ -167,6 +179,8 @@ function draw(
   art: GlyphArt,
   color: string,
   casing: string,
+  /** Zero when the kind's casing is switched off. See `featureStyleSchema`. */
+  casingAlpha: number,
 ): void {
   const paths = art.paths.map((d) => new Path2D(d));
   const [minX, minY, width, height] = art.viewBox;
@@ -180,16 +194,28 @@ function draw(
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  if (marker.backing) {
-    ctx.fillStyle = casing;
-    for (const path of paths) ctx.fill(path);
-  }
+  /*
+   * The casing obeys the stylesheet, like every other line on the map.
+   *
+   * It did not: the glyphs took the casing *colour* and drew it at full
+   * strength whatever the kind's casing switch and opacity said, so turning the
+   * contrast floor off left every marker still wearing one. The backing goes
+   * with it — it is the same dark ink, filled rather than stroked.
+   */
+  if (casingAlpha > 0) {
+    ctx.globalAlpha = casingAlpha;
+    if (marker.backing) {
+      ctx.fillStyle = casing;
+      for (const path of paths) ctx.fill(path);
+    }
 
-  ctx.strokeStyle = casing;
-  // Divided by the fit so an uploaded glyph in a 512 box gets the same casing
-  // on screen as a built-in one in a 24 box.
-  ctx.lineWidth = (marker.solid ? 2 : 1) / fit;
-  for (const path of paths) ctx.stroke(path);
+    ctx.strokeStyle = casing;
+    // Divided by the fit so an uploaded glyph in a 512 box gets the same casing
+    // on screen as a built-in one in a 24 box.
+    ctx.lineWidth = (marker.solid ? 2 : 1) / fit;
+    for (const path of paths) ctx.stroke(path);
+    ctx.globalAlpha = 1;
+  }
 
   ctx.fillStyle = color;
   for (const path of paths) ctx.fill(path, 'evenodd');
@@ -199,22 +225,24 @@ function draw(
 function render(
   marker: Marker,
   art: GlyphArt,
+  glyph: string,
   sizePx: number,
   color: string,
   casing: string,
+  casingAlpha: number,
 ): ImageData | null {
   const canvas = document.createElement('canvas');
   // The style asks for a size in CSS pixels; the image is drawn at the device
   // ratio it will be registered at.
   const side = Math.round(sizePx * PIXEL_RATIO);
   canvas.width = side;
-  canvas.height = Math.max(1, Math.round(side * (marker.inkBottom ?? 1)));
+  canvas.height = Math.max(1, Math.round(side * (INK_BOTTOM[glyph] ?? 1)));
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
 
   // `draw` works in art units scaled by SCALE; rescale to the asked-for size.
   ctx.scale(side / (ART_SIZE * SCALE), side / (ART_SIZE * SCALE));
-  draw(ctx, marker, art, color, casing);
+  draw(ctx, marker, art, color, casing, casingAlpha);
   return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
@@ -289,6 +317,9 @@ export function addMarkerIcons(
 
     const drawn = style.features[marker.kind];
     const size = marker.variant === 'arrow' ? drawn.arrowSize : drawn.glyphSize;
+    // Which drawing this ended up being, so the crop follows the artwork.
+    const glyph = marker.variant === 'arrow' ? 'arrowhead' : drawn.glyph;
+    const casingAlpha = drawn.casingOn ? drawn.casingOpacity : 0;
     const variants: [string, string, string][] = [
       [markerIcon(name), drawn.stroke, drawn.casing],
       /*
@@ -306,7 +337,7 @@ export function addMarkerIcons(
     ];
 
     for (const [id, color, casing] of variants) {
-      const image = render(marker, art, size, color, casing);
+      const image = render(marker, art, glyph, size, color, casing, casingAlpha);
       if (!image) continue;
       if (map.hasImage(id)) map.removeImage(id);
       map.addImage(id, image, { pixelRatio: PIXEL_RATIO });

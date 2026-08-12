@@ -38,7 +38,7 @@ import { RightPanel } from './chrome/RightPanel';
 import type { SelectedPair } from './chrome/HoleProperties';
 import { LeftPanel } from './chrome/LeftPanel';
 import { StyleSubjectPanel, type StyleSubject } from './chrome/StyleProperties';
-import { DEFAULT_FEATURE_STYLES } from './map/mapStyle';
+import { DEFAULT_FEATURE_STYLES, DEFAULT_LETTERING_STYLE } from './map/mapStyle';
 import { useShortcuts } from './keyboard/useShortcuts';
 import type { UnitSystem } from './units';
 import { useCourse } from './document/CourseProvider';
@@ -302,12 +302,20 @@ export function CourseEditor({
         pairChoices,
         course.style.holeNumber.offset ?? 0,
         course.style.features.mando?.lineGap ?? DEFAULT_FEATURE_STYLES.mando.lineGap,
+        {
+          on: course.style.lettering.on ?? DEFAULT_LETTERING_STYLE.on,
+          spacingM: course.style.lettering.spacing ?? DEFAULT_LETTERING_STYLE.spacingM,
+          angle: course.style.lettering.angle ?? DEFAULT_LETTERING_STYLE.angle,
+        },
       ),
     [
       visible,
       pairChoices,
       course.style.holeNumber.offset,
       course.style.features.mando?.lineGap,
+      course.style.lettering.on,
+      course.style.lettering.spacing,
+      course.style.lettering.angle,
     ],
   );
 
