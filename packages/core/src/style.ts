@@ -122,6 +122,16 @@ export const featureStyleSchema = z.object({
   secondFill: colorSchema.optional(),
   secondFillOpacity: z.number().min(0).max(1).optional(),
   /**
+   * Round the corners off a fairway's line and both of its corridors.
+   *
+   * On the kind rather than on each fairway, and that is the difference between
+   * this and an area's own `smooth`: a corridor is a drawing aid the app worked
+   * out, so whether it is drawn with corners is a decision about the map. An
+   * area is something somebody traced, and whether *it* has corners is a fact
+   * about the ground. See `smoothLine`.
+   */
+  smooth: z.boolean().optional(),
+  /**
    * A mandatory's own three, shown only on that kind.
    *
    * They live in the same record as everything else for the reason the record
@@ -185,6 +195,18 @@ export const holeNumberStyleSchema = z.object({
    */
   weight: z.enum(['regular', 'bold']).optional(),
   /**
+   * The halo behind the numeral, for when there is no disc behind it.
+   *
+   * The disc is the ordinary answer to "a number over satellite imagery is
+   * unreadable", and it is the better one: a shape has an edge, and an edge is
+   * what makes a digit legible over canopy. But a designer who turns the disc
+   * off has not stopped needing the number to be readable — they have decided
+   * the disc is too much ink. A casing is the smaller version of the same
+   * contrast floor every other feature gets, so it is offered exactly there.
+   */
+  casing: colorSchema.optional(),
+  casingOn: z.boolean().optional(),
+  /**
    * The filled pill behind the numeral, or `null` for no pill at all.
    *
    * Three states rather than two, and the third is the point: absent means the
@@ -199,11 +221,33 @@ export const holeNumberStyleSchema = z.object({
 
 export type HoleNumberStyle = z.infer<typeof holeNumberStyleSchema>;
 
-/** A putting circle's ring. It has no fill — see the note in `derivedLayers`. */
+/**
+ * A putting circle: its ring, and the ground inside it.
+ *
+ * The fill is off until asked for, and that is not timidity. Three filled rings
+ * stacked around every basket sit on the imagery a designer reads the terrain
+ * from, and the rings are reference marks rather than areas anybody drew. But a
+ * plan being printed for a park board is a different job from a plan being
+ * designed against, and there a shaded Circle 1 is the clearest thing on it.
+ */
 export const circleStyleSchema = z.object({
   stroke: colorSchema.optional(),
   strokeWidth: z.number().min(0).max(12).optional(),
   dash: dashSchema.optional(),
+  fillOn: z.boolean().optional(),
+  fill: colorSchema.optional(),
+  fillOpacity: z.number().min(0).max(1).optional(),
+  /**
+   * Drop the fill on holes whose corridor is being drawn.
+   *
+   * The corridor already rounds to Circle 1 at the target, so where both are on
+   * the map the fill lands almost entirely on top of a band that is already
+   * shaded — two translucent layers making one muddy one. Where the corridors
+   * are off, the same fill is the only thing saying where the putting area is.
+   * So it is a condition rather than a choice: the ring fills in exactly the
+   * case where nothing else is doing the job.
+   */
+  hideOverCorridor: z.boolean().optional(),
 });
 
 export type CircleStyle = z.infer<typeof circleStyleSchema>;
@@ -254,14 +298,24 @@ const TARGET_CIRCLE_IDS = TARGET_CIRCLES.map((circle) => circle.id) as [
  * fix the other three by hand. What legitimately differs between them is what
  * the letters *say* and what colour they are, and neither of those is in here:
  * the text is the kind's own name, and the colour follows its line.
+ *
+ * ## Everything here is measured on the screen
+ *
+ * Size, spacing and angle are all properties of the *drawing*, not of the site.
+ * Spacing was in metres to begin with, on the argument that it is a density
+ * over the land — which is true and is the wrong answer, because it means
+ * zooming out multiplies the letters until an area is a solid block of them.
+ * What a designer means by "spacing" is how far apart these look, and that is a
+ * distance on the screen. Same for the angle: it turns the letters, so a set of
+ * areas can be lettered on the diagonal without the letters lying on their side.
  */
 export const letteringSchema = z.object({
   on: z.boolean().optional(),
   /** Cap height, in pixels. */
   size: z.number().min(6).max(48).optional(),
-  /** Centre to centre on the ground, in metres. Bigger is sparser. */
-  spacing: z.number().min(5).max(400).optional(),
-  /** Degrees clockwise. Tilts the grid, not the letters. */
+  /** Centre to centre on the screen, in pixels. Bigger is sparser. */
+  spacing: z.number().min(20).max(600).optional(),
+  /** Degrees clockwise. Turns the letters themselves. */
   angle: z.number().min(-90).max(90).optional(),
 });
 

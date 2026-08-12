@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   GeoJSONSource,
   LayerSpecification,
@@ -20,9 +20,7 @@ import {
   FEATURES_SOURCE,
   HANDLES_SOURCE,
   INTERACTIVE_LAYERS,
-  derivedLayers,
-  featureLayers,
-  holeLabelLayers,
+  courseLayers,
   toGeoJSON,
   vertexLayers,
 } from './featureLayers';
@@ -32,6 +30,55 @@ import { resolveStyle, type ResolvedStyle } from './mapStyle';
 import type { DerivedGeometry } from './derived';
 
 const PREVIEW_SOURCE = 'drawing-preview';
+
+/**
+ * How long the Style focus holds its highlight before letting go.
+ *
+ * Long enough to see which shapes answered, short enough that it reads as a
+ * confirmation rather than a state. MapLibre's own paint transition fades it in
+ * and out either side of this, so the glow is on screen for about a second in
+ * total. See `highlightLayers`.
+ */
+const FLASH_MS = 700;
+
+/**
+ * Every drawing of one styleable thing, so all of them can answer at once.
+ *
+ * Clicking an out-of-bounds area in Style means "show me how out-of-bounds
+ * areas are drawn", and the honest confirmation of that is every OB area on the
+ * course lighting up — not the one under the cursor, which would suggest the
+ * panel is about to change that one alone.
+ *
+ * Both sources are read, because most of what a designer clicks in Style is
+ * derived: a corridor is its fairway, a pad is its tee, a wall is its
+ * mandatory. Those carry the feature's own id, so the same set reaches them.
+ */
+function instancesOf(
+  subject: FeatureKind | 'holeNumber',
+  features: readonly Feature[],
+  derived: GeoJSON.FeatureCollection,
+): string[] {
+  const ids = new Set<string>();
+
+  const take = (value: unknown) => {
+    if (typeof value === 'string') ids.add(value);
+  };
+
+  // The numbers are not features at all: they exist only in derived geometry,
+  // and are found by what they are rather than by a kind they do not have.
+  if (subject === 'holeNumber') {
+    for (const drawn of derived.features) {
+      if (drawn.properties?.['derived'] === 'holeLabel') take(drawn.properties['id']);
+    }
+    return [...ids];
+  }
+
+  for (const feature of features) if (feature.kind === subject) ids.add(feature.id);
+  for (const drawn of derived.features) {
+    if (drawn.properties?.['kind'] === subject) take(drawn.properties['id']);
+  }
+  return [...ids];
+}
 
 interface FeatureLayerProps {
   features: readonly Feature[];
@@ -80,8 +127,8 @@ interface FeatureLayerProps {
  */
 function sceneLayers(resolved: ResolvedStyle): LayerSpecification[] {
   return [
-    ...derivedLayers(resolved),
-    ...featureLayers(resolved),
+    // The course itself, bottom to top. `courseLayers` owns that order.
+    ...courseLayers(resolved),
     // Provisional geometry: dashed, so it never reads as committed.
     {
       id: 'preview-line',
@@ -95,8 +142,6 @@ function sceneLayers(resolved: ResolvedStyle): LayerSpecification[] {
         'line-dasharray': [2, 1.5],
       },
     },
-    // Above the geometry they label, below the handles.
-    ...holeLabelLayers(resolved),
     // Above everything: the smallest targets on screen must win hit-testing.
     ...vertexLayers(),
     {
@@ -354,6 +399,38 @@ export function FeatureLayer({
     };
   }, [map, selectedIds, features]);
 
+  /*
+   * The Style focus's highlight, held for a moment and then given back.
+   *
+   * A feature state rather than a property, for the same reason selection is:
+   * setting it re-runs no layout and re-parses no geometry. The cleanup is what
+   * ends the flash — clearing the ids removes the state, and MapLibre's default
+   * paint transition fades the glow out rather than snapping it off.
+   */
+  const [flashIds, setFlashIds] = useState<readonly string[]>([]);
+  useEffect(() => {
+    if (!map || flashIds.length === 0) return;
+    const sources = [FEATURES_SOURCE, DERIVED_SOURCE];
+
+    for (const source of sources) {
+      for (const id of flashIds) map.setFeatureState({ source, id }, { flash: true });
+    }
+    const timer = window.setTimeout(() => setFlashIds([]), FLASH_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+      for (const source of sources) {
+        for (const id of flashIds) map.removeFeatureState({ source, id }, 'flash');
+      }
+    };
+  }, [map, flashIds]);
+
+  // Leaving Style takes the highlight with it: it is a confirmation of a click
+  // in that focus, and a glow outliving the focus reads as something selected.
+  useEffect(() => {
+    if (focus !== 'style') setFlashIds([]);
+  }, [focus]);
+
   // Click to select, click empty space to deselect.
   useEffect(() => {
     if (!map || !selectable) return;
@@ -413,11 +490,29 @@ export function FeatureLayer({
        */
       if (focus === 'style' && properties) {
         const kind = properties['kind'];
-        if (properties['derived'] === 'holeLabel') onPickStyle('holeNumber');
-        else if (typeof kind === 'string') onPickStyle(kind as FeatureKind);
+        const subject: FeatureKind | 'holeNumber' | null =
+          properties['derived'] === 'holeLabel'
+            ? 'holeNumber'
+            : typeof kind === 'string'
+              ? (kind as FeatureKind)
+              : null;
+        if (!subject) return;
 
-        const own = properties['id'];
-        onSelect(typeof own === 'string' && !own.startsWith('hole ') ? own : null);
+        onPickStyle(subject);
+        /*
+         * Every instance lights up, briefly, and nothing is selected.
+         *
+         * Selection here used to be the ordinary kind: the clicked feature went
+         * into `selectedIds` and was recoloured. Both halves were wrong. One
+         * shape out of a dozen identical ones is not what the panel is about,
+         * and recolouring hides the fill the panel is there to edit — so a
+         * designer adjusting an OB colour was looking at the selection colour
+         * the whole time. A glow says which shapes answered and then goes away.
+         */
+        onSelect(null);
+        setFlashIds(
+          instancesOf(subject, dataRef.current.features, dataRef.current.derived.collection),
+        );
         return;
       }
 

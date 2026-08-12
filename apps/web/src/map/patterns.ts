@@ -26,12 +26,28 @@ import type { FeatureKind } from '@hyzerlines/core';
  * Seeded from the polygon's own centre rather than from a global origin, and
  * that is what makes a *small* area readable — a grid anchored anywhere else
  * lands its letters wherever they happen to fall, and a pond narrower than the
- * spacing gets none at all. Starting at the centre guarantees one, which is the
- * one that matters.
+ * spacing gets none at all. Starting at the centre gives the best chance of one,
+ * which is the one that matters.
  *
- * Spacing is in metres, because it is a density over the land: how much ground
- * one "OB" is responsible for. A pixel spacing would multiply the labels every
- * time you zoomed out, which is the opposite of what a designer means by it.
+ * ## Spacing is a distance on the screen
+ *
+ * It was a distance on the ground, on the argument that the lettering is a
+ * density over the land. That argument is true and it is the wrong answer:
+ * zooming out shrinks the ground under each letter without shrinking the letter,
+ * so an area that read as lettered at the zoom it was drawn at became a solid
+ * block of OB at the zoom you check the routing from. What a designer means by
+ * spacing is how far apart these look. So the caller converts pixels to metres
+ * at the zoom being drawn, and these points are regenerated as it changes.
+ *
+ * ## Nothing is allowed to hang over the edge
+ *
+ * A label whose glyphs cross the boundary is writing on ground the area does not
+ * cover, which on a map about where you may and may not throw is the one thing
+ * it must not do. MapLibre cannot clip a symbol layer to a polygon, so the
+ * clipping happens here instead: a candidate is dropped unless the whole text
+ * box clears every edge. Areas narrower than their own lettering therefore get
+ * none, which is the honest outcome — the alternative is OB written across a
+ * fairway.
  */
 
 /** What each regulated area is called, in the letters a course map uses. */
@@ -47,15 +63,33 @@ export const hasPattern = (kind: FeatureKind): boolean => kind in PATTERN_TEXT;
 export const letteringLayer = (kind: FeatureKind): string => `features-${kind}-lettering`;
 
 /**
- * How many labels one area may produce.
+ * How many labels one area may produce, and how far the grid may walk.
  *
- * A guard rather than a design decision. Spacing is a distance and an area is
- * whatever somebody drew, so the two together can ask for a number bounded only
- * by patience — a five-metre spacing over a property-sized polygon is tens of
- * thousands of symbols and a frozen tab. Reaching this cap means the lettering
- * is far too dense to read anyway, so stopping is also the right *drawing*.
+ * Guards rather than design decisions. Spacing is a screen distance and an area
+ * is whatever somebody drew, so at a close zoom over a property-sized polygon
+ * the two together can ask for a number bounded only by patience. Both caps are
+ * far past the point where the lettering is legible, so reaching either means
+ * the answer was going to be unreadable anyway.
  */
 const MAX_LABELS = 600;
+const MAX_STEPS = 60;
+
+/**
+ * How far a set of letters reaches from its own centre, in pixels.
+ *
+ * Half the diagonal of the text box, so the number holds whatever angle the
+ * letters are turned to. The width per character is an approximation of the
+ * font's average advance — it does not have to be exact, because it is used to
+ * decide whether a label clears a boundary and being slightly generous only
+ * costs a label that would have fitted.
+ */
+const CHARACTER_WIDTH = 0.62;
+
+export function letteringReachPx(text: string, sizePx: number): number {
+  const halfWidth = (text.length * CHARACTER_WIDTH * sizePx) / 2;
+  const halfHeight = sizePx / 2;
+  return Math.hypot(halfWidth, halfHeight);
+}
 
 /**
  * The centre of a ring, as the average of its vertices.
@@ -65,7 +99,7 @@ const MAX_LABELS = 600;
  * draw. A vertex average is that for anything convex and close enough for the
  * rest, and it is stable as a polygon is edited.
  */
-function centreOf(ring: readonly Position[]): Position {
+export function centreOf(ring: readonly Position[]): Position {
   let lng = 0;
   let lat = 0;
   for (const [x, y] of ring) {
@@ -75,16 +109,43 @@ function centreOf(ring: readonly Position[]): Position {
   return [lng / ring.length, lat / ring.length];
 }
 
+/** How far a point on the plane sits from the nearest edge of the ring. */
+function clearanceOf(local: readonly [number, number][], east: number, north: number): number {
+  let nearest = Infinity;
+  for (let i = 0; i < local.length; i++) {
+    const [ax, ay] = local[i]!;
+    const [bx, by] = local[(i + 1) % local.length]!;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lengthSquared = dx * dx + dy * dy;
+    // A repeated vertex is a zero-length edge; fall back to the point itself.
+    const t =
+      lengthSquared === 0
+        ? 0
+        : Math.min(1, Math.max(0, ((east - ax) * dx + (north - ay) * dy) / lengthSquared));
+    nearest = Math.min(nearest, Math.hypot(east - (ax + t * dx), north - (ay + t * dy)));
+    if (nearest === 0) return 0;
+  }
+  return nearest;
+}
+
 /**
  * Where the letters go for one area.
  *
- * Walks a grid outward from the centre in a square big enough to cover the
- * ring's extent, keeping the points that land inside it.
+ * Walks an axis-aligned grid outward from the centre in a square big enough to
+ * cover the ring, keeping the points that land inside it with room for the text.
+ *
+ * The grid is axis-aligned and stays that way whatever angle the letters are
+ * set at. It used to be the grid that turned, which is what "angle" did before:
+ * the letters stayed upright and marched diagonally. That is a different effect
+ * from the one the control names, and the one it names is the one people want.
+ * The angle is now `text-rotate` on the symbol layer.
  */
 export function letteringPoints(
   ring: readonly Position[],
   spacingM: number,
-  angleDeg: number,
+  /** How much room the text needs around each point, in metres. */
+  reachM: number,
 ): Position[] {
   if (ring.length < 3 || spacingM <= 0) return [];
 
@@ -93,24 +154,22 @@ export function letteringPoints(
   const local = ring.map((position) => toLocal(plane, position));
 
   // How far the ring reaches from its centre, so the grid covers it and no more.
-  let reach = 0;
-  for (const [east, north] of local) reach = Math.max(reach, Math.hypot(east, north));
-  if (reach === 0) return [];
+  let extent = 0;
+  for (const [east, north] of local) extent = Math.max(extent, Math.hypot(east, north));
+  if (extent === 0) return [];
 
-  const steps = Math.ceil(reach / spacingM);
-  const radians = (angleDeg * Math.PI) / 180;
-  const cos = Math.cos(radians);
-  const sin = Math.sin(radians);
+  const steps = Math.min(MAX_STEPS, Math.ceil(extent / spacingM));
 
   const points: Position[] = [];
   for (let row = -steps; row <= steps && points.length < MAX_LABELS; row++) {
     for (let column = -steps; column <= steps && points.length < MAX_LABELS; column++) {
-      // The grid is rotated, so the letters march at an angle across the area
-      // while each one stays upright — the angle tilts the pattern, not the text.
-      const east = column * spacingM * cos - row * spacingM * sin;
-      const north = column * spacingM * sin + row * spacingM * cos;
+      const east = column * spacingM;
+      const north = row * spacingM;
       const at = fromLocal(plane, [east, north]);
-      if (pointInRing(ring, at)) points.push(at);
+      if (!pointInRing(ring, at)) continue;
+      // Inside is not enough: the whole set of letters has to clear the border.
+      if (clearanceOf(local, east, north) < reachM) continue;
+      points.push(at);
     }
   }
 

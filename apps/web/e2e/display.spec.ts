@@ -155,7 +155,7 @@ test.describe('drawing aids', () => {
 
     // Read off the map, not off the panel: what survived a reload is the
     // document's business, and the section it is set from starts closed again.
-    await expectDrawn(page, 'derived-circle').toBe(0);
+    await expect.poll(() => drawnCircles(page)).toBe(0);
   });
 });
 
@@ -182,7 +182,7 @@ test.describe('the tee pad and its marker', () => {
 
     // Zoomed out to a whole hole: the marker, and no rectangle.
     await expect.poll(() => visible(page, 'derived-marker-tee')).toBe(true);
-    expect(await visible(page, 'derived-footprint')).toBe(false);
+    expect(await visible(page, 'derived-footprint-tee')).toBe(false);
 
     /*
      * A 3 m pad reaches 36 px somewhere above zoom 20 — see PAD_LEGIBLE_ZOOM,
@@ -207,11 +207,11 @@ test.describe('the tee pad and its marker', () => {
     };
 
     await at(21);
-    await expect.poll(() => visible(page, 'derived-footprint')).toBe(true);
+    await expect.poll(() => visible(page, 'derived-footprint-tee')).toBe(true);
     expect(await visible(page, 'derived-marker-tee')).toBe(false);
 
     await at(18);
     await expect.poll(() => visible(page, 'derived-marker-tee')).toBe(true);
-    expect(await visible(page, 'derived-footprint')).toBe(false);
+    expect(await visible(page, 'derived-footprint-tee')).toBe(false);
   });
 });

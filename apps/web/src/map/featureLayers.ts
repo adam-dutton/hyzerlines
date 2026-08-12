@@ -1,11 +1,13 @@
 import type { LayerSpecification, ExpressionSpecification } from 'maplibre-gl';
 import { feature as featureColors } from '@hyzerlines/design';
 import {
-  EARTH_RADIUS,
   FEATURE_KINDS,
   KIND_DEFINITIONS,
   PLACED_RECTANGLE_DEFAULTS,
   TARGET_CIRCLES,
+  isSmoothed,
+  metresPerPixel,
+  smoothRing,
   type Feature,
   type FeatureKind,
   type TargetCircleId,
@@ -38,7 +40,7 @@ import { hasPattern, letteringLayer } from './patterns';
  * call site so that reordering `derivedLayers` cannot silently change what
  * "under the course" means.
  */
-export const COURSE_BOTTOM_LAYER = 'derived-circle';
+export const COURSE_BOTTOM_LAYER = 'derived-outside';
 
 export const FEATURES_SOURCE = 'course-features';
 export const DERIVED_SOURCE = 'derived-geometry';
@@ -90,6 +92,8 @@ export const circleLayer = (id: TargetCircleId) => `derived-circle-${id}`;
 export const areaFillLayer = (kind: FeatureKind) => `features-${kind}-fill`;
 export const areaStrokeLayer = (kind: FeatureKind) => `features-${kind}-stroke`;
 export const lineStrokeLayer = (kind: FeatureKind) => `features-${kind}-stroke`;
+/** A pad is drawn per kind, so a drop zone can sit under a tee. See `padLayers`. */
+export const padLayer = (kind: 'tee' | 'dropzone') => `derived-footprint-${kind}`;
 
 export const areaKinds = (): FeatureKind[] =>
   FEATURE_KINDS.filter((kind) => KIND_DEFINITIONS[kind].geometry === 'polygon');
@@ -181,53 +185,63 @@ const POINT_OPACITY: ExpressionSpecification = [
  * cannot be multiplied together in one property.
  */
 const REFERENCE_LATITUDE = 45;
-const M_PER_PIXEL_AT_ZOOM_0 = (2 * Math.PI * EARTH_RADIUS) / 256;
 const PAD_LEGIBLE_ZOOM = Math.log2(
-  (MARKER_SIZE_PX * M_PER_PIXEL_AT_ZOOM_0 * Math.cos((REFERENCE_LATITUDE * Math.PI) / 180)) /
-    PLACED_RECTANGLE_DEFAULTS.lengthM,
+  (MARKER_SIZE_PX * metresPerPixel(0, REFERENCE_LATITUDE)) / PLACED_RECTANGLE_DEFAULTS.lengthM,
 );
 
 /**
- * Derived geometry: tee and drop-zone pads, fairway corridors and centrelines.
+ * The whole course scene, bottom to top.
  *
- * Installed BEFORE the feature layers so they sit underneath — with one
- * deliberate exception. **The tee pad is the tee.** It carries the tee's own id,
- * it responds to clicks, and it takes selection styling, because the point
- * underneath it is suppressed once a pad exists. A dot and a rectangle both
- * standing for one tee would be the interface claiming two objects where the
- * designer placed one.
+ * One list, and the order in it is the design. MapLibre draws in insertion
+ * order and hit-tests in it too, so this is simultaneously what covers what and
+ * what answers a click — and both of those are decisions about the map rather
+ * than consequences of how the code is organised. It used to be three lists
+ * concatenated: everything derived, then everything drawn, then the numbers.
+ * That put an out-of-bounds area over the fairway line running through it,
+ * which is exactly backwards — the line is the hole and the area is the ground
+ * it crosses.
  *
- * Corridors keep the dashed hairline that reads as "computed". A tee pad does
- * not: it is a physical rectangle of concrete, and the fact that its corners
- * were calculated is an implementation detail rather than something to hedge
- * about on screen.
+ * So the order is stated once, here, as the sequence a course is read in:
+ *
+ *   1. the ground outside the property line, and the line itself
+ *   2. the regulated areas, and anything else drawn on the land
+ *   3. the approach corridor, then the corridor inside it
+ *   4. the fairway line
+ *   5. Circle 2, Circle 1, the bullseye — widest first
+ *   6. mandatories, drop zones, tees, baskets
+ *   7. the hole numbers, over everything they label
+ *
+ * Each step is one function below, and the only thing that decides where a
+ * layer lands is which of them it is written in.
  */
-export function derivedLayers(style: ResolvedStyle): LayerSpecification[] {
-  /*
-   * Derived geometry belongs to a kind even though the document does not store
-   * it. A corridor and a centreline are two drawings of one fairway, a pad is
-   * a tee, and a mandatory line is a mandatory — so each takes that kind's
-   * style rather than one of its own. Restyling `fairway` restyles the shot.
-   */
-  const fairway = style.features.fairway;
-  const mando = style.features.mando;
-  const tee = style.features.tee;
-  const fairwayDash = DASH_PATTERNS[fairway.dash];
-  const mandoDash = DASH_PATTERNS[mando.dash];
-
-  const isCorridor: ExpressionSpecification = ['==', ['get', 'derived'], 'corridor'];
-  const isFootprint: ExpressionSpecification = ['==', ['get', 'derived'], 'footprint'];
-  const isMandoLine: ExpressionSpecification = ['==', ['get', 'derived'], 'mandoLine'];
-  const isCentreline: ExpressionSpecification = ['==', ['get', 'derived'], 'centreline'];
-
-  const boundary = style.features.boundary;
-
+export function courseLayers(style: ResolvedStyle): LayerSpecification[] {
+  const drawnAreas = areaKinds().filter((kind) => kind !== 'boundary');
   return [
-    /*
-     * The ground outside a property line, under everything including the
-     * alternatives. It is a ground rather than a mark: the site is what is
-     * being read, and this exists to say where the site stops.
-     */
+    ...outsideLayers(style),
+    ...areaLayers(style, ['boundary']),
+    ...areaLayers(style, drawnAreas),
+    ...drawnLineLayers(style),
+    ...corridorLayers(style),
+    ...fairwayLineLayers(style),
+    ...circleLayers(style),
+    ...mandoLayers(style),
+    ...padLayers(style, 'dropzone'),
+    ...padLayers(style, 'tee'),
+    ...pointLayers(style),
+    ...holeLabelLayers(style),
+    ...highlightLayers(),
+  ];
+}
+
+/**
+ * The ground outside a property line, under everything.
+ *
+ * It is a ground rather than a mark: the site is what is being read, and this
+ * exists to say where the site stops.
+ */
+function outsideLayers(style: ResolvedStyle): LayerSpecification[] {
+  const boundary = style.features.boundary;
+  return [
     {
       id: 'derived-outside',
       type: 'fill',
@@ -238,11 +252,18 @@ export function derivedLayers(style: ResolvedStyle): LayerSpecification[] {
         'fill-opacity': boundary.fillOutside ? boundary.fillOpacity : 0,
       },
     },
-    /*
-     * The approach corridor, under the first one because it is the wider
-     * claim: how much room the approach has, where the first says how much
-     * room the line has.
-     */
+  ];
+}
+
+/**
+ * Both fairway corridors: the approach, then the line's own.
+ *
+ * The approach is underneath because it is the wider claim — how much room the
+ * approach has, where the first says how much room the line has.
+ */
+function corridorLayers(style: ResolvedStyle): LayerSpecification[] {
+  const fairway = style.features.fairway;
+  return [
     {
       id: 'derived-approach',
       type: 'fill',
@@ -254,26 +275,53 @@ export function derivedLayers(style: ResolvedStyle): LayerSpecification[] {
       },
     },
     /*
-     * The shading behind a mandatory's wall.
-     *
-     * Six nested half discs at a fraction of the asked-for opacity each,
-     * because MapLibre fills have no radial gradient. They stack densest at the
-     * flat edge and thin out towards the arc, which is the falloff a gradient
-     * would give — and the whole point of the shape is that it fades, so a hard
-     * edge at the far side would read as a second wall.
+     * No outline. A corridor is a drawing aid, not a boundary anyone has
+     * actually drawn, and a stroke around it read as a claim about where the
+     * fairway stops that the app has no business making. The fill alone says
+     * "the room this shot has" without pretending to a precision it doesn't
+     * have — and at the target end, where the corridor rounds to the same
+     * radius as Circle 1, a stroke would have cut a visible seam across a ring
+     * the map is already drawing there.
      */
     {
-      id: 'derived-mando-shade',
+      id: 'derived-corridor',
       type: 'fill',
       source: DERIVED_SOURCE,
-      filter: ['==', ['get', 'derived'], 'mandoShade'],
+      filter: ['==', ['get', 'derived'], 'corridor'],
       paint: {
-        'fill-color': '#000000',
-        'fill-opacity': mando.shadeOpacity / 6,
+        'fill-color': selectable(fairway.fill, 'fill'),
+        // Zero when the designer has switched fairways off — see `derived.ts`.
+        // The shape stays on the map so the ground a hole's shot runs over
+        // still selects that hole; hiding the drawing must not take the target
+        // away with it.
+        'fill-opacity': [
+          'case',
+          ['coalesce', ['get', 'hidden'], false],
+          0,
+          fairway.fillOpacity,
+        ],
       },
     },
+  ];
+}
+
+/**
+ * The fairway line: the shot in play, and the shots the hole also offers.
+ *
+ * Always dashed. A fairway is a drawing aid the app worked out, not a thing on
+ * the ground, and it should say so whether or not anybody has bent it. It used
+ * to go solid once shaped, which put the two most similar-looking marks on the
+ * map — a routed fairway and a drawn path — one keystroke apart.
+ *
+ * Butt caps, not round: round caps swell each dash into a lozenge and close the
+ * gaps at this width.
+ */
+function fairwayLineLayers(style: ResolvedStyle): LayerSpecification[] {
+  const fairway = style.features.fairway;
+  const isCentreline: ExpressionSpecification = ['==', ['get', 'derived'], 'centreline'];
+  return [
     /*
-     * The alternatives, first and therefore underneath everything.
+     * The alternatives, under the shot in play.
      *
      * Not in the interactive list: at 1.25px these are a poor click target, and
      * a click landing on hole 7's spare tee line instead of the corridor it
@@ -293,86 +341,6 @@ export function derivedLayers(style: ResolvedStyle): LayerSpecification[] {
         'line-dasharray': [...ALTERNATIVE_DASH],
       },
     },
-    /*
-     * Putting circles, at their real size on the ground, one layer per ring.
-     *
-     * One layer each rather than one layer with expressions inside it, for the
-     * reason the feature layers are split the same way: `line-dasharray` takes
-     * no data-driven expression, so three rings that can each carry their own
-     * dash have to be three layers. It also means a designer restyling Circle 1
-     * cannot accidentally restyle the bullseye.
-     *
-     * Outline only — three filled rings stacked around every basket would sit
-     * on the imagery a designer is reading the terrain from.
-     */
-    ...TARGET_CIRCLES.map((circle): LayerSpecification => {
-      const ring = style.circles[circle.id];
-      return {
-        id: circleLayer(circle.id),
-        type: 'line',
-        source: DERIVED_SOURCE,
-        filter: [
-          'all',
-          ['==', ['get', 'derived'], 'circle'],
-          ['==', ['get', 'circle'], circle.id],
-        ],
-        layout: { 'line-join': 'round' },
-        paint: {
-          'line-color': ring.stroke,
-          'line-width': ring.strokeWidth,
-          /*
-           * A ring the rules publish is drawn more strongly than one they do
-           * not. The 3 m bullseye is league convention and appears in no PDGA
-           * document; drawing it at the same weight as Circle 1 would be the
-           * map making a claim the rules do not.
-           */
-          'line-opacity': circle.authority === 'rules' ? 0.75 : 0.45,
-          ...dashPaint(DASH_PATTERNS[ring.dash]),
-        },
-      };
-    }),
-    /*
-     * No outline. A corridor is a drawing aid, not a boundary anyone has
-     * actually drawn, and a stroke around it read as a claim about where the
-     * fairway stops that the app has no business making. The fill alone says
-     * "the room this shot has" without pretending to a precision it doesn't
-     * have — and at the target end, where the corridor now rounds to the
-     * same radius as Circle 1, a stroke would have cut a visible seam across
-     * a ring the map is already drawing there.
-     */
-    {
-      id: 'derived-corridor',
-      type: 'fill',
-      source: DERIVED_SOURCE,
-      filter: isCorridor,
-      paint: {
-        'fill-color': selectable(fairway.fill, 'fill'),
-        // Fainter than a drawn area of the same kind: it is the room the shot
-        // has, not a thing in its own right.
-        //
-        // Zero when the designer has switched fairways off — see `derived.ts`.
-        // The shape stays on the map so the ground a hole's shot runs over
-        // still selects that hole; hiding the drawing must not take the target
-        // away with it.
-        'fill-opacity': [
-          'case',
-          ['coalesce', ['get', 'hidden'], false],
-          0,
-          fairway.fillOpacity,
-        ],
-      },
-    },
-    /*
-     * The centreline, cased like any other vector, and always dashed.
-     *
-     * Always: a fairway is a drawing aid the app worked out, not a thing on the
-     * ground, and it should say so whether or not anybody has bent it. It used
-     * to go solid once shaped, which put the two most similar-looking marks on
-     * the map — a routed fairway and a drawn path — one keystroke apart.
-     *
-     * Butt caps, not round: round caps swell each dash into a lozenge and close
-     * the gaps at this width.
-     */
     {
       id: 'derived-centreline-casing',
       type: 'line',
@@ -396,20 +364,109 @@ export function derivedLayers(style: ResolvedStyle): LayerSpecification[] {
         'line-color': selectable(fairway.stroke, 'stroke'),
         'line-opacity': fairway.strokeOpacity,
         'line-width': fairway.strokeWidth,
-        ...dashPaint(fairwayDash),
+        ...dashPaint(DASH_PATTERNS[fairway.dash]),
       },
     },
+  ];
+}
+
+/**
+ * Putting circles, at their real size on the ground, widest first.
+ *
+ * Circle 2 under Circle 1 under the bullseye, so the tightest ring is never
+ * buried by the loosest — which is the order they matter in as well.
+ *
+ * Two layers each rather than one with expressions inside it, for the reason
+ * the feature layers are split the same way: `line-dasharray` takes no
+ * data-driven expression, so rings that can each carry their own dash have to
+ * be their own layers. It also means a designer restyling Circle 1 cannot
+ * accidentally restyle the bullseye.
+ */
+function circleLayers(style: ResolvedStyle): LayerSpecification[] {
+  const widestFirst = [...TARGET_CIRCLES].sort((a, b) => b.radiusM - a.radiusM);
+
+  return widestFirst.flatMap((circle): LayerSpecification[] => {
+    const ring = style.circles[circle.id];
+    const filter: ExpressionSpecification = [
+      'all',
+      ['==', ['get', 'derived'], 'circle'],
+      ['==', ['get', 'circle'], circle.id],
+    ];
+
     /*
-     * The mandatory line: the plane the disc may not cross.
+     * The fill stands down where a corridor is already shading the ground.
      *
-     * Solid and full weight, unlike everything else the derived source draws.
-     * A corridor is a drawing aid and says so with a dashed hairline; this is a
-     * rule about where the disc may go, and a rule that reads as a suggestion
-     * is worse than no mark at all.
-     *
-     * Under the glyph, so the marker that says which side you must pass sits on
-     * top of the wall that says which side you may not.
+     * `corridor` is set per basket in `derived.ts` — the course-wide fairway
+     * switch and the hole's own, resolved there because the layer can only see
+     * one answer for the whole map. See `circleStyleSchema`.
      */
+    const opacity: number | ExpressionSpecification = !ring.fillOn
+      ? 0
+      : ring.hideOverCorridor
+        ? ['case', ['coalesce', ['get', 'corridor'], false], 0, ring.fillOpacity]
+        : ring.fillOpacity;
+
+    return [
+      {
+        id: `${circleLayer(circle.id)}-fill`,
+        type: 'fill',
+        source: DERIVED_SOURCE,
+        filter,
+        paint: { 'fill-color': ring.fill, 'fill-opacity': opacity },
+      },
+      {
+        id: circleLayer(circle.id),
+        type: 'line',
+        source: DERIVED_SOURCE,
+        filter,
+        layout: { 'line-join': 'round' },
+        paint: {
+          'line-color': ring.stroke,
+          'line-width': ring.strokeWidth,
+          /*
+           * A ring the rules publish is drawn more strongly than one they do
+           * not. The 3 m bullseye is league convention and appears in no PDGA
+           * document; drawing it at the same weight as Circle 1 would be the
+           * map making a claim the rules do not.
+           */
+          'line-opacity': circle.authority === 'rules' ? 0.75 : 0.45,
+          ...dashPaint(DASH_PATTERNS[ring.dash]),
+        },
+      },
+    ];
+  });
+}
+
+/**
+ * A mandatory: the shading, the wall, the arrow and the marker.
+ *
+ * All four together and above the fairway line, because a mandatory is a rule
+ * about where the disc may go and the line is a suggestion about where it might
+ * — a rule drawn underneath the suggestion reads as the weaker of the two.
+ *
+ * The wall is solid and full weight, unlike everything else the derived source
+ * draws, for the same reason. And it sits under the glyph, so the marker saying
+ * which side you must pass is on top of the plane saying which side you may not.
+ */
+function mandoLayers(style: ResolvedStyle): LayerSpecification[] {
+  const mando = style.features.mando;
+  const isMandoLine: ExpressionSpecification = ['==', ['get', 'derived'], 'mandoLine'];
+
+  return [
+    /*
+     * Six nested half discs at a fraction of the asked-for opacity each,
+     * because MapLibre fills have no radial gradient. They stack densest at the
+     * flat edge and thin out towards the arc, which is the falloff a gradient
+     * would give — and the whole point of the shape is that it fades, so a hard
+     * edge at the far side would read as a second wall.
+     */
+    {
+      id: 'derived-mando-shade',
+      type: 'fill',
+      source: DERIVED_SOURCE,
+      filter: ['==', ['get', 'derived'], 'mandoShade'],
+      paint: { 'fill-color': '#000000', 'fill-opacity': mando.shadeOpacity / 6 },
+    },
     {
       id: 'derived-mando-line-casing',
       type: 'line',
@@ -433,79 +490,9 @@ export function derivedLayers(style: ResolvedStyle): LayerSpecification[] {
         'line-color': selectable(mando.stroke, 'stroke'),
         'line-opacity': mando.strokeOpacity,
         'line-width': mando.strokeWidth,
-        ...dashPaint(mandoDash),
+        ...dashPaint(DASH_PATTERNS[mando.dash]),
       },
     },
-    /*
-     * A tee pad is solid ground, not an annotation, so it is drawn as one:
-     * an opaque fill and nothing else. No coloured outline — the fill's own
-     * edge already is the pad's edge — and the fill stays fully opaque
-     * whether or not it is selected, so selection reads entirely from its
-     * colour (white to accent) rather than from a stroke appearing on top of
-     * it. The casing stays: against sand or bleached grass a solid pad can
-     * still lose its edge without the dark ring underneath it.
-     */
-    {
-      id: 'derived-footprint-casing',
-      type: 'line',
-      source: DERIVED_SOURCE,
-      filter: isFootprint,
-      minzoom: PAD_LEGIBLE_ZOOM,
-      layout: { 'line-join': 'round' },
-      paint: {
-        'line-color': casingColor(tee.casing),
-        'line-opacity': tee.casingOn ? tee.casingOpacity : 0,
-        'line-width': tee.strokeWidth * 1.4,
-      },
-    },
-    {
-      id: 'derived-footprint',
-      type: 'fill',
-      source: DERIVED_SOURCE,
-      filter: isFootprint,
-      minzoom: PAD_LEGIBLE_ZOOM,
-      paint: {
-        'fill-color': selectable(tee.stroke, 'fill'),
-        'fill-opacity': tee.strokeOpacity,
-      },
-    },
-
-    /*
-     * The glyphs.
-     *
-     * A tee and a drop zone are anchored at the TOP of their drawing, not its
-     * centre, and that is the same fact `footprintOf` is built on: the stored
-     * point is the front centre of the pad and the pad extends backwards from
-     * it. Anchored at the top and turned to the pad's bearing, the glyph lies
-     * exactly where the rectangle it stands in for does — centring it would
-     * hang half the marker out in front of the tee line.
-     *
-     * A mandatory is anchored at its centre, because the object really is in
-     * the middle of the marker, and it is not hidden by zoom: unlike a pad
-     * there is no larger drawing coming to replace it.
-     */
-    ...markerLayers('derived-marker-tee', 'tee', {
-      source: DERIVED_SOURCE,
-      filter: markerOfKind('tee'),
-      anchor: 'top',
-      rotate: ['get', 'bearing'],
-      maxzoom: PAD_LEGIBLE_ZOOM,
-    }),
-    ...markerLayers('derived-marker-dropzone', 'dropzone', {
-      source: DERIVED_SOURCE,
-      filter: markerOfKind('dropzone'),
-      anchor: 'top',
-      rotate: ['get', 'bearing'],
-      maxzoom: PAD_LEGIBLE_ZOOM,
-    }),
-    /*
-     * One layer per side, because which way the marker points *is* the ruling.
-     *
-     * Not one drawing mirrored: the pair keeps its M upright while the point
-     * moves, which a flip would not. Both are turned to the direction of play,
-     * so the point lands on the player's left or right rather than on the
-     * screen's.
-     */
     /*
      * The arrowhead, above the line and below the glyph. Turned to the wall
      * rather than to the direction of play, so it points the way the plane
@@ -517,6 +504,14 @@ export function derivedLayers(style: ResolvedStyle): LayerSpecification[] {
       anchor: 'center',
       rotate: ['get', 'bearing'],
     }),
+    /*
+     * One layer per side, because which way the marker points *is* the ruling.
+     *
+     * Not one drawing mirrored: the pair keeps its M upright while the point
+     * moves, which a flip would not. Both are turned to the direction of play,
+     * so the point lands on the player's left or right rather than on the
+     * screen's.
+     */
     ...markerLayers('derived-marker-mando-left', 'mandoLeft', {
       source: DERIVED_SOURCE,
       filter: ['all', markerOfKind('mando'), ['==', ['get', 'side'], 'left']],
@@ -528,6 +523,77 @@ export function derivedLayers(style: ResolvedStyle): LayerSpecification[] {
       filter: ['all', markerOfKind('mando'), ['==', ['get', 'side'], 'right']],
       anchor: 'center',
       rotate: ['get', 'bearing'],
+    }),
+  ];
+}
+
+/**
+ * A teeing area: its pad, and the glyph standing in for the pad.
+ *
+ * **The pad is the tee.** It carries the tee's own id, it responds to clicks,
+ * and it takes selection styling, because the point underneath it is suppressed
+ * once a pad exists. A dot and a rectangle both standing for one tee would be
+ * the interface claiming two objects where the designer placed one.
+ *
+ * A pad is solid ground rather than an annotation, so it is drawn as one: an
+ * opaque fill and nothing else. No coloured outline — the fill's own edge is the
+ * pad's edge — and it stays fully opaque whether or not it is selected, so
+ * selection reads from its colour rather than from a stroke appearing on top of
+ * it. The casing stays: against sand or bleached grass a solid pad can still
+ * lose its edge without the dark ring underneath it.
+ *
+ * Per kind rather than one pair of layers for both, so a drop zone can sit under
+ * a tee where the two overlap — and so a drop zone can be coloured as itself
+ * rather than as a tee it is not.
+ */
+function padLayers(style: ResolvedStyle, kind: 'tee' | 'dropzone'): LayerSpecification[] {
+  const drawn = style.features[kind];
+  const filter: ExpressionSpecification = [
+    'all',
+    ['==', ['get', 'derived'], 'footprint'],
+    ['==', ['get', 'kind'], kind],
+  ];
+
+  return [
+    {
+      id: `${padLayer(kind)}-casing`,
+      type: 'line',
+      source: DERIVED_SOURCE,
+      filter,
+      minzoom: PAD_LEGIBLE_ZOOM,
+      layout: { 'line-join': 'round' },
+      paint: {
+        'line-color': casingColor(drawn.casing),
+        'line-opacity': drawn.casingOn ? drawn.casingOpacity : 0,
+        'line-width': drawn.strokeWidth * 1.4,
+      },
+    },
+    {
+      id: padLayer(kind),
+      type: 'fill',
+      source: DERIVED_SOURCE,
+      filter,
+      minzoom: PAD_LEGIBLE_ZOOM,
+      paint: {
+        'fill-color': selectable(drawn.stroke, 'fill'),
+        'fill-opacity': drawn.strokeOpacity,
+      },
+    },
+    /*
+     * The glyph, anchored at the TOP of its drawing rather than its centre.
+     *
+     * The same fact `footprintOf` is built on: the stored point is the front
+     * centre of the pad and the pad extends backwards from it. Anchored at the
+     * top and turned to the pad's bearing, the glyph lies exactly where the
+     * rectangle it stands in for does — centring it would hang half the marker
+     * out in front of the tee line.
+     */
+    ...markerLayers(`derived-marker-${kind}`, kind, {
+      source: DERIVED_SOURCE,
+      filter: markerOfKind(kind),
+      anchor: 'top',
+      rotate: ['get', 'bearing'],
+      maxzoom: PAD_LEGIBLE_ZOOM,
     }),
   ];
 }
@@ -618,11 +684,20 @@ const markerOfKind = (kind: string): ExpressionSpecification => [
   ['==', ['get', 'kind'], kind],
 ];
 
+/** Everything of one kind, in one geometry, in the document's own source. */
+const ofKind = (
+  kind: FeatureKind,
+  geometry: 'Polygon' | 'LineString',
+): ExpressionSpecification => [
+  'all',
+  ['==', ['geometry-type'], geometry],
+  ['==', ['get', 'kind'], kind],
+];
+
 /**
- * The feature layers, generated per kind.
+ * The drawn areas, one set of layers per kind.
  *
- * One set of layers for every kind that can be an area, and one for every kind
- * that can be a line, rather than a handful of shared layers with `match`
+ * One set per kind rather than a handful of shared layers with `match`
  * expressions inside them. That is not a stylistic preference: `line-dasharray`
  * is the one paint property MapLibre accepts no data-driven expression for, so
  * "dotted for a property line, solid for out of bounds" cannot be written
@@ -635,22 +710,13 @@ const markerOfKind = (kind: string): ExpressionSpecification => [
  * applied consistently.
  *
  * Order within a kind is fill, casing, stroke — so an outline sits on top of
- * its own fill. Order between kinds follows `FEATURE_KINDS`, which is stable.
+ * its own fill. The caller decides the order *between* kinds, because that is
+ * the map's reading order rather than a fact about any one of them.
  */
-export function featureLayers(style: ResolvedStyle): LayerSpecification[] {
+function areaLayers(style: ResolvedStyle, kinds: readonly FeatureKind[]): LayerSpecification[] {
   const layers: LayerSpecification[] = [];
 
-  const ofKind = (
-    kind: FeatureKind,
-    geometry: 'Polygon' | 'LineString',
-  ): ExpressionSpecification => [
-    'all',
-    ['==', ['geometry-type'], geometry],
-    ['==', ['get', 'kind'], kind],
-  ];
-
-  // --- Areas. Fill first so outlines sit on top of their own fill.
-  for (const kind of FEATURE_KINDS) {
+  for (const kind of kinds) {
     if (KIND_DEFINITIONS[kind].geometry !== 'polygon') continue;
     const drawn = style.features[kind];
     const filter = ofKind(kind, 'Polygon');
@@ -720,6 +786,17 @@ export function featureLayers(style: ResolvedStyle): LayerSpecification[] {
           'text-field': ['get', 'text'],
           'text-size': style.lettering.size,
           'text-font': ['Noto Sans Bold'],
+          /*
+           * The angle turns the letters themselves.
+           *
+           * It used to turn the *grid*: the letters stayed upright and marched
+           * diagonally across the area. That is a different effect from the one
+           * the control is named after, and it is not the one anybody reached
+           * for it wanting. Rotation alignment is left at its default, which is
+           * the viewport — so the letters keep this angle relative to the
+           * screen and do not swing round when the camera turns to face a shot.
+           */
+          'text-rotate': style.lettering.angle,
           // Never dropped for collision: a regular grid with gaps in it reads
           // as a mistake rather than as a pattern.
           'text-allow-overlap': true,
@@ -732,14 +809,20 @@ export function featureLayers(style: ResolvedStyle): LayerSpecification[] {
     }
   }
 
-  /*
-   * --- Lines.
-   *
-   * Fairways are excluded: they are drawn by the derived source instead,
-   * whether or not the document stores one. Drawing a shaped fairway here as
-   * well would put two lines on the same coordinates, and the designer would
-   * see a doubled stroke on exactly the holes they had bothered to route.
-   */
+  return layers;
+}
+
+/**
+ * The drawn lines: paths, and anything else traced as one.
+ *
+ * Fairways are excluded: they are drawn by the derived source instead, whether
+ * or not the document stores one. Drawing a shaped fairway here as well would
+ * put two lines on the same coordinates, and the designer would see a doubled
+ * stroke on exactly the holes they had bothered to route.
+ */
+function drawnLineLayers(style: ResolvedStyle): LayerSpecification[] {
+  const layers: LayerSpecification[] = [];
+
   for (const kind of FEATURE_KINDS) {
     if (KIND_DEFINITIONS[kind].geometry !== 'line' || kind === 'fairway') continue;
     const drawn = style.features[kind];
@@ -777,17 +860,23 @@ export function featureLayers(style: ResolvedStyle): LayerSpecification[] {
     );
   }
 
-  /*
-   * --- Points last: they are the things you click, and must win hit-testing.
-   *
-   * The plain circle is for kinds with no drawing of their own. A basket, a
-   * tee, a drop zone and a mandatory get glyphs — see `markerLayers` — and a
-   * circle underneath one would be a second marker for one object.
-   *
-   * Tees with a pad are a subtler case, handled by the derived source: the pad
-   * *is* the tee, but a pad is two metres of real ground, which is a fraction
-   * of a pixel at the zoom you use to see a whole course.
-   */
+  return layers;
+}
+
+/**
+ * The points: everything you click, over everything you look at.
+ *
+ * The plain circle is for kinds with no drawing of their own. A basket, a tee,
+ * a drop zone and a mandatory get glyphs — see `markerLayers` — and a circle
+ * underneath one would be a second marker for one object.
+ *
+ * Tees with a pad are a subtler case, handled by the derived source: the pad
+ * *is* the tee, but a pad is two metres of real ground, which is a fraction of
+ * a pixel at the zoom you use to see a whole course.
+ */
+function pointLayers(style: ResolvedStyle): LayerSpecification[] {
+  const layers: LayerSpecification[] = [];
+
   layers.push({
     id: 'features-point',
     type: 'circle',
@@ -834,9 +923,19 @@ export function featureLayers(style: ResolvedStyle): LayerSpecification[] {
  * way to select a hole, and the only one that does not require already knowing
  * which shapes belong to it.
  */
-export function holeLabelLayers(style: ResolvedStyle): LayerSpecification[] {
+function holeLabelLayers(style: ResolvedStyle): LayerSpecification[] {
   const isLabel: ExpressionSpecification = ['==', ['get', 'derived'], 'holeLabel'];
-  const { text, disc, size, weight } = style.holeNumber;
+  const { text, disc, size, weight, casing, casingOn } = style.holeNumber;
+  /*
+   * The halo stands in for the disc, and only for the disc.
+   *
+   * With a disc behind it the numeral already has a shape to be read against,
+   * and a halo as well would be two contrast floors thickening the digits for
+   * no gain. With the disc off the number is bare over satellite imagery, which
+   * is the case the halo exists for — so it is drawn exactly when the disc is
+   * not. Scaled off the text size, so a bigger number keeps the same edge.
+   */
+  const halo = disc === null && casingOn ? Math.max(1, size * 0.14) : 0;
   // The disc grows with the numeral, so a bigger number does not outgrow the
   // shape that exists to make it readable.
   const radius = size * 0.92;
@@ -881,8 +980,89 @@ export function holeLabelLayers(style: ResolvedStyle): LayerSpecification[] {
         'text-allow-overlap': true,
         'text-ignore-placement': true,
       },
-      paint: { 'text-color': text },
+      paint: {
+        'text-color': text,
+        'text-halo-color': casing,
+        'text-halo-width': halo,
+      },
     },
+  ];
+}
+
+/**
+ * The brief glow that says "these are the ones you just picked".
+ *
+ * Style is the one focus where selection is not a state you stay in. Clicking
+ * an out-of-bounds area there means "show me how out-of-bounds areas are
+ * drawn", and the answer is a panel — the map's job is only to confirm which
+ * shapes the panel is about, once, and then get out of the way.
+ *
+ * So it is a **halo that fades**, not a recolour. Recolouring was what selection
+ * did everywhere else and it is wrong here twice over: the fill is the thing
+ * being edited, so swapping it hides the very decision the panel is making,
+ * and a state that persists would leave the map lying about the course's
+ * colours for as long as the designer stayed in the focus. A glow sits outside
+ * the geometry, changes nothing about it, and is gone in a second.
+ *
+ * MapLibre's default paint transition carries the fade for free: the state is
+ * set, the opacity animates up, the state is cleared, and it animates back.
+ */
+const flashed: ExpressionSpecification = ['boolean', ['feature-state', 'flash'], false];
+
+const FLASH_OPACITY: ExpressionSpecification = ['case', flashed, 0.9, 0];
+
+function highlightLayers(): LayerSpecification[] {
+  const glow = (id: string, source: string, filter: ExpressionSpecification) => [
+    {
+      id,
+      type: 'line' as const,
+      source,
+      filter: ['all', ['!=', ['geometry-type'], 'Point'], filter] as ExpressionSpecification,
+      layout: { 'line-join': 'round' as const, 'line-cap': 'round' as const },
+      paint: {
+        'line-color': featureColors.selected.stroke,
+        'line-width': 9,
+        'line-blur': 4,
+        'line-opacity': FLASH_OPACITY,
+      },
+    },
+    {
+      id: `${id}-point`,
+      type: 'circle' as const,
+      source,
+      filter: ['all', ['==', ['geometry-type'], 'Point'], filter] as ExpressionSpecification,
+      paint: {
+        // Hollow: the glyph underneath is what is being confirmed, and filling
+        // over it would hide the drawing the panel is about to restyle.
+        'circle-color': 'rgba(0, 0, 0, 0)',
+        'circle-radius': 15,
+        'circle-blur': 0.4,
+        'circle-stroke-color': featureColors.selected.stroke,
+        'circle-stroke-width': 4,
+        'circle-stroke-opacity': FLASH_OPACITY,
+      },
+    },
+  ];
+
+  return [
+    ...glow('style-flash', FEATURES_SOURCE, ['literal', true]),
+    /*
+     * Derived shapes take the glow too, because most of what you click in Style
+     * is derived: a corridor is its fairway, a pad is its tee, a wall is its
+     * mandatory. They carry the feature's own id, so the same flash reaches
+     * them with no extra bookkeeping.
+     *
+     * Three are excluded. The world-sized rectangle outside a property line
+     * would put a glowing edge round the horizon; a mandatory's shading is six
+     * stacked bands and would glow six times over; and the lettering is a
+     * hundred points that would each grow a ring.
+     */
+    ...glow('style-flash-derived', DERIVED_SOURCE, [
+      'all',
+      ['!=', ['get', 'derived'], 'outside'],
+      ['!=', ['get', 'derived'], 'mandoShade'],
+      ['!=', ['get', 'derived'], 'lettering'],
+    ]),
   ];
 }
 
@@ -977,7 +1157,8 @@ export const INTERACTIVE_LAYERS: readonly string[] = [
   'derived-marker-mando-right',
   'derived-marker-tee',
   'derived-marker-dropzone',
-  'derived-footprint',
+  padLayer('tee'),
+  padLayer('dropzone'),
   /*
    * The corridor is the biggest thing a hole owns, and until now the only part
    * of one you could not click. Selecting hole 7 meant hitting its centreline,
@@ -1014,8 +1195,8 @@ const AREA_LAYERS: readonly string[] = [
  * Areas are still selectable, still reshapeable by their vertex handles; they
  * just do not slide under the cursor.
  *
- * `derived-footprint` stays: a tee pad is drawn as an area but it *is* its tee,
- * a point a few metres across, and dragging the pad is how you move the tee.
+ * The pads stay: a tee pad is drawn as an area but it *is* its tee, a point a
+ * few metres across, and dragging the pad is how you move the tee.
  */
 export const DRAGGABLE_LAYERS = INTERACTIVE_LAYERS.filter(
   (layer) => !AREA_LAYERS.includes(layer),
@@ -1027,6 +1208,11 @@ export const DRAGGABLE_LAYERS = INTERACTIVE_LAYERS.filter(
  * Polygon rings are stored open — see features.ts — so the closing point is
  * added here. GeoJSON requires it; the rest of the app is spared having to
  * remember it.
+ *
+ * An area asked to be smooth is smoothed **here**, on the way to the renderer,
+ * and nowhere else. The document keeps the vertices somebody placed, the
+ * handles stay on them, and the panels go on measuring the shape that was
+ * drawn — smoothing is a way of drawing a polygon, not a different polygon.
  */
 export function toGeoJSON(
   features: readonly Feature[],
@@ -1057,7 +1243,7 @@ function toGeoJSONGeometry(f: Feature): GeoJSON.Geometry {
     case 'line':
       return { type: 'LineString', coordinates: f.geometry.coordinates };
     case 'polygon': {
-      const ring = f.geometry.coordinates;
+      const ring = isSmoothed(f) ? smoothRing(f.geometry.coordinates) : f.geometry.coordinates;
       return { type: 'Polygon', coordinates: [[...ring, ring[0]!]] };
     }
   }

@@ -67,6 +67,87 @@ export function fromLocal(plane: Plane, [east, north]: Local): Position {
 }
 
 /**
+ * How much ground one screen pixel covers, at a zoom and a latitude.
+ *
+ * Web Mercator's own arithmetic: a tile is 256 pixels and the world is one tile
+ * at zoom 0, so the equator is `2πR / 256` metres per pixel there and halves
+ * with every zoom level. The cosine is the projection's stretch — a pixel near
+ * the poles covers less ground than one at the equator.
+ *
+ * It is here rather than in the renderer because two different things need it
+ * and they must not disagree: the zoom at which a tee pad outgrows its marker,
+ * and the ground spacing of a lettering pattern the designer set in pixels.
+ */
+const M_PER_PIXEL_AT_ZOOM_0 = (2 * Math.PI * EARTH_RADIUS) / 256;
+
+export function metresPerPixel(zoom: number, latitudeDeg: number): number {
+  return (M_PER_PIXEL_AT_ZOOM_0 * Math.cos(latitudeDeg * DEG)) / Math.pow(2, zoom);
+}
+
+/**
+ * Chaikin's corner cutting: a polyline redrawn with its corners rounded off.
+ *
+ * Each pass replaces every corner with the two points a quarter and
+ * three-quarters of the way along the segments meeting there, which converges
+ * on a quadratic B-spline. Two passes is enough that no corner is countable and
+ * few enough that the result is still a shape you can measure.
+ *
+ * **It is a drawing, not an edit.** The document keeps the vertices the designer
+ * placed; this is what the map paints from them. So the handles stay where they
+ * were put, the lengths and areas the panels report stay the ones that were
+ * drawn, and turning smoothing off gives back exactly what was there.
+ *
+ * Done in degrees rather than on the local plane, deliberately. Corner cutting
+ * is an average of neighbouring points, and averaging in a projection that
+ * stretches longitude puts the new point in the same relative place either way
+ * — the anisotropy that ruins an *offset* cancels in an interpolation.
+ */
+const SMOOTHING_PASSES = 2;
+
+/** Beyond this a shape is already smooth and cutting it is only work. */
+const SMOOTHING_LIMIT = 400;
+
+const between = (a: Position, b: Position, t: number): Position => [
+  a[0] + (b[0] - a[0]) * t,
+  a[1] + (b[1] - a[1]) * t,
+];
+
+/** An open polyline, with its two ends held. A fairway starts at its tee. */
+export function smoothLine(line: readonly Position[], passes = SMOOTHING_PASSES): Position[] {
+  let points = [...line];
+  if (points.length < 3 || points.length > SMOOTHING_LIMIT) return points;
+
+  for (let pass = 0; pass < passes; pass++) {
+    const next: Position[] = [points[0]!];
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i]!;
+      const b = points[i + 1]!;
+      next.push(between(a, b, 0.25), between(a, b, 0.75));
+    }
+    next.push(points[points.length - 1]!);
+    points = next;
+  }
+  return points;
+}
+
+/** A closed ring, stored open. Every corner is cut, including the last one. */
+export function smoothRing(ring: readonly Position[], passes = SMOOTHING_PASSES): Position[] {
+  let points = [...ring];
+  if (points.length < 3 || points.length > SMOOTHING_LIMIT) return points;
+
+  for (let pass = 0; pass < passes; pass++) {
+    const next: Position[] = [];
+    for (let i = 0; i < points.length; i++) {
+      const a = points[i]!;
+      const b = points[(i + 1) % points.length]!;
+      next.push(between(a, b, 0.25), between(a, b, 0.75));
+    }
+    points = next;
+  }
+  return points;
+}
+
+/**
  * Unit vectors for a compass bearing, on the local plane.
  *
  * `forward` points the way play goes; `right` is 90° clockwise from it, which is

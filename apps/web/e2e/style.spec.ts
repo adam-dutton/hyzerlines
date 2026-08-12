@@ -66,7 +66,13 @@ test.describe('map style', () => {
      */
     await page.getByRole('radio', { name: 'Style', exact: true }).click();
     await page.getByRole('button', { name: 'Fairway' }).click();
-    await page.getByRole('button', { name: 'Reset to default' }).first().click();
+    /*
+     * From the panel's own menu rather than a button on the row. The rows lost
+     * theirs because a word beside every control squeezed the fields into a
+     * column too narrow to use — see `Overridden`.
+     */
+    await page.getByRole('button', { name: 'Reset', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Line width' }).click();
 
     await expect.poll(() => paint(page, 'derived-centreline', 'line-width')).toBe(2.5);
     const stored = await page.evaluate(

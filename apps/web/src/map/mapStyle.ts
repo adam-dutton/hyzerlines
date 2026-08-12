@@ -51,6 +51,7 @@ export interface ResolvedFeatureStyle {
   secondCorridor: boolean;
   secondFill: string;
   secondFillOpacity: number;
+  smooth: boolean;
   arrow: boolean;
   arrowSize: number;
   lineGap: number;
@@ -63,6 +64,10 @@ export interface ResolvedCircleStyle {
   stroke: string;
   strokeWidth: number;
   dash: Dash;
+  fillOn: boolean;
+  fill: string;
+  fillOpacity: number;
+  hideOverCorridor: boolean;
 }
 
 /**
@@ -254,6 +259,15 @@ function defaultFeatureStyle(kind: FeatureKind): ResolvedFeatureStyle {
     secondCorridor: false,
     secondFill: fill.color,
     secondFillOpacity: 0.3,
+    /*
+     * A fairway is drawn with corners, because that is what it is.
+     *
+     * The line is a route through vertices somebody placed, and rounding them
+     * off by default would draw a curve nobody designed. A designer who wants
+     * the corridor to read as a flowing shape rather than as a polyline asks
+     * for it, and gets it on every hole at once.
+     */
+    smooth: false,
     arrow: isRule,
     arrowSize: 14,
     shade: isRule,
@@ -290,6 +304,16 @@ export const DEFAULT_CIRCLE_STYLES: Record<TargetCircleId, ResolvedCircleStyle> 
         stroke: splitAlpha(featureColors.target.stroke).color,
         strokeWidth: circle.id === 'c1' ? 1.5 : 1,
         dash: 'dotted' as Dash,
+        /*
+         * Off, and dropped under a corridor when it is on. See
+         * `circleStyleSchema` for both — the short version is that a filled
+         * ring is what a printed plan wants and the last thing a designer
+         * reading terrain does.
+         */
+        fillOn: false,
+        fill: splitAlpha(featureColors.target.fill).color,
+        fillOpacity: 0.18,
+        hideOverCorridor: true,
       },
     ]),
   ) as Record<TargetCircleId, ResolvedCircleStyle>;
@@ -302,6 +326,9 @@ export interface ResolvedHoleNumberStyle {
   /** Null when the numeral is drawn bare, with no pill behind it. */
   disc: string | null;
   size: number;
+  /** The halo, drawn only when there is no disc. See `holeNumberStyleSchema`. */
+  casing: string;
+  casingOn: boolean;
 }
 
 export const DEFAULT_HOLE_NUMBER: ResolvedHoleNumberStyle = {
@@ -310,6 +337,8 @@ export const DEFAULT_HOLE_NUMBER: ResolvedHoleNumberStyle = {
   weight: 'bold',
   disc: splitAlpha(featureColors.tee.casing).color,
   size: 13,
+  casing: splitAlpha(featureColors.tee.casing).color,
+  casingOn: true,
 };
 
 /** What is actually drawn: the defaults, with the document's overrides on top. */
@@ -323,14 +352,15 @@ export const DEFAULT_HOLE_NUMBER: ResolvedHoleNumberStyle = {
 export interface ResolvedLettering {
   on: boolean;
   size: number;
-  spacingM: number;
+  /** Centre to centre on the screen. See `letteringSchema`. */
+  spacingPx: number;
   angle: number;
 }
 
 export const DEFAULT_LETTERING_STYLE: ResolvedLettering = {
   on: true,
   size: 11,
-  spacingM: 30,
+  spacingPx: 90,
   angle: 0,
 };
 
@@ -379,6 +409,7 @@ export function resolveStyle(style: MapStyle): ResolvedStyle {
           secondCorridor: over.secondCorridor ?? base.secondCorridor,
           secondFill: over.secondFill ?? base.secondFill,
           secondFillOpacity: over.secondFillOpacity ?? base.secondFillOpacity,
+          smooth: over.smooth ?? base.smooth,
           shade: over.shade ?? base.shade,
           shadeOpacity: over.shadeOpacity ?? base.shadeOpacity,
           arrow: over.arrow ?? base.arrow,
@@ -402,6 +433,10 @@ export function resolveStyle(style: MapStyle): ResolvedStyle {
           stroke: over.stroke ?? base.stroke,
           strokeWidth: over.strokeWidth ?? base.strokeWidth,
           dash: over.dash ?? base.dash,
+          fillOn: over.fillOn ?? base.fillOn,
+          fill: over.fill ?? base.fill,
+          fillOpacity: over.fillOpacity ?? base.fillOpacity,
+          hideOverCorridor: over.hideOverCorridor ?? base.hideOverCorridor,
         } satisfies ResolvedCircleStyle,
       ];
     }),
@@ -413,7 +448,7 @@ export function resolveStyle(style: MapStyle): ResolvedStyle {
     lettering: {
       on: style.lettering.on ?? DEFAULT_LETTERING_STYLE.on,
       size: style.lettering.size ?? DEFAULT_LETTERING_STYLE.size,
-      spacingM: style.lettering.spacing ?? DEFAULT_LETTERING_STYLE.spacingM,
+      spacingPx: style.lettering.spacing ?? DEFAULT_LETTERING_STYLE.spacingPx,
       angle: style.lettering.angle ?? DEFAULT_LETTERING_STYLE.angle,
     },
     holeNumber: {
@@ -424,6 +459,8 @@ export function resolveStyle(style: MapStyle): ResolvedStyle {
       size: style.holeNumber.size ?? DEFAULT_HOLE_NUMBER.size,
       offset: style.holeNumber.offset ?? DEFAULT_HOLE_NUMBER.offset,
       weight: style.holeNumber.weight ?? DEFAULT_HOLE_NUMBER.weight,
+      casing: style.holeNumber.casing ?? DEFAULT_HOLE_NUMBER.casing,
+      casingOn: style.holeNumber.casingOn ?? DEFAULT_HOLE_NUMBER.casingOn,
     },
     /*
      * Built-in first, then the uploads.

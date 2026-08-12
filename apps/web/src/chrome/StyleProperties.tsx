@@ -1,4 +1,4 @@
-import { cn } from '@hyzerlines/design';
+import { Menu, MenuItem, MenuLabel, MenuSeparator, cn } from '@hyzerlines/design';
 import {
   KIND_DEFINITIONS,
   TARGET_CIRCLES,
@@ -6,6 +6,9 @@ import {
   withFeatureStyle,
   type FeatureKind,
   type FeatureStyle,
+  type HoleNumberStyle,
+  type CircleStyle,
+  type Lettering,
   type MapStyle,
   type Op,
   type TargetCircleId,
@@ -32,13 +35,16 @@ import { ColorRow, DASH_OPTIONS, FactRow, NumberRow, SelectRow } from './StyleCo
  * three bespoke forms would drift apart in spacing and labelling within a
  * month.
  *
- * ## Every control can be given back
+ * ## Every control can be given back, from one place
  *
  * A value here is either the designer's or the app's, and the difference is
- * visible: an overridden row carries a `Reset` that clears it rather than
- * writing today's default into the document. That is what keeps "inherited" and
- * "chosen, and happens to match" from collapsing into one state — see the note
- * on `withFeatureStyle`.
+ * visible: an overridden row carries a dot. Undoing it is a menu in the panel's
+ * header rather than a button on the row — see `Overridden` for why the buttons
+ * had to go, and `styleResets` for what the menu is built from.
+ *
+ * Clearing an override *deletes* it rather than writing today's default into
+ * the document. That is what keeps "inherited" and "chosen, and happens to
+ * match" from collapsing into one state — see the note on `withFeatureStyle`.
  */
 
 /** What is being styled. A kind, the numbers, or one of the rings. */
@@ -59,6 +65,219 @@ export function subjectLabel(subject: StyleSubject): string {
   if (subject.type === 'holeNumber') return 'Hole numbers';
   return TARGET_CIRCLES.find((circle) => circle.id === subject.id)?.label ?? 'Circle';
 }
+
+/** The sheet `setStyle` carries: everything but the glyph library. */
+type Sheet = Omit<MapStyle, 'glyphs'>;
+
+const sheetOf = (style: MapStyle): Sheet => ({
+  features: style.features,
+  holeNumber: style.holeNumber,
+  circles: style.circles,
+  lettering: style.lettering,
+  palette: style.palette,
+});
+
+/* ------------------------------------------------------------------ resets */
+
+/**
+ * What one entry in the reset menu undoes.
+ *
+ * A *group* of keys rather than a single one, because a colour and its opacity
+ * are one decision made in one control, and a menu offering "OB line colour"
+ * and "OB line opacity" as separate undos would be describing the schema rather
+ * than the panel. The rule is one entry per control on screen.
+ */
+interface ResetGroup {
+  id: string;
+  label: string;
+  keys: readonly string[];
+}
+
+const FEATURE_GROUPS: readonly ResetGroup[] = [
+  { id: 'stroke', label: 'Line colour', keys: ['stroke', 'strokeOpacity'] },
+  { id: 'strokeWidth', label: 'Line width', keys: ['strokeWidth'] },
+  { id: 'dash', label: 'Dash', keys: ['dash'] },
+  { id: 'casing', label: 'Casing', keys: ['casingOn', 'casing', 'casingOpacity'] },
+  { id: 'fill', label: 'Fill', keys: ['fill', 'fillOpacity'] },
+  { id: 'fillOutside', label: 'Fill outside it', keys: ['fillOutside'] },
+  {
+    id: 'secondCorridor',
+    label: 'Approach corridor',
+    keys: ['secondCorridor', 'secondFill', 'secondFillOpacity'],
+  },
+  { id: 'smooth', label: 'Smoothing', keys: ['smooth'] },
+  { id: 'lineGap', label: 'Where the line starts', keys: ['lineGap'] },
+  { id: 'arrow', label: 'Arrowhead', keys: ['arrow', 'arrowSize'] },
+  { id: 'shade', label: 'Shading', keys: ['shade', 'shadeOpacity'] },
+  { id: 'glyph', label: 'Drawing', keys: ['glyph'] },
+  { id: 'glyphSize', label: 'Drawing size', keys: ['glyphSize'] },
+];
+
+const HOLE_NUMBER_GROUPS: readonly ResetGroup[] = [
+  { id: 'text', label: 'Colour', keys: ['text'] },
+  { id: 'size', label: 'Size', keys: ['size'] },
+  { id: 'weight', label: 'Weight', keys: ['weight'] },
+  { id: 'offset', label: 'Off the shot', keys: ['offset'] },
+  { id: 'disc', label: 'The disc', keys: ['disc'] },
+  { id: 'casing', label: 'Casing', keys: ['casing', 'casingOn'] },
+];
+
+const CIRCLE_GROUPS: readonly ResetGroup[] = [
+  { id: 'stroke', label: 'Colour', keys: ['stroke'] },
+  { id: 'strokeWidth', label: 'Width', keys: ['strokeWidth'] },
+  { id: 'dash', label: 'Dash', keys: ['dash'] },
+  { id: 'fill', label: 'Fill', keys: ['fillOn', 'fill', 'fillOpacity', 'hideOverCorridor'] },
+];
+
+/**
+ * The lettering, as one entry.
+ *
+ * Split from a kind's own overrides because it is not one kind's: OB, HZ, CAS
+ * and REL share it, and resetting it from the out-of-bounds panel resets it for
+ * all four. That is the same fact the control itself carries, said again here so
+ * the menu cannot promise something narrower than it does.
+ */
+const LETTERING_GROUP: ResetGroup = {
+  id: 'lettering',
+  label: 'Lettering (all four areas)',
+  keys: ['on', 'size', 'spacing', 'angle'],
+};
+
+const overridesOf = (subject: StyleSubject, style: MapStyle): Record<string, unknown> => {
+  if (subject.type === 'kind') return featureStyleOf(style, subject.kind);
+  if (subject.type === 'holeNumber') return style.holeNumber;
+  return style.circles[subject.id] ?? {};
+};
+
+const groupsFor = (subject: StyleSubject): readonly ResetGroup[] => {
+  if (subject.type === 'holeNumber') return HOLE_NUMBER_GROUPS;
+  if (subject.type === 'circle') return CIRCLE_GROUPS;
+  return FEATURE_GROUPS;
+};
+
+/** Whether the lettering belongs to this panel at all. */
+const lettered = (subject: StyleSubject): boolean =>
+  subject.type === 'kind' && hasPattern(subject.kind);
+
+const isSet = (values: Record<string, unknown>, keys: readonly string[]): boolean =>
+  keys.some((key) => values[key] !== undefined);
+
+/**
+ * Everything this panel could give back, and nothing it could not.
+ *
+ * Only groups that are actually overridden, so the menu is a list of decisions
+ * the designer has made rather than a catalogue of the ones available. An empty
+ * result means the whole panel is inherited, and the trigger is not drawn.
+ */
+export function styleResets(subject: StyleSubject, style: MapStyle): ResetGroup[] {
+  const values = overridesOf(subject, style);
+  const groups = groupsFor(subject).filter((group) => isSet(values, group.keys));
+  if (lettered(subject) && isSet(style.lettering, LETTERING_GROUP.keys)) {
+    groups.push(LETTERING_GROUP);
+  }
+  return groups;
+}
+
+const without = <T extends Record<string, unknown>>(values: T, keys: readonly string[]): T =>
+  Object.fromEntries(Object.entries(values).filter(([key]) => !keys.includes(key))) as T;
+
+/**
+ * The sheet with one group — or all of them — cleared.
+ *
+ * `all` is the panel's own everything, which for a lettered area includes the
+ * lettering it shares with the other three. A "reset everything here" that left
+ * a control on screen untouched would be the more surprising of the two, and it
+ * is the one entry a designer reaches for when they have lost track.
+ */
+export function withStyleReset(
+  subject: StyleSubject,
+  style: MapStyle,
+  id: string | 'all',
+): Sheet {
+  const sheet = sheetOf(style);
+  const groups =
+    id === 'all'
+      ? styleResets(subject, style)
+      : styleResets(subject, style).filter((group) => group.id === id);
+
+  const ownKeys = groups.filter((group) => group !== LETTERING_GROUP).flatMap((g) => g.keys);
+  const clearsLettering = groups.includes(LETTERING_GROUP);
+
+  const next: Sheet = clearsLettering
+    ? { ...sheet, lettering: without(style.lettering, LETTERING_GROUP.keys) }
+    : sheet;
+
+  if (ownKeys.length === 0) return next;
+
+  if (subject.type === 'kind') {
+    const kept = without(featureStyleOf(style, subject.kind), ownKeys);
+    return { ...next, features: withFeatureStyle(style, subject.kind, kept).features };
+  }
+  if (subject.type === 'holeNumber') {
+    return { ...next, holeNumber: without(style.holeNumber, ownKeys) };
+  }
+  return {
+    ...next,
+    circles: {
+      ...style.circles,
+      [subject.id]: without(style.circles[subject.id] ?? {}, ownKeys),
+    },
+  };
+}
+
+/**
+ * The way back, as a menu rather than a button per row.
+ *
+ * One trigger in the header, everything the panel has been told inside it, and
+ * "everything here" at the bottom where a destructive answer belongs. It is
+ * absent entirely when nothing has been overridden — a Reset on an untouched
+ * panel is a control that does nothing and reads as dangerous the first time
+ * you meet it.
+ */
+function ResetMenu({
+  subject,
+  style,
+  onOp,
+}: {
+  subject: StyleSubject;
+  style: MapStyle;
+  onOp: (op: Op) => void;
+}) {
+  const groups = styleResets(subject, style);
+  if (groups.length === 0) return null;
+
+  const reset = (id: string) =>
+    onOp({ type: 'setStyle', style: withStyleReset(subject, style, id) });
+
+  return (
+    <Menu
+      label="Reset"
+      align="end"
+      trigger={
+        <button
+          type="button"
+          className={cn(
+            'rounded px-1 text-2xs text-text-muted transition-colors duration-fast',
+            'hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+          )}
+        >
+          Reset
+        </button>
+      }
+    >
+      <MenuLabel>Back to the default</MenuLabel>
+      {groups.map((group) => (
+        <MenuItem key={group.id} onSelect={() => reset(group.id)}>
+          {group.label}
+        </MenuItem>
+      ))}
+      <MenuSeparator />
+      <MenuItem onSelect={() => reset('all')}>Everything here</MenuItem>
+    </Menu>
+  );
+}
+
+/* ---------------------------------------------------------------- controls */
 
 /** Built-in glyph names, as something a person would say. */
 const GLYPH_LABELS: Record<string, string> = {
@@ -85,14 +304,12 @@ export function StyleProperties({
   /** The whole sheet, minus the glyph library. See the `setStyle` op. */
   onStyle: (op: Op) => void;
 }) {
-  const sheet = {
-    features: style.features,
-    holeNumber: style.holeNumber,
-    circles: style.circles,
-    lettering: style.lettering,
-    palette: style.palette,
-  };
-  const commit = (next: typeof sheet) => onStyle({ type: 'setStyle', style: next });
+  const sheet = sheetOf(style);
+  const commit = (next: Sheet) => onStyle({ type: 'setStyle', style: next });
+
+  /* One lettering for the four regulated areas — see `letteringSchema`. */
+  const setLettering = (changes: Lettering) =>
+    commit({ ...sheet, lettering: { ...style.lettering, ...changes } });
 
   /*
    * Keeping a colour is an edit to the sheet like any other, so it lands on the
@@ -100,14 +317,6 @@ export function StyleProperties({
    * schema — a palette is a shortlist, and one that grew without limit would be
    * a history of every colour anybody tried.
    */
-  /* One lettering for the four regulated areas — see `letteringSchema`. */
-  const setLettering = (changes: Partial<typeof style.lettering>) =>
-    commit({ ...sheet, lettering: { ...style.lettering, ...changes } });
-  const clearLettering = (key: keyof typeof style.lettering) => {
-    const { [key]: _gone, ...rest } = style.lettering;
-    commit({ ...sheet, lettering: rest });
-  };
-
   const keep = (colour: string) => {
     if (style.palette.includes(colour)) return;
     commit({ ...sheet, palette: [...style.palette, colour].slice(-24) });
@@ -116,12 +325,8 @@ export function StyleProperties({
   if (subject.type === 'holeNumber') {
     const current = style.holeNumber;
     const base = DEFAULT_HOLE_NUMBER;
-    const set = (changes: Partial<typeof current>) =>
+    const set = (changes: HoleNumberStyle) =>
       commit({ ...sheet, holeNumber: { ...current, ...changes } });
-    const clear = (key: keyof typeof current) => {
-      const { [key]: _gone, ...rest } = current;
-      commit({ ...sheet, holeNumber: rest });
-    };
 
     return (
       <>
@@ -136,7 +341,6 @@ export function StyleProperties({
             onColor={(text) => set({ text })}
             onOpacity={() => undefined}
             onKeep={keep}
-            onReset={() => clear('text')}
           />
           <NumberRow
             label="Size"
@@ -145,7 +349,6 @@ export function StyleProperties({
             suffix="px"
             step={1}
             onChange={(size) => set({ size })}
-            onReset={() => clear('size')}
           />
           <SelectRow
             label="Weight"
@@ -156,7 +359,6 @@ export function StyleProperties({
             ]}
             inherited={current.weight === undefined}
             onChange={(weight) => set({ weight })}
-            onReset={() => clear('weight')}
           />
           <NumberRow
             label="Off the shot"
@@ -165,7 +367,6 @@ export function StyleProperties({
             suffix="m"
             step={1}
             onChange={(offset) => set({ offset })}
-            onReset={() => clear('offset')}
           />
           <p className="mt-2 text-2xs leading-4 text-text-muted">
             The number sits at the middle of the shot, which is the right place and also
@@ -182,28 +383,52 @@ export function StyleProperties({
             checked={current.disc !== null}
             onChange={(on) => set({ disc: on ? base.disc : null })}
           />
-          <ColorRow
-            label="Colour"
-            value={current.disc ?? base.disc ?? '#0e1013'}
-            opacity={null}
-            inherited={current.disc === undefined}
-            palette={style.palette}
-            onColor={(disc) => set({ disc })}
-            onOpacity={() => undefined}
-            onKeep={keep}
-            onReset={() => clear('disc')}
-          />
+          {current.disc !== null && (
+            <ColorRow
+              label="Colour"
+              value={current.disc ?? base.disc ?? '#0e1013'}
+              opacity={null}
+              inherited={current.disc === undefined}
+              palette={style.palette}
+              onColor={(disc) => set({ disc })}
+              onOpacity={() => undefined}
+              onKeep={keep}
+            />
+          )}
+          {/*
+            The casing appears exactly where the disc is not.
+
+            With a disc behind it the numeral already has a shape to be read
+            against, and a halo as well would be two contrast floors thickening
+            the digits for nothing. With the disc off the number is bare over
+            satellite imagery, which is the case a casing exists for.
+          */}
+          {current.disc === null && (
+            <>
+              <ToggleRow
+                label="Draw a casing"
+                checked={current.casingOn ?? base.casingOn}
+                onChange={(casingOn) => set({ casingOn })}
+              />
+              <ColorRow
+                label="Casing"
+                value={current.casing ?? base.casing}
+                opacity={null}
+                inherited={current.casing === undefined}
+                palette={style.palette}
+                onColor={(casing) => set({ casing })}
+                onOpacity={() => undefined}
+                onKeep={keep}
+              />
+            </>
+          )}
           <p className="mt-2 text-2xs leading-4 text-text-muted">
             A number floating over satellite imagery is unreadable over a good fraction of it.
             The disc grows with the numeral, so a bigger number does not outgrow the shape that
-            makes it legible.
+            makes it legible &mdash; and with the disc off, a casing does the smaller version of
+            the same job.
           </p>
         </div>
-
-        <ResetAllRow
-          show={Object.keys(current).length > 0}
-          onReset={() => commit({ ...sheet, holeNumber: {} })}
-        />
       </>
     );
   }
@@ -211,15 +436,11 @@ export function StyleProperties({
   if (subject.type === 'circle') {
     const current = style.circles[subject.id] ?? {};
     const base = DEFAULT_CIRCLE_STYLES[subject.id];
-    const set = (changes: Partial<typeof current>) =>
+    const set = (changes: CircleStyle) =>
       commit({
         ...sheet,
         circles: { ...style.circles, [subject.id]: { ...current, ...changes } },
       });
-    const clear = (key: keyof typeof current) => {
-      const { [key]: _gone, ...rest } = current;
-      commit({ ...sheet, circles: { ...style.circles, [subject.id]: rest } });
-    };
     const circle = TARGET_CIRCLES.find((c) => c.id === subject.id);
 
     return (
@@ -235,7 +456,6 @@ export function StyleProperties({
             onColor={(stroke) => set({ stroke })}
             onOpacity={() => undefined}
             onKeep={keep}
-            onReset={() => clear('stroke')}
           />
           <NumberRow
             label="Width"
@@ -244,7 +464,6 @@ export function StyleProperties({
             suffix="px"
             step={0.25}
             onChange={(strokeWidth) => set({ strokeWidth })}
-            onReset={() => clear('strokeWidth')}
           />
           <SelectRow
             label="Dash"
@@ -252,7 +471,6 @@ export function StyleProperties({
             options={DASH_OPTIONS}
             inherited={current.dash === undefined}
             onChange={(dash) => set({ dash })}
-            onReset={() => clear('dash')}
           />
           {circle && <FactRow label="Radius">{circle.radiusM} m</FactRow>}
           {circle && (
@@ -264,10 +482,36 @@ export function StyleProperties({
           )}
         </div>
 
-        <ResetAllRow
-          show={Object.keys(current).length > 0}
-          onReset={() => commit({ ...sheet, circles: { ...style.circles, [subject.id]: {} } })}
-        />
+        <div className={sectionClass}>
+          <SectionTitle>The ground inside</SectionTitle>
+          <ToggleRow
+            label="Fill it"
+            checked={current.fillOn ?? base.fillOn}
+            onChange={(fillOn) => set({ fillOn })}
+          />
+          <ColorRow
+            label="Colour"
+            value={current.fill ?? base.fill}
+            opacity={current.fillOpacity ?? base.fillOpacity}
+            inherited={current.fill === undefined && current.fillOpacity === undefined}
+            palette={style.palette}
+            onColor={(fill) => set({ fill })}
+            onOpacity={(fillOpacity) => set({ fillOpacity })}
+            onKeep={keep}
+          />
+          <ToggleRow
+            label="Not under a corridor"
+            checked={current.hideOverCorridor ?? base.hideOverCorridor}
+            onChange={(hideOverCorridor) => set({ hideOverCorridor })}
+          />
+          <p className="mt-2 text-2xs leading-4 text-text-muted">
+            Off by default: three filled rings around every basket sit on the imagery a designer
+            reads the terrain from. A printed plan is the other job, and there a shaded circle
+            is the clearest thing on it. The corridor already rounds to Circle 1 at the target,
+            so where both are drawn the fill lands on ground that is shaded twice &mdash; which
+            is what the last switch is for.
+          </p>
+        </div>
       </>
     );
   }
@@ -282,10 +526,6 @@ export function StyleProperties({
       ...sheet,
       features: withFeatureStyle(style, kind, { ...current, ...changes }).features,
     });
-  const clear = (key: keyof FeatureStyle) => {
-    const { [key]: _gone, ...rest } = current;
-    commit({ ...sheet, features: withFeatureStyle(style, kind, rest).features });
-  };
 
   return (
     <>
@@ -300,10 +540,6 @@ export function StyleProperties({
           onColor={(stroke) => set({ stroke })}
           onOpacity={(strokeOpacity) => set({ strokeOpacity })}
           onKeep={keep}
-          onReset={() => {
-            const { stroke: _a, strokeOpacity: _b, ...rest } = current;
-            commit({ ...sheet, features: withFeatureStyle(style, kind, rest).features });
-          }}
         />
         <NumberRow
           label="Width"
@@ -312,7 +548,6 @@ export function StyleProperties({
           suffix="px"
           step={0.25}
           onChange={(strokeWidth) => set({ strokeWidth })}
-          onReset={() => clear('strokeWidth')}
         />
         <SelectRow
           label="Dash"
@@ -320,7 +555,6 @@ export function StyleProperties({
           options={DASH_OPTIONS}
           inherited={current.dash === undefined}
           onChange={(dash) => set({ dash })}
-          onReset={() => clear('dash')}
         />
       </div>
 
@@ -340,10 +574,6 @@ export function StyleProperties({
           onColor={(casing) => set({ casing })}
           onOpacity={(casingOpacity) => set({ casingOpacity })}
           onKeep={keep}
-          onReset={() => {
-            const { casing: _a, casingOpacity: _b, ...rest } = current;
-            commit({ ...sheet, features: withFeatureStyle(style, kind, rest).features });
-          }}
         />
         <p className="mt-2 text-2xs leading-4 text-text-muted">
           The dark line under the stroke — the contrast floor that keeps a feature readable over
@@ -369,11 +599,41 @@ export function StyleProperties({
             onColor={(fill) => set({ fill })}
             onOpacity={(fillOpacity) => set({ fillOpacity })}
             onKeep={keep}
-            onReset={() => {
-              const { fill: _a, fillOpacity: _b, ...rest } = current;
-              commit({ ...sheet, features: withFeatureStyle(style, kind, rest).features });
-            }}
           />
+        </div>
+      )}
+
+      {/*
+        A fairway is a line in the document and two areas on the map, so its
+        corridors get their own sections rather than the polygon "Fill" one it
+        does not qualify for. The first one had no controls at all until now:
+        the colour it draws in is the fairway's fill, which the panel was
+        hiding because the kind's geometry is a line.
+      */}
+      {kind === 'fairway' && (
+        <div className={sectionClass}>
+          <SectionTitle>Corridor</SectionTitle>
+          <ColorRow
+            label="Colour"
+            value={current.fill ?? base.fill}
+            opacity={current.fillOpacity ?? base.fillOpacity}
+            inherited={current.fill === undefined && current.fillOpacity === undefined}
+            palette={style.palette}
+            onColor={(fill) => set({ fill })}
+            onOpacity={(fillOpacity) => set({ fillOpacity })}
+            onKeep={keep}
+          />
+          <ToggleRow
+            label="Smooth the line"
+            checked={current.smooth ?? base.smooth}
+            onChange={(smooth) => set({ smooth })}
+          />
+          <p className="mt-2 text-2xs leading-4 text-text-muted">
+            The room this shot has, drawn from the tee pad&rsquo;s width and closing to Circle 1
+            at the target. Smoothing rounds the corners off the line and both corridors on every
+            hole at once &mdash; the vertices you placed stay where they are, and every length
+            the panels report is still the one you drew.
+          </p>
         </div>
       )}
 
@@ -396,10 +656,6 @@ export function StyleProperties({
             onColor={(secondFill) => set({ secondFill })}
             onOpacity={(secondFillOpacity) => set({ secondFillOpacity })}
             onKeep={keep}
-            onReset={() => {
-              const { secondFill: _a, secondFillOpacity: _b, ...rest } = current;
-              commit({ ...sheet, features: withFeatureStyle(style, kind, rest).features });
-            }}
           />
           <p className="mt-2 text-2xs leading-4 text-text-muted">
             A second, wider band from the front of the tee, opening out to enclose Circle 2. The
@@ -421,7 +677,6 @@ export function StyleProperties({
             suffix="m"
             step={0.5}
             onChange={(lineGap) => set({ lineGap })}
-            onReset={() => clear('lineGap')}
           />
           <ToggleRow
             label="Arrowhead"
@@ -435,7 +690,6 @@ export function StyleProperties({
             suffix="px"
             step={1}
             onChange={(arrowSize) => set({ arrowSize })}
-            onReset={() => clear('arrowSize')}
           />
           <ToggleRow
             label="Shade behind it"
@@ -448,7 +702,6 @@ export function StyleProperties({
             inherited={current.shadeOpacity === undefined}
             step={0.05}
             onChange={(shadeOpacity) => set({ shadeOpacity })}
-            onReset={() => clear('shadeOpacity')}
           />
           <p className="mt-2 text-2xs leading-4 text-text-muted">
             The shading is a half disc with its flat edge on the line, bulging the way play goes
@@ -478,16 +731,14 @@ export function StyleProperties({
             suffix="px"
             step={1}
             onChange={(size) => setLettering({ size })}
-            onReset={() => clearLettering('size')}
           />
           <NumberRow
             label="Spacing"
-            value={style.lettering.spacing ?? DEFAULT_LETTERING_STYLE.spacingM}
+            value={style.lettering.spacing ?? DEFAULT_LETTERING_STYLE.spacingPx}
             inherited={style.lettering.spacing === undefined}
-            suffix="m"
-            step={5}
+            suffix="px"
+            step={10}
             onChange={(spacing) => setLettering({ spacing })}
-            onReset={() => clearLettering('spacing')}
           />
           <NumberRow
             label="Angle"
@@ -496,15 +747,19 @@ export function StyleProperties({
             suffix="°"
             step={5}
             onChange={(angle) => setLettering({ angle })}
-            onReset={() => clearLettering('angle')}
           />
           <p className="mt-2 text-2xs leading-4 text-text-muted">
             One setting for out of bounds, hazards, casual areas and required relief — they are
             the same annotation at four different rulings, and lettering that differed between
             them would read as an inconsistency rather than a distinction. What does differ is
             what the letters say, which is the kind&rsquo;s own name, and their colour, which
-            follows its line. Spacing is on the ground, so it is a density over the land; the
-            grid starts at the middle of each area, so even a small one gets a set.
+            follows its line.
+          </p>
+          <p className="mt-2 text-2xs leading-4 text-text-muted">
+            Size, spacing and angle are all measured on the screen, so the pattern looks the
+            same however far out you zoom. The angle turns the letters themselves. A set that
+            would cross the area&rsquo;s border is not drawn, which is why a narrow strip gets
+            none.
           </p>
         </div>
       )}
@@ -524,7 +779,6 @@ export function StyleProperties({
             ]}
             inherited={current.glyph === undefined}
             onChange={(glyph) => set({ glyph })}
-            onReset={() => clear('glyph')}
           />
           <NumberRow
             label="Size"
@@ -533,7 +787,6 @@ export function StyleProperties({
             suffix="px"
             step={1}
             onChange={(glyphSize) => set({ glyphSize })}
-            onReset={() => clear('glyphSize')}
           />
           {kind === 'mando' && (
             <p className="mt-2 text-2xs leading-4 text-text-muted">
@@ -544,40 +797,7 @@ export function StyleProperties({
           )}
         </div>
       )}
-
-      <ResetAllRow
-        show={Object.keys(current).length > 0}
-        onReset={() =>
-          commit({ ...sheet, features: withFeatureStyle(style, kind, {}).features })
-        }
-      />
     </>
-  );
-}
-
-/**
- * Everything this subject has been told, undone at once.
- *
- * Shown only when there is something to undo, because an always-present Reset
- * on an untouched subject is a button that does nothing — and one that reads as
- * dangerous the first time you meet it.
- */
-function ResetAllRow({ show, onReset }: { show: boolean; onReset: () => void }) {
-  if (!show) return null;
-  return (
-    <div className={sectionClass}>
-      <button
-        type="button"
-        onClick={onReset}
-        className={cn(
-          'w-full rounded-md px-2 py-1 text-left text-xs text-text-secondary',
-          'transition-colors duration-fast hover:bg-surface-hover hover:text-text-primary',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
-        )}
-      >
-        Reset everything here
-      </button>
-    </div>
   );
 }
 
@@ -585,8 +805,9 @@ function ResetAllRow({ show, onReset }: { show: boolean; onReset: () => void }) 
  * The style subject, as the right panel's whole contents.
  *
  * A header plus the controls, so the panel takes one node and does not have to
- * know what a style subject is. The header names what is being described and
- * offers the way out, which is the same two jobs it does for a feature.
+ * know what a style subject is. The header names what is being described, offers
+ * the way back to the defaults, and offers the way out — the same jobs it does
+ * for a feature.
  */
 export function StyleSubjectPanel({
   subject,
@@ -604,17 +825,20 @@ export function StyleSubjectPanel({
       <header className="shrink-0 px-2.5 pb-1.5 pt-2">
         <div className="flex items-center gap-1">
           <span className="text-2xs text-text-muted">Style</span>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className={cn(
-              'ml-auto rounded px-1 text-2xs text-text-muted transition-colors duration-fast',
-              'hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
-            )}
-          >
-            Close
-          </button>
+          <span className="ml-auto flex items-center gap-1">
+            <ResetMenu subject={subject} style={style} onOp={onOp} />
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className={cn(
+                'rounded px-1 text-2xs text-text-muted transition-colors duration-fast',
+                'hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+              )}
+            >
+              Close
+            </button>
+          </span>
         </div>
         <h2 className="px-1 text-sm font-semibold text-text-primary">
           {subjectLabel(subject)}

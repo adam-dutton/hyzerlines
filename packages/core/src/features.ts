@@ -273,7 +273,30 @@ const placedRectangleFields: readonly FieldDefinition[] = [
  * Elevation is absent everywhere on purpose: it is sampled from terrain, not
  * typed in, and offering a box for it would invite a number nobody measured.
  */
+/**
+ * Round the corners off an area's border, when the map draws it.
+ *
+ * Area by area rather than once for the whole course, because it is a claim
+ * about the shape rather than about the look of the map: a pond and a mown
+ * boundary are both polygons, and one of them has corners in real life. It is
+ * offered on every area kind for the same reason it is a property rather than a
+ * separate geometry — the vertices the designer placed are still the ones
+ * stored, still the ones with handles on them, and still the ones the panels
+ * measure. See `smoothRing`.
+ */
+const SMOOTH_FIELD: FieldDefinition = {
+  key: 'smooth',
+  label: 'Smooth the border',
+  type: 'boolean',
+};
+
 export function fieldsFor(kind: FeatureKind): readonly FieldDefinition[] {
+  const own = ownFieldsFor(kind);
+  return KIND_DEFINITIONS[kind].geometry === 'polygon' ? [...own, SMOOTH_FIELD] : own;
+}
+
+/** Everything a kind asks about itself, before the shared fields are added. */
+function ownFieldsFor(kind: FeatureKind): readonly FieldDefinition[] {
   switch (kind) {
     case 'tee':
       return [
@@ -429,6 +452,9 @@ export function fieldsFor(kind: FeatureKind): readonly FieldDefinition[] {
       return [];
   }
 }
+
+/** Whether this area's border is drawn with its corners cut. See `SMOOTH_FIELD`. */
+export const isSmoothed = (feature: Feature): boolean => feature.props['smooth'] === true;
 
 /** Display name: the user's label if set, otherwise the kind. */
 export function featureName(feature: Feature): string {

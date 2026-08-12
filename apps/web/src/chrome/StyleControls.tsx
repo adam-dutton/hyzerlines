@@ -14,25 +14,31 @@ import { Row, ReadOnlyValue, fieldWidth, selectClass } from './propertyRow';
  * different application bolted on.
  *
  * What is different here is that every value has a *default underneath it*, so
- * each control carries the way back. See `Reset`.
+ * a row can be either the designer's answer or the app's. See `Overridden`.
  */
 
-/** Clears an override, so the value goes back to being inherited. */
-export function Reset({ onClick, show }: { onClick: () => void; show: boolean }) {
-  if (!show) return null;
+/**
+ * A dot saying this value was chosen rather than inherited.
+ *
+ * It replaced a `Reset` button on every row, and the reason is width. The rows
+ * are 86 pixels of label and whatever is left for the control; a word sitting
+ * beside each one squeezed the colour wells, the number fields and the selects
+ * into a column too narrow to use, so the panel was hardest to operate exactly
+ * where it had been customised most. Undoing is not a per-row job anyway — it
+ * is something you go and do — so it moved to a menu in the panel header, and
+ * what stays on the row is the one thing that has to be visible at a glance:
+ * which of these are yours.
+ */
+export function Overridden({ show }: { show: boolean }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label="Reset to default"
-      title="Reset to default"
+    <span
+      aria-hidden={!show}
+      {...(show ? { title: 'Customised' } : {})}
       className={cn(
-        'shrink-0 rounded px-1 text-2xs text-text-muted transition-colors duration-fast',
-        'hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+        'size-1.5 shrink-0 rounded-full',
+        show ? 'bg-accent-solid' : 'bg-transparent',
       )}
-    >
-      Reset
-    </button>
+    />
   );
 }
 
@@ -75,7 +81,6 @@ export function ColorRow({
   onColor,
   onOpacity,
   onKeep,
-  onReset,
 }: {
   label: string;
   value: string;
@@ -86,7 +91,6 @@ export function ColorRow({
   onColor: (value: string) => void;
   onOpacity: (value: number) => void;
   onKeep: (value: string) => void;
-  onReset: () => void;
 }) {
   const hex = normalizeHex(value);
   const kept = palette.includes(hex);
@@ -135,7 +139,7 @@ export function ColorRow({
           >
             Keep
           </button>
-          <Reset onClick={onReset} show={!inherited} />
+          <Overridden show={!inherited} />
         </span>
       </Row>
 
@@ -172,7 +176,6 @@ export function NumberRow({
   suffix,
   step = 0.5,
   onChange,
-  onReset,
 }: {
   label: string;
   value: number;
@@ -180,7 +183,6 @@ export function NumberRow({
   suffix?: string;
   step?: number;
   onChange: (value: number) => void;
-  onReset: () => void;
 }) {
   return (
     <Row label={label}>
@@ -199,7 +201,7 @@ export function NumberRow({
           }}
           className="min-w-0 flex-1 text-right tabular-nums"
         />
-        <Reset onClick={onReset} show={!inherited} />
+        <Overridden show={!inherited} />
       </span>
     </Row>
   );
@@ -212,14 +214,12 @@ export function SelectRow<T extends string>({
   options,
   inherited,
   onChange,
-  onReset,
 }: {
   label: string;
   value: T;
   options: readonly { value: T; label: string }[];
   inherited: boolean;
   onChange: (value: T) => void;
-  onReset: () => void;
 }) {
   return (
     <Row label={label}>
@@ -236,7 +236,7 @@ export function SelectRow<T extends string>({
             </option>
           ))}
         </select>
-        <Reset onClick={onReset} show={!inherited} />
+        <Overridden show={!inherited} />
       </span>
     </Row>
   );
