@@ -9,6 +9,8 @@ import {
   holeLabelPosition,
   holeName,
   KIND_DEFINITIONS,
+  mandoBearingFor,
+  mandoLineOf,
   showsCircle,
   showsFairwayAreas,
   showsFairwayLines,
@@ -35,8 +37,14 @@ import {
 
 export interface DerivedGeometry {
   collection: GeoJSON.FeatureCollection;
-  /** Features whose point marker should be suppressed in favour of a footprint. */
-  withFootprint: Set<string>;
+  /**
+   * Features whose plain point circle should be suppressed.
+   *
+   * Because something better is standing in for it: a pad, or a glyph. The
+   * circle is the fallback for a point with no picture of its own, and drawing
+   * both would be the interface claiming two objects where one was placed.
+   */
+  withMarker: Set<string>;
   /** Every fairway on screen, for the vertex editor to reshape. */
   fairways: HoleFairway[];
 }
@@ -99,7 +107,7 @@ function bearingToTarget(
 export function derivedGeometry(course: Course, choices?: FairwayChoices): DerivedGeometry {
   const featureById = featureIndex(course);
   const features: GeoJSON.Feature[] = [];
-  const withFootprint = new Set<string>();
+  const withMarker = new Set<string>();
 
   /*
    * Every fairway is computed, and only some are drawn.
@@ -121,13 +129,16 @@ export function derivedGeometry(course: Course, choices?: FairwayChoices): Deriv
 
   for (const feature of course.features) {
     if (!KIND_DEFINITIONS[feature.kind].placedRectangle) continue;
+    // `footprintOf` refuses a non-point too; this is here so the glyph below
+    // can read the stored coordinate without a second check.
+    if (feature.geometry.type !== 'point') continue;
 
     const fallback =
       teeBearings.get(feature.id) ?? bearingToTarget(course, feature, featureById);
     const footprint = footprintOf(feature, fallback);
     if (!footprint) continue;
 
-    withFootprint.add(feature.id);
+    withMarker.add(feature.id);
     features.push({
       type: 'Feature',
       properties: { id: feature.id, kind: feature.kind, derived: 'footprint' },
@@ -138,18 +149,71 @@ export function derivedGeometry(course: Course, choices?: FairwayChoices): Deriv
     });
 
     /*
-     * The front line: what stands in for the pad before it is legible.
+     * The glyph: what stands in for the pad before it is legible.
      *
-     * The footprint ring's own first two corners are the front-left and
-     * front-right of the pad — the tee line itself — so this needs no
-     * geometry of its own. It carries the same id as the footprint, which is
-     * deliberate: they are two representations of one tee, cross-faded by
-     * zoom in `derivedLayers`, and selecting one has to select both.
+     * It replaced a line drawn along the pad's own front edge. That line was a
+     * real measurement rather than an arbitrary dot, which was the argument
+     * for it — but at the zooms it existed for, a two-metre edge is a few
+     * pixels of hairline, and it was carrying the whole job of saying *what*
+     * is there. The glyph says tee or drop zone outright, and it keeps the
+     * facing the line carried by turning with the pad.
+     *
+     * It carries the same id as the footprint, which is deliberate: they are
+     * two representations of one tee, swapped by zoom in `derivedLayers`, and
+     * selecting one has to select both.
      */
     features.push({
       type: 'Feature',
-      properties: { id: feature.id, kind: feature.kind, derived: 'front' },
-      geometry: { type: 'LineString', coordinates: [footprint.ring[0]!, footprint.ring[1]!] },
+      properties: {
+        id: feature.id,
+        kind: feature.kind,
+        derived: 'marker',
+        bearing: footprint.bearingDeg,
+      },
+      geometry: { type: 'Point', coordinates: feature.geometry.coordinates },
+    });
+  }
+
+  /*
+   * Mandatories: the side you must pass, and the plane you may not cross.
+   *
+   * Both come from the same fact — the ruling, plus which way play runs past
+   * the object — so they are emitted together. A mandatory the designer has not
+   * ruled on yet, or one on a hole with no shot to take a direction from, gets
+   * neither: it stays a plain point, which is the honest drawing of a marker
+   * nobody has decided about.
+   *
+   * `over` is a ruling with no line. The plane it describes is horizontal, and
+   * drawn in plan it would be a mark on top of the object saying nothing about
+   * where you may throw — so the glyph is withheld too, and the point stands.
+   */
+  for (const feature of course.features) {
+    if (feature.kind !== 'mando') continue;
+
+    const mando = mandoLineOf(feature, mandoBearingFor(course, feature.id));
+    if (!mando) continue;
+
+    withMarker.add(feature.id);
+    features.push({
+      type: 'Feature',
+      properties: {
+        id: feature.id,
+        kind: 'mando',
+        derived: 'mandoLine',
+        side: mando.side,
+      },
+      geometry: { type: 'LineString', coordinates: mando.line },
+    });
+    features.push({
+      type: 'Feature',
+      properties: {
+        id: feature.id,
+        kind: 'mando',
+        derived: 'marker',
+        side: mando.side,
+        bearing: mando.bearingDeg,
+      },
+      geometry: { type: 'Point', coordinates: mando.line[0] },
     });
   }
 
@@ -289,7 +353,7 @@ export function derivedGeometry(course: Course, choices?: FairwayChoices): Deriv
 
   return {
     collection: { type: 'FeatureCollection', features },
-    withFootprint,
+    withMarker,
     fairways,
   };
 }

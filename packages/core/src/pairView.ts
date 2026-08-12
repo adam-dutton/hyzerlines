@@ -16,6 +16,7 @@ import { courseSkillLevel } from './layouts.js';
 import { DEFAULT_SKILL_LEVEL, type SkillLevel } from './pdga.js';
 import { activeLayout, featureIndex, type Course } from './schema.js';
 import {
+  bearingNearest,
   defaultCorridorWidths,
   fairwayCorridor,
   fromLocal,
@@ -515,6 +516,40 @@ export function fairwayBearingFor(course: Course, teeId: string): number | null 
     if (from && to) return bearing(from, to);
   }
   return null;
+}
+
+/**
+ * Which way play runs past a mandatory, when the designer has not said.
+ *
+ * The hole's own shot, taken at the leg that passes closest to the object — see
+ * `bearingNearest` for why the nearest leg and not the whole line. Left and
+ * right are meaningless without it, so this is what decides which side of the
+ * object the mandatory line lands on.
+ *
+ * Null when the mandatory belongs to no hole, or its hole has no shot yet.
+ * There is nothing to fall back to: a mandatory drawn against an invented
+ * direction would put its wall on the wrong side of the tree and look
+ * deliberate doing it.
+ */
+export function mandoBearingFor(course: Course, mandoId: string): number | null {
+  const mando = featureIndex(course).get(mandoId);
+  if (!mando || mando.kind !== 'mando' || mando.geometry.type !== 'point') return null;
+
+  const at = mando.geometry.coordinates;
+  const fairways = courseFairways(course);
+
+  /*
+   * Its own hole's shot, and only that.
+   *
+   * Falling back to whichever fairway happens to run nearest would give a
+   * course-level mandatory a direction borrowed from a neighbouring hole — a
+   * confident answer to a question nobody asked, and wrong on exactly the tight
+   * sites where holes run beside each other.
+   */
+  const own = mando.holeId
+    ? fairways.find((fairway) => fairway.holeId === mando.holeId)
+    : undefined;
+  return own ? bearingNearest(own.line, at) : null;
 }
 
 /**

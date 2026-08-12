@@ -491,7 +491,19 @@ export function CourseEditor({
   const commitFeature = useCallback(
     (kind: FeatureKind, geometry: Geometry) => {
       if (!geometryMatchesKind(kind, geometry)) return;
-      const feature = createFeature(kind, geometry);
+
+      /*
+       * Anything drawn while a hole is selected is *about* that hole.
+       *
+       * Scope, not membership — see the note on `holeId` in the schema. A tee
+       * and a target go further and join the hole's arrays below; everything
+       * else only needs the scope, and it only needed it as a nicety until
+       * mandatories arrived. A mandatory takes its direction of play from its
+       * hole's shot, so one drawn at the course level has no left and no right
+       * and draws nothing at all — you would place it on hole 4's dogleg and
+       * watch it do nothing.
+       */
+      const feature = createFeature(kind, geometry, { holeId: selectedHoleId });
       dispatch({ type: 'addFeature', feature });
 
       /*

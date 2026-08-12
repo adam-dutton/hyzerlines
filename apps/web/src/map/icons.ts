@@ -1,4 +1,4 @@
-import { feature as featureColors } from '@hyzerlines/design';
+import { feature as featureColors, type FeatureKind } from '@hyzerlines/design';
 
 import { LARGE_ART } from '../chrome/iconArt';
 
@@ -8,12 +8,13 @@ import { LARGE_ART } from '../chrome/iconArt';
  * A basket is the one object on a disc golf course that everybody recognises on
  * sight, and drawing it as a coloured circle throws that away — a circle is
  * indistinguishable from a mando, a noted point, or anything else that happens
- * to be a point. The glyph is worth the code.
+ * to be a point. That argument was always going to reach the rest of them, and
+ * it has: a tee, a drop zone and a mandatory are all pictures now too.
  *
- * Drawn to a canvas at load rather than shipped as a PNG, so the colours come
- * from the design tokens like everything else. A committed image file would be
- * the one place in the app where a colour is not a token, and it would go stale
- * silently the first time the palette moved.
+ * Drawn to a canvas at load rather than shipped as PNGs, so the colours come
+ * from the design tokens like everything else. Committed image files would be
+ * the one place in the app where a colour is not a token, and they would go
+ * stale silently the first time the palette moved.
  *
  * The artwork is the interface's own, read from `chrome/iconArt`: `Path2D`
  * accepts SVG path data directly, so one drawing serves the React component and
@@ -24,46 +25,90 @@ import { LARGE_ART } from '../chrome/iconArt';
 const ART_SIZE = 24;
 
 /**
- * How much bigger than the artwork the marker is drawn.
+ * How much bigger than the artwork a marker is drawn.
  *
- * The art's thinnest parts — the chains, and the pole — are one unit wide. At
- * `pixelRatio: 2` a scale of 3 puts those at three device pixels, which is 1.5
- * on screen: thick enough to hold their colour against imagery, where two
+ * The art's thinnest parts — the basket's chains, its pole — are one unit wide.
+ * At `pixelRatio: 2` a scale of 3 puts those at three device pixels, which is
+ * 1.5 on screen: thick enough to hold their colour against imagery, where two
  * device pixels had left the chains translucent at the edges.
  */
 const SCALE = 3;
 
+interface Marker {
+  art: readonly string[];
+  /**
+   * Which feature's colours it takes. Two markers can share a kind — a
+   * mandatory has a drawing for each side it can send you.
+   */
+  kind: FeatureKind;
+  /**
+   * The lowest the drawing's own ink reaches, in art units, when that is not
+   * the bottom of the box.
+   *
+   * Only the basket sets it. Its pole stops at 22 of 24, and the marker is
+   * anchored `bottom`, so two empty units under the image would float every
+   * basket off the ground it is standing on.
+   */
+  inkBottom?: number;
+  /**
+   * How wide the casing is stroked, in art units.
+   *
+   * Not one number for the set, and this is the one place these drawings are
+   * not interchangeable. The basket marker is a solid silhouette, so a casing
+   * two units wide lies entirely outside it and reads as an edge. The others
+   * are *outlines* — one-unit bands with the map showing through — and a
+   * two-unit casing centred on a one-unit band leaves a third of it white
+   * inside a dark surround. At marker size that is not a glyph with a contrast
+   * floor, it is a blob: the mandatory came out as a dark teardrop with a dot
+   * in it, and the M it is named for was gone.
+   */
+  casingWidth?: number;
+}
+
 /**
- * The basket's filled variant, not the outline the tool bar uses.
+ * Every marker the map draws, and the art it is drawn from.
  *
+ * The basket is the *filled* variant rather than the outline the tool bar uses.
  * At marker size the outline's interior lines are a pixel apart and read as
- * grey mush; the solid silhouette holds its shape over canopy and sand alike.
- * The two are the same drawing — see `basket` and `basketFill` in `iconArt`.
+ * grey mush, where the solid silhouette holds its shape over canopy and sand
+ * alike. Everything else is the same drawing at both sizes: they are outlines
+ * of simple shapes, and they survive.
  */
-const BASKET_ART = LARGE_ART.basketFill;
+const MARKERS = {
+  target: { art: LARGE_ART.basketFill, kind: 'target', inkBottom: 22, casingWidth: 2 },
+  tee: { art: LARGE_ART.tee, kind: 'tee' },
+  dropzone: { art: LARGE_ART.dropzone, kind: 'dropzone' },
+  mandoLeft: { art: LARGE_ART.mandoLeft, kind: 'mando' },
+  mandoRight: { art: LARGE_ART.mandoRight, kind: 'mando' },
+} as const satisfies Record<string, Marker>;
+
+export type MarkerName = keyof typeof MARKERS;
 
 /**
- * The lowest the basket's own ink reaches, in art units.
+ * The image id for a marker in a state.
  *
- * The pole stops at 22 of 24. The canvas is cropped to that rather than left
- * square, because the marker is anchored `bottom` — two units of empty box
- * below the pole would float the whole basket off the ground it stands on.
+ * Two images per marker rather than one recoloured at draw time: MapLibre can
+ * only tint an icon that is an SDF, and an SDF is a single-channel silhouette —
+ * it cannot carry both the casing and the fill, which is the whole point of
+ * these glyphs. A few kilobytes buys the contrast floor.
  */
-const BASKET_INK_BOTTOM = 22;
+export function markerIcon(name: MarkerName, selected = false): string {
+  return selected ? `marker-${name}-selected` : `marker-${name}`;
+}
 
 /**
- * The basket, filled from the icon's paths with a casing stroked underneath.
+ * One marker, filled from its paths with a casing stroked underneath.
  *
  * The casing is stroked around the same paths before they are filled, which is
  * how every other vector on the map gets its contrast floor: no single colour
  * survives the range from tree canopy to bright sand.
  *
- * `evenodd`, because the band is a path with a hole in it — the same subpath
- * describes the outside and the inside, and the nonzero rule would fill the
- * gap and turn the basket into a solid lozenge.
+ * `evenodd`, because several of these are paths with holes in them — the same
+ * subpath describes the outside and the inside, and the nonzero rule would fill
+ * the gap and turn the basket into a solid lozenge and the tee into a slab.
  */
-function drawBasket(ctx: CanvasRenderingContext2D, color: string, casing: string): void {
-  const paths = BASKET_ART.map((d) => new Path2D(d));
+function draw(ctx: CanvasRenderingContext2D, marker: Marker, color: string, casing: string) {
+  const paths = marker.art.map((d) => new Path2D(d));
 
   ctx.save();
   ctx.scale(SCALE, SCALE);
@@ -71,7 +116,7 @@ function drawBasket(ctx: CanvasRenderingContext2D, color: string, casing: string
   ctx.lineJoin = 'round';
 
   ctx.strokeStyle = casing;
-  ctx.lineWidth = 2;
+  ctx.lineWidth = marker.casingWidth ?? 1;
   for (const path of paths) ctx.stroke(path);
 
   ctx.fillStyle = color;
@@ -79,52 +124,47 @@ function drawBasket(ctx: CanvasRenderingContext2D, color: string, casing: string
   ctx.restore();
 }
 
-function render(color: string, casing: string): ImageData | null {
+function render(marker: Marker, color: string, casing: string): ImageData | null {
   const canvas = document.createElement('canvas');
   canvas.width = ART_SIZE * SCALE;
-  canvas.height = BASKET_INK_BOTTOM * SCALE;
+  canvas.height = (marker.inkBottom ?? ART_SIZE) * SCALE;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
 
-  drawBasket(ctx, color, casing);
+  draw(ctx, marker, color, casing);
   return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
-export const BASKET_ICON = 'target-basket';
-export const BASKET_ICON_SELECTED = 'target-basket-selected';
-
 /**
- * Register the basket markers with a map.
- *
- * Two images rather than one recoloured at draw time: MapLibre can only tint an
- * icon that is an SDF, and an SDF is a single-channel silhouette — it cannot
- * carry both the casing and the stroke, which is the whole point of the glyph.
- * Two images is a few kilobytes and keeps the contrast floor.
+ * Register every marker image with a map.
  *
  * Idempotent, because a basemap change re-runs style installation.
  */
-export function addBasketIcons(map: {
+export function addMarkerIcons(map: {
   hasImage: (id: string) => boolean;
   addImage: (id: string, image: ImageData, options?: { pixelRatio?: number }) => void;
 }): void {
-  const variants: [string, string, string][] = [
-    [BASKET_ICON, featureColors.target.stroke, featureColors.target.casing],
-    /*
-     * Selected: the accent, stroke and casing both, exactly as every other
-     * vector on the map does it.
-     *
-     * It used to keep the feature colour and invert the casing to white, which
-     * worked while baskets were red. The monochrome pass made every feature
-     * white and left this as a white glyph cased in white — invisible as a
-     * casing, identical to the unselected glyph, so selecting a hole lit up its
-     * tee, its corridor and its number and left the basket looking untouched.
-     */
-    [BASKET_ICON_SELECTED, featureColors.selected.stroke, featureColors.selected.casing],
-  ];
+  for (const [name, marker] of Object.entries(MARKERS) as [MarkerName, Marker][]) {
+    const variants: [string, string, string][] = [
+      [markerIcon(name), featureColors[marker.kind].stroke, featureColors[marker.kind].casing],
+      /*
+       * Selected: the accent, fill and casing both, exactly as every other
+       * vector on the map does it.
+       *
+       * The basket used to keep the feature colour and invert the casing to
+       * white, which worked while baskets were red. The monochrome pass made
+       * every feature white and left it as a white glyph cased in white —
+       * invisible as a casing, identical to the unselected glyph, so selecting
+       * a hole lit up its tee, its corridor and its number and left the basket
+       * looking untouched.
+       */
+      [markerIcon(name, true), featureColors.selected.stroke, featureColors.selected.casing],
+    ];
 
-  for (const [id, color, casing] of variants) {
-    if (map.hasImage(id)) continue;
-    const image = render(color, casing);
-    if (image) map.addImage(id, image, { pixelRatio: 2 });
+    for (const [id, color, casing] of variants) {
+      if (map.hasImage(id)) continue;
+      const image = render(marker, color, casing);
+      if (image) map.addImage(id, image, { pixelRatio: 2 });
+    }
   }
 }

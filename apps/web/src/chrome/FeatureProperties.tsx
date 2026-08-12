@@ -8,7 +8,9 @@ import {
   moveToFront,
   pathLength,
   fairwayBearingFor,
+  featureName,
   fieldsFor,
+  mandoBearingFor,
   type Course,
   type Feature,
   type FieldDefinition,
@@ -96,14 +98,90 @@ function NumberField({
   );
 }
 
+/**
+ * A reference to another feature in the same document, stored as its id.
+ *
+ * Which drop zone a missed mandatory sends you to, so far. The options are the
+ * course's own contents rather than a fixed list, which is why this could not
+ * be a `select` with `options` — see `FieldDefinition`.
+ *
+ * The candidates are ordered by whether they belong to the same hole, because a
+ * drop zone almost always does and a course with eighteen of them is otherwise
+ * a list you have to read rather than a choice you can make. The rest stay
+ * reachable: a shared drop zone serving two holes is a real arrangement.
+ *
+ * A reference to something that has since been deleted shows as unset rather
+ * than as a blank row, and picking anything writes a live id over the dead one.
+ */
+function FeatureReference({
+  field,
+  feature,
+  course,
+  onOp,
+}: {
+  field: FieldDefinition;
+  feature: Feature;
+  course: Course;
+  onOp: (op: Op) => void;
+}) {
+  const kinds = field.kinds ?? [];
+  const candidates = course.features
+    .filter((candidate) => kinds.includes(candidate.kind))
+    .sort((a, b) => {
+      const mine = (c: Feature) => (c.holeId === feature.holeId ? 0 : 1);
+      return mine(a) - mine(b) || featureName(a).localeCompare(featureName(b));
+    });
+
+  const raw = feature.props[field.key];
+  const stored = typeof raw === 'string' ? raw : '';
+  const value = candidates.some((candidate) => candidate.id === stored) ? stored : '';
+
+  return (
+    <Row label={field.label}>
+      {candidates.length === 0 ? (
+        /*
+         * Nothing to point at, so nothing to choose from. A disabled select
+         * reading "—" would look like a value nobody had got round to setting;
+         * saying there are none says what is actually true and what to do.
+         */
+        <span className="text-2xs text-text-muted">None drawn yet</span>
+      ) : (
+        <select
+          aria-label={field.label}
+          value={value}
+          onChange={(e) =>
+            onOp({
+              type: 'setProp',
+              id: feature.id,
+              key: field.key,
+              value: e.target.value || undefined,
+            })
+          }
+          className={cn(selectClass, fieldWidth, 'truncate')}
+        >
+          <option value="">—</option>
+          {candidates.map((candidate) => (
+            <option key={candidate.id} value={candidate.id}>
+              {featureName(candidate)}
+              {candidate.holeId === feature.holeId ? '' : ' (elsewhere)'}
+            </option>
+          ))}
+        </select>
+      )}
+    </Row>
+  );
+}
+
 function Field({
   field,
   feature,
+  course,
   units,
   onOp,
 }: {
   field: FieldDefinition;
   feature: Feature;
+  course: Course;
   units: UnitSystem;
   onOp: (op: Op) => void;
 }) {
@@ -139,6 +217,10 @@ function Field({
         />
       </Row>
     );
+  }
+
+  if (field.type === 'feature') {
+    return <FeatureReference field={field} feature={feature} course={course} onOp={onOp} />;
   }
 
   if (field.type === 'select') {
@@ -468,6 +550,61 @@ function LayoutSection({
   );
 }
 
+/**
+ * Which way play runs past a mandatory.
+ *
+ * The same shape as the pad's orientation control and for the same reason: the
+ * angle already had a default — the hole's own shot at the leg nearest the
+ * object — and no way to see it or take it over. Left and right mean nothing
+ * without it, so this is the control that decides which side of the tree the
+ * drawn line lands on, and it should not be a bare number in a list of five.
+ */
+function MandoSection({
+  course,
+  feature,
+  onOp,
+}: {
+  course: Course;
+  feature: Feature;
+  onOp: (op: Op) => void;
+}) {
+  const stored = feature.props['bearing'];
+  const hasOwnBearing = typeof stored === 'number' && Number.isFinite(stored);
+
+  const derived = mandoBearingFor(course, feature.id);
+  const effective = hasOwnBearing ? stored : derived;
+
+  const set = (value: number | undefined) =>
+    onOp({ type: 'setProp', id: feature.id, key: 'bearing', value });
+
+  return (
+    <div className={sectionClass}>
+      <SectionTitle>Direction of play</SectionTitle>
+      <ToggleRow
+        label="Align to the hole"
+        checked={!hasOwnBearing}
+        onChange={(aligned) => set(aligned ? undefined : (derived ?? 0))}
+      />
+      <Row label="Facing">
+        <DegreeField
+          label="Facing"
+          value={effective}
+          disabled={!hasOwnBearing}
+          onChange={set}
+          className={fieldWidth}
+        />
+      </Row>
+      {!hasOwnBearing && derived === null && (
+        <p className="mt-1 text-2xs leading-4 text-text-muted">
+          {feature.holeId === null
+            ? 'Give this a hole, or set a direction, and the mandatory line is drawn.'
+            : 'This hole has no shot yet, so the mandatory line is not drawn.'}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** Width, length and bearing are laid out by `LayoutSection`, not generically. */
 const LAYOUT_KEYS = new Set(['width', 'length', 'bearing']);
 
@@ -485,8 +622,9 @@ export function FeatureProperties({
   onDelete: () => void;
 }) {
   const placedRectangle = KIND_DEFINITIONS[feature.kind].placedRectangle === true;
-  const fields = fieldsFor(feature.kind).filter(
-    (field) => !placedRectangle || !LAYOUT_KEYS.has(field.key),
+  const mando = feature.kind === 'mando';
+  const fields = fieldsFor(feature.kind).filter((field) =>
+    placedRectangle ? !LAYOUT_KEYS.has(field.key) : !mando || field.key !== 'bearing',
   );
 
   return (
@@ -543,7 +681,14 @@ export function FeatureProperties({
       {fields.length > 0 && (
         <div className={sectionClass}>
           {fields.map((field) => (
-            <Field key={field.key} field={field} feature={feature} units={units} onOp={onOp} />
+            <Field
+              key={field.key}
+              field={field}
+              feature={feature}
+              course={course}
+              units={units}
+              onOp={onOp}
+            />
           ))}
         </div>
       )}
@@ -551,6 +696,8 @@ export function FeatureProperties({
       {placedRectangle && (
         <LayoutSection course={course} feature={feature} units={units} onOp={onOp} />
       )}
+
+      {mando && <MandoSection course={course} feature={feature} onOp={onOp} />}
 
       <div className={sectionClass}>
         <button

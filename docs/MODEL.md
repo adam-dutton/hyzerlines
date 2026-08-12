@@ -203,11 +203,19 @@ styles them differently so the claim is visible.
 
 | `target` | pinId, type, model, color, status, standalone |
 | `dropzone` | surface, width, length, bearing |
-| `mando` | side, type, height, bearing |
+| `mando` | side, type, height, bearing, reach, dropzoneId |
 | `fairway` | shape, widthStart, widthEnd |
 | `boundary` | foliage |
 | `ob`, `hazard` | invert |
 | `water` | inPlay |
+
+`mando.side` is the whole feature rather than a detail of it: it says which way
+round the object a disc must go, and it is what decides which side the drawn
+mandatory line lands on. `mando.dropzoneId` points at a _specific_ drop zone,
+because `[RULES]` 804.01.C makes the lie after a missed mandatory the drop zone
+**for that mandatory** — proximity is not the relationship. `mando.reach` is the
+drawn length of the line, which is an app convention rather than a rule; see
+"Derived geometry" in `PDGA.md`.
 
 `boundary.foliage` is the one thing about a property the app cannot see, and the
 PDGA acreage chart is indexed by it. There is deliberately no default — the chart

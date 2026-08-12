@@ -1,6 +1,6 @@
 import type { Position } from './geo.js';
 import { KIND_DEFINITIONS, type Feature } from './features.js';
-import { EARTH_RADIUS, segmentsCross } from './measure.js';
+import { EARTH_RADIUS, bearing, segmentsCross } from './measure.js';
 import { TEEING_AREA, TEE_PAD_M, TARGET_CIRCLES } from './pdga.js';
 
 /**
@@ -180,6 +180,142 @@ export function footprintOf(
     lengthM,
     bearingDeg,
     defaulted: width === null || length === null,
+  };
+}
+
+/* ------------------------------------------------------------------------- */
+/* Mandatories: the side you must pass, and the plane you may not cross       */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Which side of the object the disc has to go.
+ *
+ * `over` is a real ruling and has no line here on purpose: the plane it
+ * describes is horizontal, and a horizontal plane drawn in plan is a mark on
+ * top of the object saying nothing about where you may throw.
+ */
+export type MandoSide = 'left' | 'right' | 'over';
+
+/**
+ * The drawn mandatory line.
+ *
+ * [RULES] 804.01.B: "The restricted plane is a vertical plane marked by one or
+ * more objects or other markers which define the edges of the space." A plane,
+ * with an edge at the object — which is what the drawing is: a line from the
+ * object outward, on the side the disc may not pass.
+ *
+ * **How far it reaches is ours.** The rule bounds the plane at the marker and
+ * says nothing about the other end, because it does not need one: enter the
+ * plane anywhere and it is a stroke. A line on a map has to stop somewhere, so
+ * the length here is chosen for reading rather than transcribed, and every mando
+ * can be given its own.
+ *
+ * The default borrows the one figure the corridor already borrows — Circle 1
+ * across, [RULES] 806.01.A read as a diameter — so the mark arrives the width of
+ * a putting circle rather than a number invented in this file.
+ */
+export const MANDO_LINE = {
+  defaultReachM: TARGET_CIRCLES.find((c) => c.id === 'c1')!.radiusM * 2,
+} as const;
+
+/**
+ * Which way play runs where it passes a point: the bearing of the nearest leg.
+ *
+ * The nearest leg rather than the line's overall direction, because a mandatory
+ * that matters is usually on a dogleg — that is what mandatories are for — and
+ * tee-to-basket on a dogleg points somewhere the disc never travels. Left and
+ * right taken from that would be the wrong side of the object about as often as
+ * the right one.
+ *
+ * Null for a line with no segment in it. Distances are compared on the local
+ * plane in metres; the answer is which segment, so the comparison only has to be
+ * ordered correctly.
+ */
+export function bearingNearest(line: readonly Position[], at: Position): number | null {
+  const plane = planeAt(at);
+  let best: number | null = null;
+  let bestDistance = Infinity;
+
+  for (let i = 0; i + 1 < line.length; i++) {
+    const a = toLocal(plane, line[i]!);
+    const b = toLocal(plane, line[i + 1]!);
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const lengthSq = dx * dx + dy * dy;
+    // A zero-length segment has no direction to offer, and dividing by its
+    // length would put NaN into the comparison and win it.
+    if (lengthSq === 0) continue;
+
+    // `at` is the plane's origin, so the closest point on the segment is found
+    // by projecting the origin onto it and clamping to the ends.
+    const t = Math.min(1, Math.max(0, (-a[0] * dx - a[1] * dy) / lengthSq));
+    const cx = a[0] + dx * t;
+    const cy = a[1] + dy * t;
+    const distanceSq = cx * cx + cy * cy;
+
+    if (distanceSq < bestDistance) {
+      bestDistance = distanceSq;
+      best = bearing(line[i]!, line[i + 1]!);
+    }
+  }
+
+  return best;
+}
+
+export interface MandoLine {
+  /** From the object outward: the object's position, then the far end. */
+  line: [Position, Position];
+  /** The side the disc must pass, which is the side this line is NOT on. */
+  side: Exclude<MandoSide, 'over'>;
+  /** The direction of play the line is perpendicular to. */
+  bearingDeg: number;
+  reachM: number;
+}
+
+const mandoSide = (value: unknown): MandoSide | null =>
+  value === 'left' || value === 'right' || value === 'over' ? value : null;
+
+/**
+ * The line a disc may not cross, for one mandatory.
+ *
+ * It runs from the object *outward, on the forbidden side* — not through it and
+ * out both ways. A mandatory that says "pass left" restricts one side, and a
+ * symmetrical line through the object would draw a barrier across the gap the
+ * shot is supposed to go through.
+ *
+ * Which side is forbidden falls out of the ruling: pass left and the plane is on
+ * the player's right, looking down the line of play. That is why this needs a
+ * bearing at all — left and right are meaningless without knowing which way the
+ * hole runs — and why a mando with no bearing to be had gets no line rather than
+ * a line pointing at an invented north.
+ */
+export function mandoLineOf(
+  feature: Feature,
+  fallbackBearingDeg: number | null = null,
+): MandoLine | null {
+  if (feature.kind !== 'mando' || feature.geometry.type !== 'point') return null;
+
+  const side = mandoSide(feature.props['side']);
+  if (side === null || side === 'over') return null;
+
+  const stored = feature.props['bearing'];
+  const bearingDeg =
+    typeof stored === 'number' && Number.isFinite(stored) ? stored : fallbackBearingDeg;
+  if (bearingDeg === null) return null;
+
+  const reachM = positiveNumber(feature.props['reach']) ?? MANDO_LINE.defaultReachM;
+
+  const at = feature.geometry.coordinates;
+  const plane = planeAt(at);
+  const { right } = axes(bearingDeg);
+  // Pass left, and the wall is on the right. The sign is the whole ruling.
+  const away = side === 'left' ? 1 : -1;
+
+  return {
+    line: [at, fromLocal(plane, [right[0] * away * reachM, right[1] * away * reachM])],
+    side,
+    bearingDeg,
+    reachM,
   };
 }
 
