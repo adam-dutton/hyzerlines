@@ -84,7 +84,9 @@ async function setupHole(page: Page): Promise<void> {
   await place(page, 'Tee pad', 400, 560);
   await place(page, 'Target', 860, 260);
   await page.getByRole('button', { name: 'Add hole' }).click();
-  await expect(page.getByText('Hole 1').first()).toBeVisible();
+  // The hole's own panel, which is what "Add hole" opens. Its name field is the
+  // one thing on it that is always there, whatever the hole is called.
+  await expect(page.getByRole('textbox', { name: 'Hole name' })).toBeVisible();
 }
 
 /**

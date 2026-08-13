@@ -3,6 +3,7 @@ import { test, expect, type Page } from '@playwright/test';
 import {
   armTool,
   clickMap,
+  openCourseTab,
   openEditor,
   openSection,
   place,
@@ -42,6 +43,9 @@ test.describe('the course panel', () => {
     await openEditor(page, { zoom: 16 });
 
     await page.getByRole('textbox', { name: 'Course name' }).fill('Gleneagle North');
+    // The name is in the top bar; the other two are the course's own, in the
+    // rail's Course tab.
+    await openCourseTab(page);
     await page.getByRole('textbox', { name: 'Course location' }).fill('Colorado Springs, CO');
     await page
       .getByRole('textbox', { name: 'Course description' })
@@ -54,6 +58,9 @@ test.describe('the course panel', () => {
     await expect(page.getByRole('textbox', { name: 'Course name' })).toHaveValue(
       'Gleneagle North',
     );
+    // The rail opens on the holes, so the course's own fields need asking for
+    // again — which is the point of the tab, not a fact about the document.
+    await openCourseTab(page);
     await expect(page.getByRole('textbox', { name: 'Course location' })).toHaveValue(
       'Colorado Springs, CO',
     );

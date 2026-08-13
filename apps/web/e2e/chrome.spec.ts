@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { bearing } from '@hyzerlines/core';
 
-import { course, openEditor, place, rail } from './fixtures';
+import { course, openCourseTab, openEditor, place, rail } from './fixtures';
 
 /**
  * Where the chrome is, and what is reachable from it.
@@ -52,53 +52,56 @@ const topBar = (page: Page) => page.getByRole('banner', { name: 'Course' });
 
 test.describe('chrome layout', () => {
   /*
-   * The two columns share a width and a top edge, which is what makes them
-   * read as a frame around the map rather than as unrelated cards. Asserted
-   * rather than eyeballed because both are set in separate files.
+   * The rail's two levels are adjacent and share a top edge.
+   *
+   * That adjacency is the whole design: the list gives up its width to the
+   * detail beside it, so the thing you clicked and the thing that answered are
+   * touching. Two floating columns at opposite edges of the screen was the
+   * arrangement this replaced, and a gap opening up between the levels would be
+   * that arrangement coming back a few pixels at a time.
    */
-  test('the two columns are the same width and level', async ({ page }) => {
+  test('the rail opens a second level flush against the first', async ({ page }) => {
     await openEditor(page, { zoom: 16 });
     await place(page, 'Tee pad', 480, 460);
     await place(page, 'Target', 800, 260);
     await page.getByRole('button', { name: 'Add hole' }).click();
 
-    // The left panel is named for the focus it shows, which is Play by default.
-    const left = await box(page, 'Play');
-    const properties = await box(page, 'Properties');
+    // The list is named for the focus it shows, which is Play by default.
+    const list = await box(page, 'Play');
+    const detail = await box(page, 'Properties');
 
-    expect(properties.width).toBe(left.width);
-    expect(properties.y).toBe(left.y);
-    // One at each edge, with the map between them.
-    expect(left.x).toBeLessThan(properties.x);
+    expect(list.x).toBe(0);
+    expect(detail.x).toBe(list.x + list.width);
+    expect(detail.y).toBe(list.y);
+    expect(detail.height).toBe(list.height);
   });
 
   /*
-   * The properties column is permanent now, and that is a deliberate reversal.
+   * Nothing selected is a real state, and the rail says so rather than keeping
+   * a column open to describe it.
    *
-   * It used to unmount when nothing was selected, so the column arrived and left
-   * as you clicked around and moved the layout under you. With the course as its
-   * third mode there is always something for it to describe, so it always has a
-   * reason to be there. The cost is real and accepted: about 40% of a 1280px
-   * viewport is chrome, and clicks that used to reach map at x > 1000 now land on
-   * a panel — which is why the coordinates in these specs stay inside the channel
-   * between the columns.
+   * The properties column used to be permanent, with the course as its third
+   * mode — which meant about 40% of a 1280px viewport was chrome whether or not
+   * you were looking at anything. The course is a *list* now, in the rail's own
+   * Course tab, so an empty selection costs one column instead of two.
    */
-  test('the properties column stays when nothing is selected', async ({ page }) => {
+  test('the detail column closes when nothing is selected', async ({ page }) => {
     await openEditor(page, { zoom: 16 });
 
-    const properties = page.getByRole('region', { name: 'Properties', exact: true });
-    await expect(properties).toBeVisible();
-    // Describing the course, because that is what is left when nothing is picked.
-    await expect(properties.getByRole('heading', { name: 'Course' })).toBeVisible();
+    const detail = page.getByRole('region', { name: 'Properties', exact: true });
+    expect((await detail.boundingBox())!.width).toBe(0);
 
     await place(page, 'Tee pad', 480, 460);
     await place(page, 'Target', 800, 260);
     await page.getByRole('button', { name: 'Add hole' }).click();
-    await expect(properties).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Hole name' })).toBeVisible();
 
     await page.keyboard.press('Escape');
-    await expect(properties).toBeVisible();
-    await expect(properties.getByRole('heading', { name: 'Course' })).toBeVisible();
+    await expect.poll(async () => (await detail.boundingBox())!.width).toBe(0);
+
+    // And the course is still reachable — in the list, not in a column of its own.
+    await openCourseTab(page);
+    await expect(page.getByRole('button', { name: 'Analysis', exact: true })).toBeVisible();
   });
 
   /**
@@ -120,7 +123,7 @@ test.describe('chrome layout', () => {
      * column, and the left panel is named for the focus it is showing — which is
      * the point of that rename: the panel says what it is.
      */
-    const names = ['Course', 'Play', 'Properties', 'Tools'];
+    const names = ['Course', 'Play', 'Tools'];
     const boxes = await Promise.all(names.map((name) => box(page, name)));
 
     for (let i = 0; i < boxes.length; i++) {
@@ -156,6 +159,7 @@ test.describe('chrome layout', () => {
     await openEditor(page, { zoom: 16 });
 
     const tools = await box(page, 'Tools');
+    const list = await box(page, 'Play');
     const focus = (await page.getByRole('radiogroup', { name: 'Focus' }).boundingBox())!;
     const viewport = page.viewportSize()!;
 
@@ -163,11 +167,21 @@ test.describe('chrome layout', () => {
     expect(focus.y).toBeLessThan(60);
     expect(tools.y).toBeGreaterThan(viewport.height / 2);
 
-    for (const rect of [tools, focus]) {
-      expect(Math.abs(rect.x + rect.width / 2 - viewport.width / 2)).toBeLessThan(2);
-    }
+    /*
+     * The switcher centres on the viewport and the palette centres on the map.
+     *
+     * Deliberately two different centres. The switcher belongs to the frame, so
+     * it holds still whatever the rail is doing — that is what the top bar's
+     * fixed middle grid track is for. The palette belongs to the map, and a
+     * palette centred on the viewport while a 236px rail covers the left of it
+     * is a palette sitting off-centre in the only space it is used over.
+     */
+    expect(Math.abs(focus.x + focus.width / 2 - viewport.width / 2)).toBeLessThan(2);
 
-    // And a long name does not shove it sideways.
+    const channel = (list.x + list.width + viewport.width) / 2;
+    expect(Math.abs(tools.x + tools.width / 2 - channel)).toBeLessThan(2);
+
+    // And a long name does not shove the switcher sideways.
     await page
       .getByRole('textbox', { name: 'Course name' })
       .fill('A course with a deliberately very long name indeed');
@@ -190,13 +204,14 @@ test.describe('chrome layout', () => {
     const recenter = page.getByRole('button', { name: 'Recenter on course' });
     await expect(recenter).toBeVisible();
 
-    const tools = await box(page, 'Tools');
-    const properties = await box(page, 'Properties');
+    const list = await box(page, 'Play');
     const rect = (await recenter.boundingBox())!;
+    const viewport = page.viewportSize()!;
 
-    // Below the palette, and clear of the column beside it.
-    expect(rect.y).toBeGreaterThanOrEqual(tools.y + tools.height);
-    expect(rect.x + rect.width).toBeLessThanOrEqual(properties.x);
+    // In the camera cluster at the top right: clear of the rail on one side and
+    // inside the viewport on the other.
+    expect(rect.x).toBeGreaterThan(list.x + list.width);
+    expect(rect.x + rect.width).toBeLessThanOrEqual(viewport.width);
   });
 
   /*
@@ -242,7 +257,9 @@ test.describe('chrome layout', () => {
   test('attribution and the source link are on screen', async ({ page }) => {
     await openEditor(page, { zoom: 16 });
 
-    await expect(page.getByText(/Esri/)).toBeVisible();
+    // The credit line itself, not the layers drawer's name for the same
+    // basemap: the drawer is in the DOM whether or not it is open.
+    await expect(page.getByText(/Imagery © Esri/)).toBeVisible();
     const source = page.getByRole('link', { name: 'Source' });
     await expect(source).toBeVisible();
     await expect(source).toHaveAttribute('href', /github\.com/);
@@ -383,9 +400,10 @@ test.describe('finding the course again', () => {
     await page.waitForTimeout(700);
 
     const left = await box(page, 'Play');
-    const properties = await box(page, 'Properties');
+    const detail = await box(page, 'Properties');
     const top = await box(page, 'Course');
     const tools = await box(page, 'Tools');
+    const viewport = page.viewportSize()!;
 
     const screen = await page.evaluate((points: [number, number][]) => {
       const map = window.hyzerlinesMap!;
@@ -396,8 +414,9 @@ test.describe('finding the course again', () => {
     }, ends);
 
     for (const point of screen) {
-      expect(point.x).toBeGreaterThan(left.x + left.width);
-      expect(point.x).toBeLessThan(properties.x);
+      // Clear of the whole rail — the list plus whatever level it has opened.
+      expect(point.x).toBeGreaterThan(left.x + left.width + detail.width);
+      expect(point.x).toBeLessThan(viewport.width);
       expect(point.y).toBeGreaterThan(top.y + top.height);
       expect(point.y).toBeLessThan(tools.y);
     }

@@ -22,6 +22,15 @@ import {
 
 /** Draw a rectangular property boundary, leaving it selected. */
 async function drawBoundary(page: Page): Promise<void> {
+  /*
+   * Out of whatever is selected first.
+   *
+   * A boundary is the course's, not a hole's — and anything drawn while a hole
+   * is selected joins that hole. It also means the rail is showing one column
+   * rather than two, which is what keeps these clicks on the map.
+   */
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
   await armTool(page, 'Property boundary');
   await clickMap(page, 330, 560);
   await clickMap(page, 900, 560);

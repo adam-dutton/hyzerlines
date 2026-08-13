@@ -351,7 +351,12 @@ export async function openCourseTab(page: Page): Promise<void> {
   for (let attempt = 0; attempt < 3 && (await tab.count()) === 0; attempt++) {
     await page.keyboard.press('Escape');
   }
-  await tab.click();
+  /*
+   * Only Play has two lists to switch between. Every other focus lists the
+   * course's own features and puts its properties at the top of them, so there
+   * is no tab and nothing to click — being already there is the success case.
+   */
+  if (await tab.count()) await tab.click();
 }
 
 /**

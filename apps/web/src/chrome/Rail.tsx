@@ -107,7 +107,7 @@ function Level({
 }) {
   return (
     <div
-      {...(label ? { 'aria-label': label, role: 'group' } : {})}
+      {...(label ? { 'aria-label': label, role: 'region' } : {})}
       className="relative h-full shrink-0 overflow-hidden bg-surface-panel"
       style={{
         width,
@@ -410,7 +410,16 @@ export function Rail({
                   Here they are simply the head of the list of what the course
                   holds, which is what they describe.
                 */}
-                {focus === 'play' && <div className="pb-1">{courseProperties}</div>}
+                {/*
+                  In every focus, not only in Play.
+                  
+                  The course's Analysis section is where the acreage lives, and
+                  acreage is the first thing you want while tracing a property
+                  line — which is Land. Withholding the course's own properties
+                  from the focus most likely to need them would be the interface
+                  hiding an answer behind a mode.
+                */}
+                <div className="pb-1">{courseProperties}</div>
                 <FeatureList
                   features={courseFeatures}
                   order={order}
