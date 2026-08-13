@@ -6,9 +6,9 @@ import {
   course,
   holeChip,
   openEditor,
-  openSection,
   place,
   project,
+  setAid,
   setSwitch,
 } from './fixtures';
 
@@ -649,8 +649,7 @@ test.describe('the pair picker', () => {
     // And they are fairway lines: turning those off takes the alternatives too,
     // rather than leaving a thinner copy of an aid that was switched off.
     await page.keyboard.press('Escape');
-    await openSection(page, 'Settings');
-    await setSwitch(page, 'Lines', false);
+    await setAid(page, 'Lines', false);
     await expect.poll(() => drawn('alternative')).toEqual([]);
     await expect.poll(() => drawn('centreline')).toEqual([]);
   });

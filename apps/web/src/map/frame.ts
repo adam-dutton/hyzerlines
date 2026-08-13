@@ -1,7 +1,14 @@
 import type maplibregl from 'maplibre-gl';
 import { boundsOf, type Feature } from '@hyzerlines/core';
 
-import { COLUMN, GAP, PANEL_TOP, TOOL_BAR_BOTTOM, TOOL_BAR_HEIGHT } from '../chrome/layout';
+import {
+  GAP,
+  GUTTER,
+  TOOL_BAR_BOTTOM,
+  TOOL_BAR_HEIGHT,
+  TOP_BAR_HEIGHT,
+  shellEdges,
+} from '../chrome/layout';
 
 /**
  * Putting the work on screen.
@@ -25,15 +32,18 @@ import { COLUMN, GAP, PANEL_TOP, TOOL_BAR_BOTTOM, TOOL_BAR_HEIGHT } from '../chr
  * tool bar, so every fit was being padded for furniture that had moved. Read
  * from `layout.ts` and the numbers cannot drift again.
  */
-const CHROME_PADDING = {
-  top: PANEL_TOP,
+const chromePadding = () => ({
+  top: TOP_BAR_HEIGHT + GAP,
   // The whole tool bar — the gap under it, the bar itself, and a gap above.
   // Subtracting only `TOOL_BAR_BOTTOM` clears the attribution line and leaves
   // the palette sitting on the map, which is where a fitted tee ended up.
   bottom: TOOL_BAR_BOTTOM + TOOL_BAR_HEIGHT + GAP,
-  left: COLUMN,
-  right: COLUMN,
-};
+  // Read at call time, not at module load: the rail is two widths and the
+  // drawer is open or shut, so framing has to ask what the chrome is covering
+  // *now*. See `shellEdges`.
+  left: shellEdges.rail + GUTTER,
+  right: shellEdges.drawer + GUTTER,
+});
 
 /** A course this small is a single tee, not an extent worth fitting to. */
 const DEGENERATE_SPAN_DEGREES = 1e-6;
@@ -47,11 +57,12 @@ function padding(map: maplibregl.Map) {
   // still gets a usable box instead of a negative one.
   const maxX = canvas.clientWidth / 3;
   const maxY = canvas.clientHeight / 3;
+  const chrome = chromePadding();
   return {
-    top: Math.min(CHROME_PADDING.top, maxY),
-    bottom: Math.min(CHROME_PADDING.bottom, maxY),
-    left: Math.min(CHROME_PADDING.left, maxX),
-    right: Math.min(CHROME_PADDING.right, maxX),
+    top: Math.min(chrome.top, maxY),
+    bottom: Math.min(chrome.bottom, maxY),
+    left: Math.min(chrome.left, maxX),
+    right: Math.min(chrome.right, maxX),
   };
 }
 

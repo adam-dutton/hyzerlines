@@ -331,6 +331,9 @@ export async function openSection(page: Page, title: string): Promise<void> {
   for (let attempt = 0; attempt < 3 && (await header.count()) === 0; attempt++) {
     await page.keyboard.press('Escape');
   }
+  // The course's own sections live in the rail's Course tab now, so getting to
+  // one means getting out of whatever is open and switching lists.
+  if ((await header.count()) === 0) await openCourseTab(page);
   await expect(header).toBeVisible();
 
   if ((await header.getAttribute('aria-expanded')) !== 'true') await header.click();
@@ -338,7 +341,21 @@ export async function openSection(page: Page, title: string): Promise<void> {
 }
 
 /**
- * Open the layers panel, which holds the basemap choice and the overlays.
+ * The rail's Course tab, which holds the course's own properties.
+ *
+ * Escape first, because the tabs are only drawn while the rail is showing its
+ * list — drilled into a hole, the header is that hole's name.
+ */
+export async function openCourseTab(page: Page): Promise<void> {
+  const tab = page.getByRole('button', { name: 'Course', exact: true });
+  for (let attempt = 0; attempt < 3 && (await tab.count()) === 0; attempt++) {
+    await page.keyboard.press('Escape');
+  }
+  await tab.click();
+}
+
+/**
+ * Open the layers drawer, which holds the basemap choice and the overlays.
  *
  * A popover rather than a menu now — you keep it open while flipping several
  * things and watching the map — so unlike the old menu it does not close when
@@ -348,9 +365,22 @@ export async function openSection(page: Page, title: string): Promise<void> {
  * left open.
  */
 export async function openLayers(page: Page): Promise<void> {
-  const trigger = page.getByRole('button', { name: 'Layers' });
+  const trigger = page.getByRole('button', { name: 'Layers', exact: true });
   if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
   await expect(page.getByRole('radiogroup', { name: 'Basemap' })).toBeVisible();
+}
+
+/**
+ * Set one of the course's drawing aids, which live in the layers drawer.
+ *
+ * They were switches inside the course's Settings, grouped with units and
+ * elevation smoothing because all three are preferences. What they actually
+ * have in common with the terrain overlays is that they decide what is on the
+ * map, which is the question you are asking when you reach for one.
+ */
+export async function setAid(page: Page, name: string, on: boolean): Promise<void> {
+  await openLayers(page);
+  await setSwitch(page, name, on);
 }
 
 /** Choose a basemap by name, opening the layers panel if it is closed. */

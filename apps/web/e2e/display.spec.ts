@@ -4,7 +4,7 @@ import { TARGET_CIRCLES } from '@hyzerlines/core';
 import {
   course,
   openEditor,
-  openSection,
+  openLayers,
   place,
   setSwitch,
   switchControl,
@@ -57,9 +57,9 @@ async function courseWithAHole(page: Page): Promise<void> {
   await place(page, 'Tee pad', 420, 480);
   await place(page, 'Target', 820, 260);
   await page.getByRole('button', { name: 'Add hole' }).click();
-  // Back to the course panel, then into the section the switches fold into.
+  // Back out of the hole, then into the drawer the aids now live in.
   await page.keyboard.press('Escape');
-  await openSection(page, 'Settings');
+  await openLayers(page);
 }
 
 test.describe('drawing aids', () => {

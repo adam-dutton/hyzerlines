@@ -36,10 +36,12 @@ import { useNavigation } from './map/useNavigation';
 import { frameFeatures } from './map/frame';
 import type { Tool } from './map/tools';
 import { ToolBar } from './chrome/ToolBar';
-import { RightPanel } from './chrome/RightPanel';
 import type { SelectedPair } from './chrome/HoleProperties';
-import { LeftPanel } from './chrome/LeftPanel';
+import { Rail } from './chrome/Rail';
+import { FeatureDetail, HoleDetail } from './chrome/DetailPanel';
+import { FindingsList } from './chrome/FindingsList';
 import { StyleSubjectPanel, type StyleSubject } from './chrome/StyleProperties';
+import { railWidth, useShellEdge } from './chrome/layout';
 import { DEFAULT_FEATURE_STYLES, DEFAULT_LETTERING_STYLE } from './map/mapStyle';
 import { useShortcuts } from './keyboard/useShortcuts';
 import type { UnitSystem } from './units';
@@ -156,6 +158,15 @@ export function CourseEditor({
   const [selectedHoleId, setSelectedHoleId] = useState<string | null>(null);
 
   /*
+   * Which of the rail's two lists is showing: the holes, or the course itself.
+   *
+   * Session state rather than document state, and not persisted either. It is a
+   * statement about what you are looking at right now, and a course reopened
+   * two days later should open on its holes — which is what it is.
+   */
+  const [railTab, setRailTab] = useState<'holes' | 'course'>('holes');
+
+  /*
    * Features the designer has hidden, for the session.
    *
    * The same kind of state as `pairChoices` below, and out of the document for
@@ -198,6 +209,19 @@ export function CourseEditor({
 
   const selected = course.features.find((f) => f.id === selectedId) ?? null;
   const selectedHole = course.holes.find((h) => h.id === selectedHoleId) ?? null;
+
+  /*
+   * How much of the left edge the rail is covering, published for everything
+   * that has to stay clear of it — the tool bar, the attribution, the camera
+   * cluster and the map's own framing. See `useShellEdge`.
+   */
+  useShellEdge(
+    'rail',
+    railWidth(
+      !hidden && (selectedHole !== null || styleSubject !== null || selected !== null),
+      !hidden && selectedHole !== null,
+    ),
+  );
 
   /*
    * Which of the hole's shots the panels are describing.
@@ -878,14 +902,13 @@ export function CourseEditor({
 
           <ToolBar tool={nav.effective} focus={focus} onToolChange={setTool} />
 
-          <LeftPanel
+          <Rail
             course={course}
             units={units}
-            findings={findings}
             choices={pairChoices}
             focus={focus}
-            styleSubject={styleSubject}
-            onSelectStyleSubject={setStyleSubject}
+            tab={railTab}
+            onTab={setRailTab}
             hiddenIds={hiddenIds}
             selectedFeatureId={selectedId}
             onSelectFeature={selectFeature}
@@ -894,26 +917,57 @@ export function CourseEditor({
             onSelectHole={selectHoleFromList}
             onOp={handleOp}
             onAddHole={addHole}
-            onRevealFinding={reveal}
-            onDismissRule={dismissRule}
-          />
-
-          <RightPanel
-            course={course}
-            units={units}
-            feature={selected}
-            hole={selectedHole}
-            pair={selectedPair}
-            holeNumber={holePosition}
-            holeCount={course.holes.length}
-            onOp={handleOp}
-            onDeleteFeature={deleteSelected}
-            onDeleteHole={deleteSelectedHole}
-            onSelectFeature={selectFeature}
-            onSelectHole={selectHole}
-            onSelectPair={choosePair}
-            onStepHole={stepHole}
-            styleSubject={
+            styleSubject={styleSubject}
+            onSelectStyleSubject={setStyleSubject}
+            courseProperties={
+              <>
+                {courseProperties({ drawBoundary: () => armKind('boundary') })}
+                {/*
+                  The findings belong to the course, so they sit under the
+                  course's own properties rather than in a card of their own.
+                  They had one, stacked beneath the old left column — which
+                  meant a panel that was empty most of the time was permanently
+                  taking height from the list above it.
+                */}
+                <FindingsList
+                  findings={findings}
+                  onReveal={reveal}
+                  onDismissRule={dismissRule}
+                />
+              </>
+            }
+            holeDetail={
+              selectedHole && (
+                <HoleDetail
+                  course={course}
+                  hole={selectedHole}
+                  pair={selectedPair}
+                  units={units}
+                  holeNumber={holePosition}
+                  holeCount={course.holes.length}
+                  onOp={handleOp}
+                  onSelectPair={choosePair}
+                  onDrawFeature={armKind}
+                  onDelete={deleteSelectedHole}
+                  onSelectFeature={selectFeature}
+                  onStepHole={stepHole}
+                />
+              )
+            }
+            featureDetail={
+              selected && (
+                <FeatureDetail
+                  course={course}
+                  feature={selected}
+                  units={units}
+                  onOp={handleOp}
+                  onDelete={deleteSelected}
+                  onSelectHole={selectHole}
+                  onClose={() => setSelectedId(null)}
+                />
+              )
+            }
+            styleDetail={
               focus === 'style' && styleSubject ? (
                 <StyleSubjectPanel
                   subject={styleSubject}
@@ -923,14 +977,6 @@ export function CourseEditor({
                 />
               ) : null
             }
-            onDrawFeature={armKind}
-            onClearSelection={() => {
-              setSelectedId(null);
-              setSelectedHoleId(null);
-            }}
-            courseProperties={courseProperties({
-              drawBoundary: () => armKind('boundary'),
-            })}
           />
 
           {/* While drawing a multi-point shape, say how to finish it. Nothing

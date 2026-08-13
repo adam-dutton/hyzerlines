@@ -1,11 +1,4 @@
-import {
-  IconButton,
-  Panel,
-  Segmented,
-  TextField,
-  cn,
-  type ThemeName,
-} from '@hyzerlines/design';
+import { IconButton, Segmented, TextField, cn, type ThemeName } from '@hyzerlines/design';
 import {
   FOCUSES,
   FOCUS_DEFINITIONS,
@@ -22,7 +15,7 @@ import { useProfiles } from '../survey/useProfiles';
 import { useAutoLocation } from './useAutoLocation';
 import { CourseMenu } from './CourseMenu';
 import { LARGE_ART } from './iconArt';
-import { GAP, GUTTER, TOP_BAR_HEIGHT } from './layout';
+import { GAP, TOP_BAR_HEIGHT } from './layout';
 import type { SaveStatus } from '../document/CourseProvider';
 
 /**
@@ -219,31 +212,32 @@ export function TopBar({
 
   return (
     <div
-      className="pointer-events-none absolute flex"
-      style={{
-        top: GUTTER,
-        left: GUTTER,
-        right: GUTTER,
-        height: TOP_BAR_HEIGHT,
-        zIndex: 'var(--hz-z-chrome)',
-      }}
+      className="pointer-events-none absolute left-0 right-0 top-0 flex"
+      style={{ height: TOP_BAR_HEIGHT, zIndex: 'var(--hz-z-chrome)' }}
     >
-      <Panel
-        as="header"
-        elevation="raised"
-        padding="none"
+      {/*
+        Edge to edge, and a border rather than a shadow.
+
+        It floated in a rounded card with a gutter around it, which is what every
+        other piece of chrome does — and it was the one piece that should not.
+        The bar is the frame: it names the document and holds the mode switcher,
+        so it has to read as the top of the application rather than as a card
+        lying on the map. A card also cost 12px of map on three sides for
+        nothing, since nothing can ever be above it.
+      */}
+      <header
+        className={cn(
+          'pointer-events-auto grid w-full items-center px-3.5',
+          'border-b border-border-subtle bg-surface-panel',
+        )}
         /*
          * Symmetric padding, deliberately.
          *
-         * The design had 12 left and 8 right, which reads fine and is 2px of lie:
-         * the middle grid track centres on the *content box*, so uneven padding
-         * puts the focus switcher 2px right of the viewport's centre — and 2px
-         * off is exactly the kind of misalignment you cannot see on its own but
-         * can see against the tool bar directly below it, which is centred on the
-         * viewport. Equal padding makes the two share a centre line. The left
-         * cluster takes its extra 4px itself, where it costs nothing.
+         * Uneven padding puts the focus switcher off the viewport's centre — and
+         * a few pixels off is exactly the kind of misalignment you cannot see on
+         * its own but can see against the tool bar below, which is centred on the
+         * free channel. Equal padding makes the two share a centre line.
          */
-        className="grid w-full items-center px-2"
         style={{ gridTemplateColumns: 'minmax(0,1fr) auto minmax(0,1fr)', gap: GAP * 2 }}
         aria-label="Course"
       >
@@ -331,7 +325,7 @@ export function TopBar({
             onShowShortcuts={onShowShortcuts}
           />
         </div>
-      </Panel>
+      </header>
     </div>
   );
 }

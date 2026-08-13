@@ -70,11 +70,11 @@ test.describe('the course panel', () => {
   test('sections start closed and unmount what they hold', async ({ page }) => {
     await openEditor(page, { zoom: 16 });
 
-    const fairways = switchControl(page, 'Fairways');
-    await expect(fairways).toBeHidden();
+    const notes = page.getByRole('textbox', { name: 'Course notes' });
+    await expect(notes).toBeHidden();
 
-    await openSection(page, 'Settings');
-    await expect(fairways).toBeVisible();
+    await openSection(page, 'Notes');
+    await expect(notes).toBeVisible();
   });
 
   test('the totals moved to the header, next to the name', async ({ page }) => {
