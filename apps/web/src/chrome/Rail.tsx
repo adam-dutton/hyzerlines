@@ -121,10 +121,13 @@ function Level({
       }}
     >
       {/*
-        The contents keep their full width while the column animates, so the
-        rows inside slide out of view rather than reflowing to nothing — text
-        re-wrapping mid-transition is what makes a panel look like it is
-        collapsing rather than closing.
+        The contents take the column's width and re-lay out with it.
+        
+        A shrunk list is meant to be *read* at its new width — a hole tile drops
+        its two drawings and keeps its number — so the rows have to reflow
+        rather than slide out of frame. The one pixel is a floor: a zero-width
+        box makes its children's layout collapse in ways that flash on the way
+        back open.
       */}
       <div className="h-full" style={{ width: Math.max(width, 1) }}>
         {children}

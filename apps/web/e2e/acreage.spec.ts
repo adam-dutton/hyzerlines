@@ -51,8 +51,18 @@ test.describe('acreage', () => {
      * Acres, not square metres. Every land registry, parks department and the
      * PDGA's own chart quotes acreage, and a site measured in anything else has
      * to be converted before it can be compared with any of them.
+     *
+     * Read off the boundary's own panel, which is what drawing one opens. The
+     * list beside it is shrunk to make room for that panel, so the same figure
+     * in the list row is clipped — asking for it there would be asking the
+     * narrow column a question the wide one is already answering.
      */
-    await expect(page.getByText(/[\d.,]+ acres/).first()).toBeVisible();
+    await expect(
+      page
+        .getByRole('region', { name: 'Properties' })
+        .getByText(/[\d.,]+ acres/)
+        .first(),
+    ).toBeVisible();
   });
 
   /*
@@ -126,7 +136,12 @@ test.describe('acreage', () => {
     // On the edge, which is all there is to hit.
     await clickMap(page, 615, 560);
     await expect(page.getByRole('textbox', { name: 'Feature name' })).toBeVisible();
-    await expect(page.getByText(/[\d.,]+ acres/).first()).toBeVisible();
+    await expect(
+      page
+        .getByRole('region', { name: 'Properties' })
+        .getByText(/[\d.,]+ acres/)
+        .first(),
+    ).toBeVisible();
   });
 
   /*
