@@ -228,7 +228,7 @@ export function TopBar({
       <header
         className={cn(
           'pointer-events-auto grid w-full items-center px-3.5',
-          'border-b border-border-subtle bg-surface-panel',
+          'border-b border-border-subtle bg-surface-raised',
         )}
         /*
          * Symmetric padding, deliberately.

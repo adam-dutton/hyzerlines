@@ -111,7 +111,7 @@ function Level({
   return (
     <div
       {...(label ? { 'aria-label': label, role: 'region' } : {})}
-      className="relative h-full shrink-0 overflow-hidden bg-surface-panel"
+      className="relative h-full shrink-0 overflow-hidden bg-surface-raised"
       style={{
         width,
         transition: `width ${SLIDE_MS}ms ${SLIDE_EASE}`,
@@ -562,7 +562,7 @@ export function Rail({
           */}
           <div
             aria-hidden={!overlayOpen}
-            className="absolute inset-0 flex flex-col bg-surface-panel shadow-float"
+            className="absolute inset-0 flex flex-col bg-surface-raised shadow-float"
             style={{
               transform: `translateX(${overlayOpen ? 0 : 14}%)`,
               opacity: overlayOpen ? 1 : 0,

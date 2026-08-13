@@ -199,7 +199,7 @@ export function LayersDrawer({
     <aside
       aria-label="Layers"
       aria-hidden={!open}
-      className="absolute bottom-0 right-0 flex flex-col border-l border-border-subtle bg-surface-panel shadow-float"
+      className="absolute bottom-0 right-0 flex flex-col border-l border-border-subtle bg-surface-raised shadow-float"
       style={{
         top: TOP_BAR_HEIGHT,
         width: LAYERS_WIDTH,
