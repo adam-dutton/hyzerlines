@@ -25,7 +25,7 @@ import { FEATURE_KINDS, type FeatureKind } from './features.js';
  * different questions, and without a focus they would have to share one.
  */
 
-export const FOCUSES = ['play', 'land', 'routing', 'simulate'] as const;
+export const FOCUSES = ['play', 'land', 'style', 'routing', 'simulate'] as const;
 export type Focus = (typeof FOCUSES)[number];
 
 export interface FocusDefinition {
@@ -77,6 +77,25 @@ export const FOCUS_DEFINITIONS: Record<Focus, FocusDefinition> = {
     label: 'Land',
     summary: 'The ground the course sits on: water, paths, trees and the property line.',
     kinds: ['boundary', 'path', 'water', 'terrain', 'notedArea', 'notedPoint'],
+    ready: true,
+  },
+  /*
+   * Style claims no kinds, and that is not an oversight.
+   *
+   * `kinds` is what a focus is *responsible for drawing* — it decides which
+   * tools the palette offers and which features win a click where two overlap.
+   * Style draws nothing and places nothing; it is about how everything already
+   * on the map looks. Claiming the kinds it restyles would take out-of-bounds
+   * away from `play` for as long as somebody was picking a colour, which is
+   * exactly the kind of mode this taxonomy exists to avoid.
+   *
+   * So the palette is empty here and every feature stays clickable, which is
+   * what you want while restyling: click the thing, see what it is.
+   */
+  style: {
+    label: 'Style',
+    summary: 'How this course is drawn — every colour, line, marker and number.',
+    kinds: [],
     ready: true,
   },
   routing: {

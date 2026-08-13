@@ -1,7 +1,18 @@
-import { useEffect, useRef } from 'react';
-import type { GeoJSONSource, MapMouseEvent, MapSourceDataEvent } from 'maplibre-gl';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type {
+  GeoJSONSource,
+  LayerSpecification,
+  MapMouseEvent,
+  MapSourceDataEvent,
+} from 'maplibre-gl';
 import { feature as featureColors } from '@hyzerlines/design';
-import { byFocus, type Feature, type FeatureKind, type Focus } from '@hyzerlines/core';
+import {
+  byFocus,
+  type Feature,
+  type FeatureKind,
+  type Focus,
+  type MapStyle,
+} from '@hyzerlines/core';
 
 import { useMap } from './MapContext';
 import {
@@ -9,17 +20,65 @@ import {
   FEATURES_SOURCE,
   HANDLES_SOURCE,
   INTERACTIVE_LAYERS,
-  derivedLayers,
-  featureLayers,
-  holeLabelLayers,
+  courseLayers,
   toGeoJSON,
   vertexLayers,
 } from './featureLayers';
 import { VERTEX_LAYERS } from './useVertexEditing';
 import { addMarkerIcons } from './icons';
+import { resolveStyle, type ResolvedStyle } from './mapStyle';
 import type { DerivedGeometry } from './derived';
 
 const PREVIEW_SOURCE = 'drawing-preview';
+
+/**
+ * How long the Style focus holds its highlight before letting go.
+ *
+ * Long enough to see which shapes answered, short enough that it reads as a
+ * confirmation rather than a state. MapLibre's own paint transition fades it in
+ * and out either side of this, so the glow is on screen for about a second in
+ * total. See `highlightLayers`.
+ */
+const FLASH_MS = 700;
+
+/**
+ * Every drawing of one styleable thing, so all of them can answer at once.
+ *
+ * Clicking an out-of-bounds area in Style means "show me how out-of-bounds
+ * areas are drawn", and the honest confirmation of that is every OB area on the
+ * course lighting up — not the one under the cursor, which would suggest the
+ * panel is about to change that one alone.
+ *
+ * Both sources are read, because most of what a designer clicks in Style is
+ * derived: a corridor is its fairway, a pad is its tee, a wall is its
+ * mandatory. Those carry the feature's own id, so the same set reaches them.
+ */
+function instancesOf(
+  subject: FeatureKind | 'holeNumber',
+  features: readonly Feature[],
+  derived: GeoJSON.FeatureCollection,
+): string[] {
+  const ids = new Set<string>();
+
+  const take = (value: unknown) => {
+    if (typeof value === 'string') ids.add(value);
+  };
+
+  // The numbers are not features at all: they exist only in derived geometry,
+  // and are found by what they are rather than by a kind they do not have.
+  if (subject === 'holeNumber') {
+    for (const drawn of derived.features) {
+      if (drawn.properties?.['derived'] === 'holeLabel') take(drawn.properties['id']);
+    }
+    return [...ids];
+  }
+
+  for (const feature of features) if (feature.kind === subject) ids.add(feature.id);
+  for (const drawn of derived.features) {
+    if (drawn.properties?.['kind'] === subject) take(drawn.properties['id']);
+  }
+  return [...ids];
+}
 
 interface FeatureLayerProps {
   features: readonly Feature[];
@@ -42,6 +101,62 @@ interface FeatureLayerProps {
   selectable: boolean;
   /** Which features answer a click first where two overlap. See `byFocus`. */
   focus: Focus;
+  /** How the course is drawn. See `mapStyle`. */
+  style: MapStyle;
+  /**
+   * What a click means while the style focus is on.
+   *
+   * A different question from `onSelect`, which is why it is a different
+   * callback. Everywhere else a click asks "which object is this" and the
+   * answer narrows to a hole; in Style it asks "which of these am I looking at
+   * the drawing of", and the answer is a *kind* — restyling out-of-bounds is
+   * one decision for every OB area on the course.
+   */
+  onPickStyle: (kind: FeatureKind | 'holeNumber') => void;
+}
+
+/**
+ * Every layer the course scene is made of, in draw order.
+ *
+ * One list, used to install the scene and to rebuild it when the stylesheet
+ * changes. Order is the whole point and it is load-bearing twice over:
+ * MapLibre draws in insertion order, and it hit-tests in it too. Derived
+ * geometry sits under the features it was computed from, the handles sit over
+ * everything because the smallest targets on screen must win a click, and a
+ * rebuild that got this wrong would bury the thing you are trying to grab.
+ */
+function sceneLayers(resolved: ResolvedStyle): LayerSpecification[] {
+  return [
+    // The course itself, bottom to top. `courseLayers` owns that order.
+    ...courseLayers(resolved),
+    // Provisional geometry: dashed, so it never reads as committed.
+    {
+      id: 'preview-line',
+      type: 'line',
+      source: PREVIEW_SOURCE,
+      filter: ['==', ['geometry-type'], 'LineString'],
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: {
+        'line-color': featureColors.snap.stroke,
+        'line-width': 2,
+        'line-dasharray': [2, 1.5],
+      },
+    },
+    // Above everything: the smallest targets on screen must win hit-testing.
+    ...vertexLayers(),
+    {
+      id: 'preview-vertex',
+      type: 'circle',
+      source: PREVIEW_SOURCE,
+      filter: ['==', ['geometry-type'], 'Point'],
+      paint: {
+        'circle-color': featureColors.handle.fill,
+        'circle-radius': 4,
+        'circle-stroke-color': featureColors.handle.stroke,
+        'circle-stroke-width': 1.5,
+      },
+    },
+  ];
 }
 
 /**
@@ -61,8 +176,21 @@ export function FeatureLayer({
   handles,
   selectable,
   focus,
+  style,
+  onPickStyle,
 }: FeatureLayerProps) {
   const { map } = useMap();
+  /*
+   * The defaults, with the document's overrides folded in.
+   *
+   * Memoised on the stylesheet rather than recomputed per render: it is read by
+   * the install effect and by the effect that re-applies a changed style, and
+   * an unstable object would make the second one fire on every keystroke
+   * anywhere in the app.
+   */
+  const resolved = useMemo(() => resolveStyle(style), [style]);
+  const resolvedRef = useRef(resolved);
+  resolvedRef.current = resolved;
   const readyRef = useRef(false);
   const selectedRef = useRef<readonly string[]>([]);
 
@@ -91,13 +219,16 @@ export function FeatureLayer({
 
     const install = () => {
       const { features, derived, preview, handles } = dataRef.current;
+      // Same reason as `dataRef`: the style may have moved on between this
+      // effect running and MapLibre being ready to hold layers.
+      const resolved = resolvedRef.current;
 
       /*
        * Derived geometry goes in first, because MapLibre draws in insertion
        * order and a tee pad must sit under the tee point it was computed from.
        * Installing it after would bury the thing you actually click.
        */
-      addMarkerIcons(map);
+      addMarkerIcons(map, resolved);
 
       if (!map.getSource(DERIVED_SOURCE)) {
         // promoteId for the same reason the feature source needs it: a tee pad
@@ -108,10 +239,6 @@ export function FeatureLayer({
           promoteId: 'id',
         });
       }
-      for (const layer of derivedLayers()) {
-        if (!map.getLayer(layer.id)) map.addLayer(layer);
-      }
-
       if (!map.getSource(FEATURES_SOURCE)) {
         map.addSource(FEATURES_SOURCE, {
           type: 'geojson',
@@ -135,59 +262,71 @@ export function FeatureLayer({
         map.addSource(HANDLES_SOURCE, { type: 'geojson', data: handles });
       }
 
-      for (const layer of featureLayers()) {
+      for (const layer of sceneLayers(resolved)) {
         if (!map.getLayer(layer.id)) map.addLayer(layer);
-      }
-
-      // Provisional geometry: dashed, so it never reads as committed.
-      if (!map.getLayer('preview-line')) {
-        map.addLayer({
-          id: 'preview-line',
-          type: 'line',
-          source: PREVIEW_SOURCE,
-          filter: ['==', ['geometry-type'], 'LineString'],
-          layout: { 'line-join': 'round', 'line-cap': 'round' },
-          paint: {
-            'line-color': featureColors.snap.stroke,
-            'line-width': 2,
-            'line-dasharray': [2, 1.5],
-          },
-        });
-      }
-      // Above the geometry they label, below the handles.
-      for (const layer of holeLabelLayers()) {
-        if (!map.getLayer(layer.id)) map.addLayer(layer);
-      }
-
-      // Above everything: the smallest targets on screen must win hit-testing.
-      for (const layer of vertexLayers()) {
-        if (!map.getLayer(layer.id)) map.addLayer(layer);
-      }
-
-      if (!map.getLayer('preview-vertex')) {
-        map.addLayer({
-          id: 'preview-vertex',
-          type: 'circle',
-          source: PREVIEW_SOURCE,
-          filter: ['==', ['geometry-type'], 'Point'],
-          paint: {
-            'circle-color': featureColors.handle.fill,
-            'circle-radius': 4,
-            'circle-stroke-color': featureColors.handle.stroke,
-            'circle-stroke-width': 1.5,
-          },
-        });
       }
 
       readyRef.current = true;
+      // What the scene was built from, so the restyle effect below can tell a
+      // stylesheet it has already drawn from one it has not.
+      appliedRef.current = resolved;
     };
 
     if (map.isStyleLoaded()) install();
     else map.once('load', install);
-    // Data props are deliberately not deps: this installs the scene once,
-    // reading current data from `dataRef`. Ordinary updates go through the
-    // `setData` effects below.
+    // Data props and the stylesheet are deliberately not deps: this installs
+    // the scene once, reading both from refs. Ordinary data updates go through
+    // the `setData` effects below, and a restyle through the one after them.
   }, [map]);
+
+  /*
+   * Restyling: drop the course's layers and put them back.
+   *
+   * Coarse on purpose. The alternative is a table mapping every style field to
+   * the layers and paint properties it touches, and calling `setPaintProperty`
+   * for each — which is more code, has to be kept in step with the layer
+   * definitions by hand, and cannot express the one thing a restyle most often
+   * changes: a dash, which decides whether a layer even carries the property.
+   *
+   * It is also cheap in the way that matters. The **sources** are untouched, so
+   * no geometry is re-parsed and no tile is re-fetched; MapLibre re-runs layout
+   * for a few dozen layers over data it already holds. A designer dragging a
+   * colour picker sees it keep up.
+   *
+   * Skipped entirely on the first pass, when `install` has just used this same
+   * stylesheet.
+   */
+  const appliedRef = useRef<ResolvedStyle | null>(null);
+  useEffect(() => {
+    if (!map || !readyRef.current) return;
+    /*
+     * Skipped when the scene was already built from this sheet.
+     *
+     * Compared by identity against what `install` recorded, not by a "have I
+     * run before" flag — which is what this was, and it was wrong: this effect
+     * runs once before the style is ready and returns early, so the flag was
+     * still unset when the *first real* restyle arrived and swallowed it. A
+     * designer's first colour change did nothing and their second worked.
+     */
+    if (appliedRef.current === resolved) return;
+    appliedRef.current = resolved;
+
+    const scene = sceneLayers(resolved);
+    /*
+     * Removed in reverse and re-added forwards, so the scene ends up in the
+     * order it was built in. Everything is torn down, including the layers a
+     * stylesheet cannot touch: re-adding only *some* of them would append them
+     * above the ones that stayed, which is how the vertex handles would end up
+     * underneath the shapes they belong to.
+     */
+    for (const layer of [...scene].reverse()) {
+      if (map.getLayer(layer.id)) map.removeLayer(layer.id);
+    }
+    addMarkerIcons(map, resolved);
+    for (const layer of scene) {
+      if (!map.getLayer(layer.id)) map.addLayer(layer);
+    }
+  }, [map, resolved]);
 
   // Push document features to the map.
   useEffect(() => {
@@ -260,6 +399,38 @@ export function FeatureLayer({
     };
   }, [map, selectedIds, features]);
 
+  /*
+   * The Style focus's highlight, held for a moment and then given back.
+   *
+   * A feature state rather than a property, for the same reason selection is:
+   * setting it re-runs no layout and re-parses no geometry. The cleanup is what
+   * ends the flash — clearing the ids removes the state, and MapLibre's default
+   * paint transition fades the glow out rather than snapping it off.
+   */
+  const [flashIds, setFlashIds] = useState<readonly string[]>([]);
+  useEffect(() => {
+    if (!map || flashIds.length === 0) return;
+    const sources = [FEATURES_SOURCE, DERIVED_SOURCE];
+
+    for (const source of sources) {
+      for (const id of flashIds) map.setFeatureState({ source, id }, { flash: true });
+    }
+    const timer = window.setTimeout(() => setFlashIds([]), FLASH_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+      for (const source of sources) {
+        for (const id of flashIds) map.removeFeatureState({ source, id }, 'flash');
+      }
+    };
+  }, [map, flashIds]);
+
+  // Leaving Style takes the highlight with it: it is a confirmation of a click
+  // in that focus, and a glow outliving the focus reads as something selected.
+  useEffect(() => {
+    if (focus !== 'style') setFlashIds([]);
+  }, [focus]);
+
   // Click to select, click empty space to deselect.
   useEffect(() => {
     if (!map || !selectable) return;
@@ -305,6 +476,46 @@ export function FeatureLayer({
        * the thing that knows, rather than here.
        */
       const properties = hits[0]?.properties;
+
+      /*
+       * In Style, the click lands on the feature itself and on its kind.
+       *
+       * `selectAs` is deliberately skipped: it exists so that clicking a hole's
+       * corridor selects the *hole*, which is the right answer while you are
+       * designing and the wrong one while you are drawing — a corridor is the
+       * fairway's drawing, and clicking it should be how you restyle fairways.
+       *
+       * The hole number is the one hit that is not a feature. It resolves to
+       * its own subject, so clicking a number is how you reach the numbers.
+       */
+      if (focus === 'style' && properties) {
+        const kind = properties['kind'];
+        const subject: FeatureKind | 'holeNumber' | null =
+          properties['derived'] === 'holeLabel'
+            ? 'holeNumber'
+            : typeof kind === 'string'
+              ? (kind as FeatureKind)
+              : null;
+        if (!subject) return;
+
+        onPickStyle(subject);
+        /*
+         * Every instance lights up, briefly, and nothing is selected.
+         *
+         * Selection here used to be the ordinary kind: the clicked feature went
+         * into `selectedIds` and was recoloured. Both halves were wrong. One
+         * shape out of a dozen identical ones is not what the panel is about,
+         * and recolouring hides the fill the panel is there to edit — so a
+         * designer adjusting an OB colour was looking at the selection colour
+         * the whole time. A glow says which shapes answered and then goes away.
+         */
+        onSelect(null);
+        setFlashIds(
+          instancesOf(subject, dataRef.current.features, dataRef.current.derived.collection),
+        );
+        return;
+      }
+
       const id = properties?.['selectAs'] ?? properties?.['id'];
       onSelect(typeof id === 'string' ? id : null);
     };
@@ -324,7 +535,7 @@ export function FeatureLayer({
       map.off('mousemove', handleMove);
       map.getCanvas().style.cursor = '';
     };
-  }, [map, selectable, onSelect, focus]);
+  }, [map, selectable, onSelect, onPickStyle, focus]);
 
   return null;
 }

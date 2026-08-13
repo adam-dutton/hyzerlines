@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { TARGET_CIRCLES } from '@hyzerlines/core';
 
 import {
   course,
@@ -91,16 +92,30 @@ test.describe('drawing aids', () => {
     await expectDrawn(page, 'derived-corridor').toBeGreaterThan(0);
   });
 
+  /*
+   * Counted across the three ring layers rather than one.
+   *
+   * Each circle is its own layer now, because each can carry its own dash and
+   * `line-dasharray` takes no data-driven expression — see `derivedLayers`. The
+   * question the test asks is unchanged: how many rings are on the map.
+   */
+  const drawnCircles = async (page: Page): Promise<number> => {
+    const counts = await Promise.all(
+      TARGET_CIRCLES.map((circle) => drawn(page, `derived-circle-${circle.id}`)),
+    );
+    return counts.reduce((sum, n) => sum + n, 0);
+  };
+
   test('each putting circle has its own switch', async ({ page }) => {
     await courseWithAHole(page);
 
-    await expectDrawn(page, 'derived-circle').toBe(3);
+    await expect.poll(() => drawnCircles(page)).toBe(3);
 
     await setSwitch(page, 'Circle 2', false);
-    await expectDrawn(page, 'derived-circle').toBe(2);
+    await expect.poll(() => drawnCircles(page)).toBe(2);
 
     await setSwitch(page, 'Putting circles', false);
-    await expectDrawn(page, 'derived-circle').toBe(0);
+    await expect.poll(() => drawnCircles(page)).toBe(0);
   });
 
   /*
@@ -140,7 +155,7 @@ test.describe('drawing aids', () => {
 
     // Read off the map, not off the panel: what survived a reload is the
     // document's business, and the section it is set from starts closed again.
-    await expectDrawn(page, 'derived-circle').toBe(0);
+    await expect.poll(() => drawnCircles(page)).toBe(0);
   });
 });
 
@@ -167,7 +182,7 @@ test.describe('the tee pad and its marker', () => {
 
     // Zoomed out to a whole hole: the marker, and no rectangle.
     await expect.poll(() => visible(page, 'derived-marker-tee')).toBe(true);
-    expect(await visible(page, 'derived-footprint')).toBe(false);
+    expect(await visible(page, 'derived-footprint-tee')).toBe(false);
 
     /*
      * A 3 m pad reaches 36 px somewhere above zoom 20 — see PAD_LEGIBLE_ZOOM,
@@ -192,11 +207,11 @@ test.describe('the tee pad and its marker', () => {
     };
 
     await at(21);
-    await expect.poll(() => visible(page, 'derived-footprint')).toBe(true);
+    await expect.poll(() => visible(page, 'derived-footprint-tee')).toBe(true);
     expect(await visible(page, 'derived-marker-tee')).toBe(false);
 
     await at(18);
     await expect.poll(() => visible(page, 'derived-marker-tee')).toBe(true);
-    expect(await visible(page, 'derived-footprint')).toBe(false);
+    expect(await visible(page, 'derived-footprint-tee')).toBe(false);
   });
 });

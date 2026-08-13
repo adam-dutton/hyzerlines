@@ -14,6 +14,7 @@ import {
   holeOfFeature,
   moveFeatureTo,
   shapeFairway,
+  showsFairwayLines,
   type FairwayChoices,
   type Focus,
   type Feature,
@@ -25,6 +26,7 @@ import {
 } from '@hyzerlines/core';
 
 import { useMap } from './map/MapContext';
+import { useMapZoom } from './map/useMapZoom';
 import { FeatureLayer } from './map/FeatureLayer';
 import { useDrawing, drawingPreview } from './map/useDrawing';
 import { derivedGeometry } from './map/derived';
@@ -37,6 +39,8 @@ import { ToolBar } from './chrome/ToolBar';
 import { RightPanel } from './chrome/RightPanel';
 import type { SelectedPair } from './chrome/HoleProperties';
 import { LeftPanel } from './chrome/LeftPanel';
+import { StyleSubjectPanel, type StyleSubject } from './chrome/StyleProperties';
+import { DEFAULT_FEATURE_STYLES, DEFAULT_LETTERING_STYLE } from './map/mapStyle';
 import { useShortcuts } from './keyboard/useShortcuts';
 import type { UnitSystem } from './units';
 import { useCourse } from './document/CourseProvider';
@@ -89,6 +93,13 @@ export function CourseEditor({
   courseProperties: (api: { drawBoundary: () => void }) => ReactNode;
 }) {
   const { map } = useMap();
+  /*
+   * Only the lettering reads this, and only because its spacing is a distance
+   * on the screen — see `useMapZoom`. Rounded to a quarter of a level, so the
+   * derived geometry is rebuilt a handful of times through a pinch rather than
+   * once per frame.
+   */
+  const zoom = useMapZoom(map);
   // Undo and redo are the shell's now — their buttons are in the top bar, which
   // reads them from the store itself. The editor only needs the document.
   const { course, dispatch, documentEpoch } = useCourse();
@@ -130,6 +141,16 @@ export function CourseEditor({
     }
     setTool(kind);
   }, []);
+
+  /*
+   * What the style focus is describing.
+   *
+   * Its own state rather than part of the selection, because it is not a thing
+   * on the ground: a designer restyling out-of-bounds has no OB area selected
+   * and should not — the map stays clickable while they work, which is the
+   * point of a focus that claims no kinds.
+   */
+  const [styleSubject, setStyleSubject] = useState<StyleSubject | null>(null);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedHoleId, setSelectedHoleId] = useState<string | null>(null);
@@ -285,8 +306,38 @@ export function CourseEditor({
       // pin B would re-measure the hole while the fairway stayed on pin A — and
       // passing only the selected hole's choice snapped every other hole back
       // the moment the selection moved.
-      derivedGeometry(visible, pairChoices),
-    [visible, pairChoices],
+      derivedGeometry(visible, {
+        ...(pairChoices ? { choices: pairChoices } : {}),
+        holeNumberOffset: course.style.holeNumber.offset ?? 0,
+        lineGap: course.style.features.mando?.lineGap ?? DEFAULT_FEATURE_STYLES.mando.lineGap,
+        lettering: {
+          on: course.style.lettering.on ?? DEFAULT_LETTERING_STYLE.on,
+          size: course.style.lettering.size ?? DEFAULT_LETTERING_STYLE.size,
+          spacingPx: course.style.lettering.spacing ?? DEFAULT_LETTERING_STYLE.spacingPx,
+        },
+        approach: {
+          secondCorridor:
+            course.style.features.fairway?.secondCorridor ??
+            DEFAULT_FEATURE_STYLES.fairway.secondCorridor,
+          shade: course.style.features.mando?.shade ?? DEFAULT_FEATURE_STYLES.mando.shade,
+        },
+        smoothFairways:
+          course.style.features.fairway?.smooth ?? DEFAULT_FEATURE_STYLES.fairway.smooth,
+        zoom,
+      }),
+    [
+      visible,
+      pairChoices,
+      course.style.holeNumber.offset,
+      course.style.features.mando?.lineGap,
+      course.style.lettering.on,
+      course.style.lettering.size,
+      course.style.lettering.spacing,
+      course.style.features.fairway?.secondCorridor,
+      course.style.features.fairway?.smooth,
+      course.style.features.mando?.shade,
+      zoom,
+    ],
   );
 
   /**
@@ -611,7 +662,16 @@ export function CourseEditor({
       };
     }
 
-    if (!selectedHole || !selectedPair) return null;
+    /*
+     * A hidden line grows no anchors either.
+     *
+     * `derived.fairways` already drops the holes whose own switch is off, but
+     * the course-wide one is a different switch and was not consulted: turning
+     * every fairway line off left a row of grabbable dots floating over the
+     * ground where the selected hole's line used to be. Handles are hit targets,
+     * and a hit target for something invisible is a trap.
+     */
+    if (!selectedHole || !selectedPair || !showsFairwayLines(course.display)) return null;
     const fairway = derived.fairways.find(
       (f) => f.teeId === selectedPair.teeId && f.targetId === selectedPair.targetId,
     );
@@ -624,6 +684,9 @@ export function CourseEditor({
       // The line starts at the tee and ends at the target, always. Those ends
       // follow when those features are dragged — see `moveFeatureTo`.
       fixedEnds: true,
+      // A fairway has no midpoint handles — they landed on the hole's number —
+      // so the line itself is where you put a new anchor. See `insertOn`.
+      insertOn: ['derived-centreline'],
       write: (next, gesture) =>
         dispatch(
           shapeFairway(course, fairway.teeId, fairway.targetId, next, selectedHole.id, gesture),
@@ -757,6 +820,15 @@ export function CourseEditor({
         // selection. Each Escape undoes exactly one level of intent.
         if (drawing.active) drawing.cancel();
         else if (tool !== 'select') backToSelect();
+        /*
+         * In Style, the style subject IS the selection.
+         *
+         * Nothing goes into `selectedId` there — clicking a feature picks the
+         * kind it is an instance of and lights the instances up for a moment —
+         * so without this Escape had nothing to undo and the panel stayed open
+         * with no way out but the mouse.
+         */
+        else if (focus === 'style' && styleSubject) setStyleSubject(null);
         else if (selectedId) setSelectedId(null);
         else if (selectedHoleId) setSelectedHoleId(null);
       },
@@ -775,6 +847,12 @@ export function CourseEditor({
         handles={editing.handles}
         selectable={nav.effective === 'select'}
         focus={focus}
+        style={course.style}
+        onPickStyle={(kind) =>
+          setStyleSubject(
+            kind === 'holeNumber' ? { type: 'holeNumber' } : { type: 'kind', kind },
+          )
+        }
       />
 
       {/* The zoom region, drawn over the canvas in screen space. Not a map
@@ -806,6 +884,8 @@ export function CourseEditor({
             findings={findings}
             choices={pairChoices}
             focus={focus}
+            styleSubject={styleSubject}
+            onSelectStyleSubject={setStyleSubject}
             hiddenIds={hiddenIds}
             selectedFeatureId={selectedId}
             onSelectFeature={selectFeature}
@@ -833,6 +913,16 @@ export function CourseEditor({
             onSelectHole={selectHole}
             onSelectPair={choosePair}
             onStepHole={stepHole}
+            styleSubject={
+              focus === 'style' && styleSubject ? (
+                <StyleSubjectPanel
+                  subject={styleSubject}
+                  style={course.style}
+                  onOp={dispatch}
+                  onClose={() => setStyleSubject(null)}
+                />
+              ) : null
+            }
             onDrawFeature={armKind}
             onClearSelection={() => {
               setSelectedId(null);

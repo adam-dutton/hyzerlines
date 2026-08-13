@@ -46,6 +46,17 @@ export interface EditableShape {
    * as a single undo entry however long the drag takes.
    */
   write: (coordinates: Position[], gesture?: string) => void;
+  /**
+   * Layers whose line *is* this shape, where a click adds an anchor.
+   *
+   * For a fairway, which has no midpoint handles: they were removed because the
+   * middle one lands exactly on the hole's number and punched a hollow ring
+   * through every numeral on the course. That left the two thirds-handles as
+   * the only way to bend a line — fine for a dogleg, useless for a line that
+   * has to miss three trees. Clicking the line itself puts an anchor where you
+   * clicked, which is where you wanted one, and adds nothing to the drawing.
+   */
+  insertOn?: readonly string[];
 }
 
 /** Below these a shape stops being its own geometry type. */
@@ -223,6 +234,74 @@ export function useVertexEditing({ map, shape, enabled }: UseVertexEditingArgs):
       beginDrag(index, gesture);
     };
 
+    /**
+     * Which segment a point on the line belongs to.
+     *
+     * The nearest one, by perpendicular distance to the segment rather than to
+     * its ends — a click halfway along a long leg is nearest to that leg and
+     * furthest from every vertex it has. Measured in degrees with longitude
+     * scaled by the cosine of latitude, which is the same correction
+     * `planeAt` makes and is all this needs: it ranks segments, it does not
+     * report a distance to anybody.
+     */
+    const segmentAt = (coordinates: readonly Position[], at: Position): number => {
+      const scale = Math.cos((at[1] * Math.PI) / 180);
+      const x = at[0] * scale;
+      const y = at[1];
+
+      let best = 0;
+      let bestDistance = Infinity;
+      for (let i = 0; i < coordinates.length - 1; i++) {
+        const ax = coordinates[i]![0] * scale;
+        const ay = coordinates[i]![1];
+        const bx = coordinates[i + 1]![0] * scale;
+        const by = coordinates[i + 1]![1];
+        const dx = bx - ax;
+        const dy = by - ay;
+        const lengthSquared = dx * dx + dy * dy;
+        const t =
+          lengthSquared === 0
+            ? 0
+            : Math.min(1, Math.max(0, ((x - ax) * dx + (y - ay) * dy) / lengthSquared));
+        const distance = Math.hypot(x - (ax + t * dx), y - (ay + t * dy));
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = i;
+        }
+      }
+      return best;
+    };
+
+    /** Clicking the line puts an anchor there, and starts dragging it. */
+    const onLineDown = (e: maplibregl.MapLayerMouseEvent) => {
+      // Alt is the remove gesture everywhere else; it must not add here.
+      if (e.originalEvent.altKey) return;
+      /*
+       * A handle wins, and it has to be checked for here.
+       *
+       * MapLibre dispatches a mousedown to *every* layer under the pointer, so
+       * grabbing an existing anchor also lands on the line it sits on — and
+       * without this, dragging a vertex quietly inserted a second one beside
+       * it. The handle's own listener runs either way; this one stands down.
+       */
+      if (map.queryRenderedFeatures(e.point, { layers: [...VERTEX_LAYERS] }).length > 0) {
+        return;
+      }
+      const coordinates = coordinatesNow();
+      if (!coordinates || coordinates.length < 2) return;
+      e.preventDefault();
+
+      const at: Position = [e.lngLat.lng, e.lngLat.lat];
+      const index = segmentAt(coordinates, at) + 1;
+
+      // One gesture id for the insert and the drag, so putting an anchor down
+      // and moving it is a single undo step.
+      const gesture = crypto.randomUUID();
+      coordinates.splice(index, 0, at);
+      write(coordinates, gesture);
+      beginDrag(index, gesture);
+    };
+
     // Handles read as grabbable. Set on the canvas, matching how FeatureLayer
     // does its own hover feedback.
     const onEnter = () => {
@@ -232,9 +311,12 @@ export function useVertexEditing({ map, shape, enabled }: UseVertexEditingArgs):
       map.getCanvas().style.cursor = '';
     };
 
+    const insertOn = shape.insertOn ?? [];
+
     map.on('mousedown', 'edit-vertex', onVertexDown);
     map.on('mousedown', 'edit-midpoint', onMidpointDown);
-    for (const layer of VERTEX_LAYERS) {
+    for (const layer of insertOn) map.on('mousedown', layer, onLineDown);
+    for (const layer of [...VERTEX_LAYERS, ...insertOn]) {
       map.on('mouseenter', layer, onEnter);
       map.on('mouseleave', layer, onLeave);
     }
@@ -242,7 +324,8 @@ export function useVertexEditing({ map, shape, enabled }: UseVertexEditingArgs):
     return () => {
       map.off('mousedown', 'edit-vertex', onVertexDown);
       map.off('mousedown', 'edit-midpoint', onMidpointDown);
-      for (const layer of VERTEX_LAYERS) {
+      for (const layer of insertOn) map.off('mousedown', layer, onLineDown);
+      for (const layer of [...VERTEX_LAYERS, ...insertOn]) {
         map.off('mouseenter', layer, onEnter);
         map.off('mouseleave', layer, onLeave);
       }

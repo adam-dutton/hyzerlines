@@ -19,6 +19,8 @@ import {
 import type { UnitSystem } from '../units';
 import { useProfiles } from '../survey/useProfiles';
 import { FindingsList } from './FindingsList';
+import { StyleList } from './StyleList';
+import type { StyleSubject } from './StyleProperties';
 import { FeatureList } from './FeatureList';
 import { HolesGrid } from './HolesGrid';
 import { Scorecard, type CardMode } from './Scorecard';
@@ -162,6 +164,8 @@ export function LeftPanel({
   onAddHole,
   onRevealFinding,
   onDismissRule,
+  styleSubject,
+  onSelectStyleSubject,
 }: {
   course: Course;
   units: UnitSystem;
@@ -187,6 +191,9 @@ export function LeftPanel({
   onAddHole: () => void;
   onRevealFinding: (finding: Finding) => void;
   onDismissRule: (ruleId: string) => void;
+  /** Which part of the drawing the style focus is describing. */
+  styleSubject: StyleSubject | null;
+  onSelectStyleSubject: (subject: StyleSubject) => void;
 }) {
   // Playing order, not creation order.
   const holes = useMemo(
@@ -284,7 +291,17 @@ export function LeftPanel({
         className="flex min-h-0 flex-col overflow-hidden"
         aria-label={definition.label}
       >
-        {!definition.ready ? (
+        {focus === 'style' ? (
+          <>
+            <SectionHeader title="Style" />
+            <StyleList
+              style={course.style}
+              subject={styleSubject}
+              onSelectSubject={onSelectStyleSubject}
+              onOp={onOp}
+            />
+          </>
+        ) : !definition.ready ? (
           <>
             <SectionHeader title={definition.label} />
             <p className="px-2.5 pb-3 text-2xs leading-4 text-text-muted">
