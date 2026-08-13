@@ -14,6 +14,16 @@ const base = process.env['VITE_BASE'] ?? '/';
 
 export default defineConfig({
   base,
+  /*
+   * `.env` lives at the workspace root, not beside this file.
+   *
+   * Vite's default is the project root — `apps/web` — which is the wrong place
+   * in a monorepo whose commands are all run from the top. A key dropped in the
+   * obvious spot next to `package.json` and `.gitignore` was silently ignored,
+   * and the failure is invisible: the build succeeds, the app runs, and it
+   * quietly serves the fallback basemaps as though no key had been offered.
+   */
+  envDir: '../../',
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
