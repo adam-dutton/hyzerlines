@@ -95,15 +95,19 @@ function bendOf(line: readonly Position[] | undefined): number {
 /** One level of the rail: a fixed-width column that animates its width. */
 function Level({
   width,
+  label,
   children,
   bordered = true,
 }: {
   width: number;
+  /** Names the column for anything addressing it from outside. */
+  label?: string;
   children: ReactNode;
   bordered?: boolean;
 }) {
   return (
     <div
+      {...(label ? { 'aria-label': label, role: 'group' } : {})}
       className="relative h-full shrink-0 overflow-hidden bg-surface-panel"
       style={{
         width,
@@ -453,7 +457,7 @@ export function Rail({
       </Level>
 
       {/* LEVEL 2 — the context, and level 3 sliding over it. */}
-      <Level width={detailOpen ? DETAIL_WIDTH : 0}>
+      <Level width={detailOpen ? DETAIL_WIDTH : 0} label="Properties">
         <div className="relative h-full">
           <div className="flex h-full flex-col">
             {styleSubject ? styleDetail : selectedHole ? holeDetail : featureDetail}
