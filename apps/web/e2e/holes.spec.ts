@@ -1,6 +1,14 @@
 import { test, expect } from '@playwright/test';
 
-import { clickMap, course, holeChip, openEditor, place, waitForSave } from './fixtures';
+import {
+  clickMap,
+  course,
+  holeChip,
+  openCourseTab,
+  openEditor,
+  place,
+  waitForSave,
+} from './fixtures';
 
 /**
  * Holes, par and design checks, through the real UI.
@@ -192,10 +200,11 @@ test.describe('holes', () => {
     /*
      * And the course reports the level it derived rather than storing one. It is
      * the Analysis section's closed-state preview, which is why a closed section
-     * still says it — and it is in the right panel's course mode, so the
-     * selection has to be cleared to get there.
+     * still says it — and Analysis is in the rail's Course tab, so getting there
+     * means leaving the hole and switching lists.
      */
     await page.keyboard.press('Escape');
+    await openCourseTab(page);
     await expect(page.getByText('Gold', { exact: true }).first()).toBeVisible();
   });
 
@@ -334,6 +343,15 @@ test.describe('the scorecard', () => {
     await clickMap(page, 460, 500);
     await page.getByRole('combobox', { name: 'Skill color' }).selectOption('gold');
 
+    /*
+     * Back to the list to read it. The card compares tee levels across the whole
+     * course, which is a thing you do *instead* of looking at one hole — so the
+     * rail draws it at its full width and falls back to the tiles once something
+     * is open beside it. See `Rail`.
+     */
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+
     const card = page.getByRole('table');
     await expect(card.getByRole('columnheader', { name: 'Gold' })).toBeVisible();
     await expect(card.getByRole('columnheader', { name: 'Unmarked' })).toBeVisible();
@@ -372,6 +390,11 @@ test.describe('the scorecard', () => {
     const before = await course(page);
     const [firstTee, goldTee] = before.holes[0]!.teeIds;
     const target = before.holes[0]!.targetIds[0]!;
+
+    // Back to the list: the card is the rail's full-width view of the course,
+    // and it stands down while a hole or a feature is open beside it.
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
 
     await page.getByRole('radio', { name: 'Par' }).click();
 

@@ -1,9 +1,11 @@
-import { useMemo, type ReactNode } from 'react';
-import { IconButton, cn } from '@hyzerlines/design';
+import { useMemo, useState, type ReactNode } from 'react';
+import { IconButton, Segmented, cn } from '@hyzerlines/design';
 import {
   FOCUS_DEFINITIONS,
+  hasMultipleTees,
   holeOfFeature,
   pairElevationKey,
+  scorecard,
   viewHoles,
   type Course,
   type FairwayChoices,
@@ -17,6 +19,7 @@ import type { UnitSystem } from '../units';
 import { useProfiles } from '../survey/useProfiles';
 import { FeatureList } from './FeatureList';
 import { HoleTile } from './HoleTile';
+import { Scorecard, type CardMode } from './Scorecard';
 import { StyleList } from './StyleList';
 import type { StyleSubject } from './StyleProperties';
 import {
@@ -223,6 +226,7 @@ export function Rail({
   styleSubject,
   onSelectStyleSubject,
   courseProperties,
+  findings,
   holeDetail,
   featureDetail,
   styleDetail,
@@ -258,6 +262,15 @@ export function Rail({
   featureDetail: ReactNode;
   /** Level 2, when the style focus is describing something. */
   styleDetail: ReactNode;
+  /**
+   * What the course checks have to say, pinned under the list.
+   *
+   * Under it rather than in it, and in every focus rather than in the Course
+   * tab. A finding is a thing to notice while you work — "hole 3 has no tee" is
+   * useful exactly while you are looking at the holes — so putting it behind a
+   * tab would be filing the warning where nobody is standing.
+   */
+  findings: ReactNode;
 }) {
   // Playing order, not creation order.
   const holes = useMemo(
@@ -270,6 +283,25 @@ export function Rail({
     () => viewHoles(course, holes, elevations, choices),
     [course, holes, elevations, choices],
   );
+
+  /*
+   * The card, which the tiles give way to only when there is more than one tee.
+   *
+   * A three-tee hole is three different lengths and a tile has room for one
+   * number, so the list would have to pick one and be silently wrong about the
+   * other two — which is the exact failure the card exists to fix. Asked before
+   * built, so a single-tee course does not pay for a card it will not draw.
+   *
+   * Only while the rail is wide. Shrunk, there is no room for a column per tee
+   * and the tiles are the right answer again: you are stepping through holes,
+   * not comparing tee levels.
+   */
+  const multipleTees = hasMultipleTees(course);
+  const card = useMemo(
+    () => (multipleTees ? scorecard(course, holes, { elevations, choices }) : null),
+    [multipleTees, course, holes, elevations, choices],
+  );
+  const [cardMode, setCardMode] = useState<CardMode>('length');
 
   const definition = FOCUS_DEFINITIONS[focus];
   const selectedHole = holes.find((hole) => hole.id === selectedHoleId) ?? null;
@@ -329,14 +361,21 @@ export function Rail({
   const overlayOpen = selectedHole !== null && selectedFeature !== null;
 
   /*
-   * The list gives up its width only when a hole has it.
+   * The list gives up its width as soon as something opens beside it — except
+   * in Style.
    *
-   * A hole is identified by its number, which is legible at any width; a style
-   * subject is "Required relief" and a land feature is whatever somebody named
-   * it, and neither survives being cut to two words. So those lists keep their
-   * width and the rail is simply wider while they are open. See `railWidth`.
+   * Everywhere else the rail is over a map you are drawing on, and 532px of
+   * chrome down one edge is a third of a laptop screen you cannot click
+   * through. A shrunk list is a real cost — a feature row at 104px is an icon
+   * and six characters — but the thing you selected is named in full in the
+   * column beside it, so the cost is paid where it is least felt.
+   *
+   * Style is the exception because Style draws nothing: it claims no kinds and
+   * offers only the select tool, so the map underneath is being looked at
+   * rather than worked on. And its list is the *only* place its subjects are
+   * named — "Required relief" and "Property boundary" are how you navigate it.
    */
-  const shrunk = selectedHole !== null;
+  const shrunk = detailOpen && focus !== 'style';
 
   const listOnly = focus !== 'play';
 
@@ -354,16 +393,36 @@ export function Rail({
           <RailHeader
             action={
               focus === 'play' && !shrunk ? (
-                <IconButton label="Add hole" size="sm" tooltipSide="right" onClick={onAddHole}>
-                  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-                    <path
-                      d="M6 2v8M2 6h8"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
+                <>
+                  {/* Only with the card, because the tiles have no second number
+                      to switch to — they print par and length at once. */}
+                  {card && tab === 'holes' && (
+                    <Segmented
+                      label="Card shows"
+                      value={cardMode}
+                      onChange={setCardMode}
+                      options={[
+                        { value: 'length', label: 'Length' },
+                        { value: 'par', label: 'Par' },
+                      ]}
                     />
-                  </svg>
-                </IconButton>
+                  )}
+                  <IconButton
+                    label="Add hole"
+                    size="sm"
+                    tooltipSide="right"
+                    onClick={onAddHole}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                      <path
+                        d="M6 2v8M2 6h8"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </IconButton>
+                </>
               ) : null
             }
           >
@@ -440,6 +499,16 @@ export function Rail({
                 Add a hole, then draw its tee and basket — anything you place while a hole is
                 selected joins it.
               </p>
+            ) : card && !shrunk ? (
+              <Scorecard
+                course={course}
+                card={card}
+                units={units}
+                mode={cardMode}
+                selectedHoleId={selectedHoleId}
+                onSelectHole={onSelectHole}
+                onOp={onOp}
+              />
             ) : (
               <ul className="flex flex-col gap-1 px-2 pb-3">
                 {holes.map((hole) => {
@@ -462,6 +531,13 @@ export function Rail({
               </ul>
             )}
           </div>
+
+          {/*
+            Pinned to the bottom of the list rather than scrolling with it: a
+            warning you have to scroll to find is a warning you find later than
+            you needed it.
+          */}
+          <div className="shrink-0">{findings}</div>
         </section>
       </Level>
 

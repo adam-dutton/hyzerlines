@@ -359,6 +359,12 @@ export async function openCourseTab(page: Page): Promise<void> {
   if (await tab.count()) await tab.click();
 }
 
+/** Back to the rail's list of holes, after a trip through the Course tab. */
+export async function openHolesTab(page: Page): Promise<void> {
+  const tab = page.getByRole('button', { name: 'Holes', exact: true });
+  if (await tab.count()) await tab.click();
+}
+
 /**
  * Open the layers drawer, which holds the basemap choice and the overlays.
  *

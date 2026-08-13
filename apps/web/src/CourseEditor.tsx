@@ -219,7 +219,7 @@ export function CourseEditor({
     'rail',
     railWidth(
       !hidden && (selectedHole !== null || styleSubject !== null || selected !== null),
-      !hidden && selectedHole !== null,
+      !hidden && focus !== 'style' && (selectedHole !== null || selected !== null),
     ),
   );
 
@@ -919,22 +919,11 @@ export function CourseEditor({
             onAddHole={addHole}
             styleSubject={styleSubject}
             onSelectStyleSubject={setStyleSubject}
-            courseProperties={
-              <>
-                {courseProperties({ drawBoundary: () => armKind('boundary') })}
-                {/*
-                  The findings belong to the course, so they sit under the
-                  course's own properties rather than in a card of their own.
-                  They had one, stacked beneath the old left column — which
-                  meant a panel that was empty most of the time was permanently
-                  taking height from the list above it.
-                */}
-                <FindingsList
-                  findings={findings}
-                  onReveal={reveal}
-                  onDismissRule={dismissRule}
-                />
-              </>
+            courseProperties={courseProperties({
+              drawBoundary: () => armKind('boundary'),
+            })}
+            findings={
+              <FindingsList findings={findings} onReveal={reveal} onDismissRule={dismissRule} />
             }
             holeDetail={
               selectedHole && (
