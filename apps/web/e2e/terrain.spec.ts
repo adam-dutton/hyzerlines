@@ -177,7 +177,7 @@ test.describe('one style, switched rather than swapped', () => {
     await chooseBasemap(page, 'Street');
     await expect
       .poll(() =>
-        page.evaluate(() => window.hyzerlinesMap!.getLayer('basemap-osm') !== undefined),
+        page.evaluate(() => window.hyzerlinesMap!.getLayer('basemap-street') !== undefined),
       )
       .toBe(true);
 
@@ -384,9 +384,9 @@ test.describe('overlay adjustments', () => {
  * white washes out the detail the imagery was chosen for.
  */
 test.describe('dark basemaps', () => {
-  const TOPO = 'basemap-esri-topo';
-  const TOPO_DARK = 'basemap-esri-topo-dark';
-  const TOPO_DARK_LABELS = 'basemap-esri-topo-dark-labels';
+  const TOPO = 'basemap-topo';
+  const TOPO_DARK = 'basemap-topo-dark';
+  const TOPO_DARK_LABELS = 'basemap-topo-dark-labels';
 
   /* Dark is the default, so this is what the app opens as. */
   test('the topographic map draws its dark twin, labels and all', async ({ page }) => {
@@ -417,9 +417,9 @@ test.describe('dark basemaps', () => {
   test('imagery has no dark twin and keeps its own tiles', async ({ page }) => {
     await openEditor(page);
 
-    expect(await layerVisible(page, 'basemap-esri-imagery')).toBe(true);
+    expect(await layerVisible(page, 'basemap-satellite')).toBe(true);
     const twin = await page.evaluate(
-      () => window.hyzerlinesMap!.getLayer('basemap-esri-imagery-dark') !== undefined,
+      () => window.hyzerlinesMap!.getLayer('basemap-satellite-dark') !== undefined,
     );
     expect(twin, 'imagery should not have a dark layer at all').toBe(false);
   });

@@ -1049,6 +1049,52 @@ contributor list, because the real list is the service's own `copyrightText` and
 nobody has read it — inventing one to sit beside a true credit would be worse
 than the short version.
 
+### MapTiler, behind a key, with the keyless path kept
+
+There is no dark map from OpenStreetMap: the openstreetmap-carto maintainers
+declined to make one and asked for colour variants to live in separate projects.
+That is what sent the Street map to Esri's canvas in dark mode — a change of
+*data*, not only of colour — and it is what made a keyed provider worth the
+trade at last.
+
+**Two registries, chosen at build time.** With `VITE_MAPTILER_KEY` set, all
+three basemaps and all three dark twins come from MapTiler; without it the app
+draws the keyless sources it always did. The fallback is not a stopgap. A
+missing key would otherwise mean a blank map, and three things depend on the app
+working with no account: the browser suite, which stubs tile hosts rather than
+buying quota; anyone self-hosting; and the first thirty seconds of a new
+visitor's session, which is the entire argument for a tool that opens and works.
+Both registries share ids, labels and roles, so nothing downstream can tell
+which one it got.
+
+**Raster, not vector, and that is a real trade.** MapTiler's styles are vector
+and vector would be crisper. But a vector basemap is a whole style document —
+its own sources, glyphs, sprite and a hundred layers — and three of those cannot
+coexist as hidden layers. Switching would mean `setStyle` again, the call this
+app removed because it emptied the map. 512px tiles narrow the gap and cut the
+request count to a quarter, which matters because MapTiler bills per tile
+request.
+
+**Satellite finally has a dark twin.** `satellite-v4-dark` is night imagery
+rather than a filter over the day pass, so on the MapTiler path every map has a
+dark version and the "no dark twin" branch never fires. `groundIsDark` still
+earns its place: it is what the keyless path needs, and what keeps the shading
+correct on either.
+
+**The ids name the role now, not the provider.** `esri-imagery` stopped being
+true the moment a second provider could serve the same role. `basemapId` is a
+document field that outlives the registry that wrote it, so `LEGACY_IDS` maps
+the old spellings forward — without it every course saved on the topographic map
+would silently reopen on satellite, which is the kind of quiet data damage a
+migration exists to prevent.
+
+**Two obligations to settle before launch.** MapTiler's free tier is
+non-commercial and requires their logo as a linked image, which no attribution
+string satisfies; a paid plan removes both problems. And the satellite credit is
+`© MapTiler` alone, because that aerial is not OpenStreetMap data and the actual
+imagery partners are listed by MapTiler rather than known here — the same
+honesty the Esri canvas line is held to.
+
 ### Saying what the data is worth
 
 Roughly 10m over the US and 30m elsewhere. That shows a ridge, a bowl and a fall

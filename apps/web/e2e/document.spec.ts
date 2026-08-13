@@ -118,6 +118,28 @@ test.describe('document', () => {
     await expect(page.getByRole('radio', { name: /Street/ })).toBeChecked();
   });
 
+  /**
+   * Courses saved before the basemap ids named a role rather than a provider.
+   *
+   * `basemapId` outlives the registry that wrote it, and an id nothing
+   * recognises falls back to the default — so without the mapping forward, every
+   * course drawn on the topographic map would quietly reopen on satellite. A
+   * silent reset of somebody's choice is worse than an error, because nothing
+   * tells them it happened.
+   */
+  test('a course saved with the old provider-named basemap id still opens on its map', async ({
+    page,
+  }) => {
+    await openApp(page);
+
+    await page.evaluate(() =>
+      window.hyzerlinesStore!.dispatch({ type: 'setBasemap', basemapId: 'esri-topo' }),
+    );
+
+    await openLayers(page);
+    await expect(page.getByRole('radio', { name: /Topographic/ })).toBeChecked();
+  });
+
   test('the first-run search does not reappear over restored work', async ({ page }) => {
     await page.goto('/');
     await waitForHydration(page);

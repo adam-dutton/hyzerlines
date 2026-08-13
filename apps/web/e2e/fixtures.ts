@@ -259,6 +259,17 @@ export async function openEditor(page: Page, options: OpenOptions = {}): Promise
   await page.route('**://server.arcgisonline.com/**', (route) =>
     route.fulfill({ status: 200, contentType: 'image/png', body: tile }),
   );
+  /*
+   * MapTiler too, for builds that carry a key.
+   *
+   * Which registry the bundle holds is decided at build time, so a suite run
+   * against a keyed build would otherwise spend real tile quota to look at a
+   * blank canvas. Harmless when the key is absent — the route simply never
+   * matches.
+   */
+  await page.route('**://api.maptiler.com/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'image/png', body: tile }),
+  );
   // Elevation too, for the same reason: no test should fail because AWS was
   // slow. Stubbed for every test rather than only the terrain ones, since the
   // overlays are off by default and nothing requests these until they are on.

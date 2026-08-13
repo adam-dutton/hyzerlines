@@ -80,7 +80,7 @@ export function buildStyle(
     sources[basemap.id] = {
       type: 'raster',
       tiles: [...basemap.tiles],
-      tileSize: 256,
+      tileSize: basemap.tileSize,
       maxzoom: basemap.maxZoom,
       attribution: basemap.attribution,
     };
@@ -88,7 +88,7 @@ export function buildStyle(
     sources[`${basemap.id}-dark`] = {
       type: 'raster',
       tiles: [...basemap.dark.tiles],
-      tileSize: 256,
+      tileSize: basemap.dark.tileSize,
       maxzoom: basemap.dark.maxZoom,
       attribution: basemap.dark.attribution,
     };
@@ -96,7 +96,7 @@ export function buildStyle(
       sources[`${basemap.id}-dark-labels`] = {
         type: 'raster',
         tiles: [...basemap.dark.reference],
-        tileSize: 256,
+        tileSize: basemap.dark.tileSize,
         maxzoom: basemap.dark.maxZoom,
         // Credited by the ground beneath it; the two are one service split in
         // two, and printing Esri twice on one line helps nobody.

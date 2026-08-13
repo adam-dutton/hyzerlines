@@ -8,7 +8,7 @@ import {
 import type { Smoothing, View } from '@hyzerlines/core';
 
 import { MapCanvas } from './map/MapCanvas';
-import { basemaps, groundIsDark } from './map/basemaps';
+import { basemaps, groundIsDark, resolveBasemapId } from './map/basemaps';
 import { Attribution } from './chrome/Attribution';
 import { MapControls } from './chrome/MapControls';
 import { LayersDrawer } from './chrome/LayersDrawer';
@@ -148,7 +148,11 @@ function Shell() {
     'edit.redo': redo,
     'view.toggleTheme': () => setTheme((t) => (t === 'dark' ? 'light' : 'dark')),
     'view.toggleBasemap': () => {
-      const i = basemaps.findIndex((b) => b.id === course.basemapId);
+      // Resolved, so a course carrying an older provider-named id advances from
+      // the map it is actually showing. Raw equality returns -1 and sends every
+      // such course to Satellite instead of to the next one.
+      const current = resolveBasemapId(course.basemapId);
+      const i = basemaps.findIndex((b) => b.id === current);
       dispatch({ type: 'setBasemap', basemapId: basemaps[(i + 1) % basemaps.length]!.id });
     },
     // Presentation mode: strip the interface to show a client the land itself.

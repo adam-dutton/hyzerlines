@@ -7,7 +7,7 @@ import {
   type OverlaySwitch,
 } from '@hyzerlines/core';
 
-import { basemaps, basemapById, effectiveBasemap } from '../map/basemaps';
+import { basemaps, basemapById, effectiveBasemap, resolveBasemapId } from '../map/basemaps';
 import { OVERLAY_DEFINITIONS } from '../map/terrain';
 import { SurveySection } from './SurveySection';
 import type { SurveyState } from '../survey/useSurvey';
@@ -126,7 +126,7 @@ function BasemapIcon({ id }: { id: string }) {
     'aria-hidden': true,
   } as const;
 
-  if (id === 'esri-topo') {
+  if (id === 'topo') {
     return (
       <svg {...common} strokeLinecap="round">
         <path d="M2.5 16.5 C 7 10.5, 17 10.5, 21.5 16.5" />
@@ -137,7 +137,7 @@ function BasemapIcon({ id }: { id: string }) {
       </svg>
     );
   }
-  if (id === 'osm') {
+  if (id === 'street') {
     return (
       <svg {...common} strokeLinecap="round">
         <path d="M4 20.5 L9 3.5" />
@@ -241,7 +241,10 @@ export function LayersDrawer({
         */}
         <div role="radiogroup" aria-label="Basemap" className="grid grid-cols-3 gap-1.5">
           {basemaps.map((basemap) => {
-            const active = basemap.id === basemapId;
+            // Resolved, never `===`. A course saved under an older
+            // provider-named id draws correctly but would light up no radio at
+            // all under raw string equality. See `resolveBasemapId`.
+            const active = basemap.id === resolveBasemapId(basemapId);
             return (
               <button
                 key={basemap.id}

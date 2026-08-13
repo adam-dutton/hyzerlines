@@ -154,7 +154,13 @@ export function createCourse(overrides: Partial<Course> = {}): Course {
     createdAt: now,
     updatedAt: now,
     view: DEFAULT_VIEW,
-    basemapId: 'esri-imagery',
+    /*
+     * The role, not the provider. Which company draws the satellite tiles is a
+     * build-time question the web app answers — see `basemaps.ts` — and it must
+     * not be baked into every document created. Older courses carry the old
+     * provider-named spellings and are mapped forward on read.
+     */
+    basemapId: 'satellite',
     features: [],
     holes: [],
     pairs: [],
