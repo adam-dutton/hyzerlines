@@ -1,7 +1,7 @@
 import { ChromeLayer } from '@hyzerlines/design';
 import { hasOverlays, type Overlays } from '@hyzerlines/core';
 
-import { basemapById } from '../map/basemaps';
+import { basemapById, effectiveBasemap } from '../map/basemaps';
 import { TERRAIN_ATTRIBUTION } from '../map/terrain';
 import { GUTTER, READOUT_BOTTOM } from './layout';
 
@@ -39,13 +39,22 @@ export function Attribution({
   basemapId,
   overlays,
   hasSurvey,
+  dark,
 }: {
   basemapId: string;
   overlays: Overlays;
   /** An imported survey is supplying the elevation instead of the global one. */
   hasSurvey: boolean;
+  /**
+   * Whether the dark twin of the basemap is the one being drawn.
+   *
+   * It has its own provider and therefore its own credit. Printing the light
+   * map's contributors under a dark map is not a smaller obligation met — it is
+   * a specific false statement about where the tiles came from.
+   */
+  dark: boolean;
 }) {
-  const basemap = basemapById(basemapId);
+  const basemap = effectiveBasemap(basemapById(basemapId), dark);
 
   /*
    * Both terrain overlays read one elevation source, so they credit it once —

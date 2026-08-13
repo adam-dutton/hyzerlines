@@ -7,7 +7,7 @@ import {
   type OverlaySwitch,
 } from '@hyzerlines/core';
 
-import { basemaps } from '../map/basemaps';
+import { basemaps, basemapById, effectiveBasemap } from '../map/basemaps';
 import { OVERLAY_DEFINITIONS } from '../map/terrain';
 import { SurveySection } from './SurveySection';
 import type { SurveyState } from '../survey/useSurvey';
@@ -173,6 +173,7 @@ export function LayersDrawer({
   overlays,
   display,
   units,
+  dark,
   survey,
   onBasemapChange,
   onOverlaysChange,
@@ -184,6 +185,8 @@ export function LayersDrawer({
   overlays: Overlays;
   display: Display;
   units: UnitSystem;
+  /** Whether the dark twin is the one being drawn. See `effectiveBasemap`. */
+  dark: boolean;
   survey: {
     state: SurveyState;
     status: SurveyState['status'];
@@ -265,8 +268,13 @@ export function LayersDrawer({
             );
           })}
         </div>
+        {/*
+          The source actually being drawn, which in a dark interface is the
+          dark twin rather than the map it stands in for. Naming the light one
+          under dark tiles would be the drawer describing something else.
+        */}
         <p className="pt-2 text-2xs text-text-muted">
-          {basemaps.find((basemap) => basemap.id === basemapId)?.hint}
+          {effectiveBasemap(basemapById(basemapId), dark).hint}
         </p>
 
         <div className="mt-4 border-t border-border-subtle pt-2">

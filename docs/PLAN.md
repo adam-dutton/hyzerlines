@@ -990,8 +990,9 @@ serves the shading and the lines.
 **Igor hillshade, not the default.** The standard method darkens by slope in both
 directions, which over aerial imagery reads as grime — flat ground goes muddy and
 the photograph stops being legible. Igor shades only the shadowed side, so canopy
-still looks like canopy and relief arrives as a separate signal. Highlights are
-fully transparent for the same reason.
+still looks like canopy and relief arrives as a separate signal. Over imagery the
+highlight is fully transparent for the same reason; over a dark canvas the two
+inks swap, which is the next section.
 
 **Contours are quoted in the reader's units.** The interval and the
 metres-to-feet multiplier are encoded in the tile url, so switching units
@@ -1004,6 +1005,49 @@ red. Terrain is not part of the design and not the interface talking about the
 design — it is a reading of the ground both sit on — so it needs a hue that
 cannot be mistaken for any of the three. It is also what a topographic sheet has
 used for a century.
+
+### Dark basemaps, and which way round the shading is inked
+
+Dark is the default theme, and the topographic and street maps were bright white
+rectangles inside it. **A dark basemap has to be different tiles, not a filter.**
+MapLibre's raster paint offers brightness, contrast, saturation and hue — and no
+invert. Darkening a light map without inverting it drags the paper to mid-grey
+while the labels stay black, so the result is *less* readable than what it
+replaced. Only tiles a provider drew dark are actually dark.
+
+Esri's Dark Gray Canvas stands in for both, because keyless dark tiles are what
+exists. That is the better half of the trade here: a canvas is deliberately
+drained of terrain colouring so whatever is drawn over it reads, and this app
+draws hillshade and contours from a real DEM — so the dark Topographic is *our*
+terrain on a neutral ground rather than Esri's tinting fighting ours. It ships
+its labels as a second service, so it is the one basemap drawn as two layers; a
+street map with no street names is a picture of roads.
+
+**Imagery has no dark twin.** A photograph of the ground has no light mode to
+invert — it is whatever colour that ground is.
+
+**The shading's ink follows the ground, not the interface.** Igor splits every
+slope into a lit half and a shaded half and paints them with two separate
+colours, so relief can be drawn with *either* ink alone. Over a light or
+photographic base, black on the shaded side; over a dark canvas black is
+invisible — a shadow on near-black ground is nothing at all — so the relief has
+to come from light on the lit side instead.
+
+The first version of this keyed the ink off the theme, which is a different
+question and was wrong on the app's most common screen: dark theme over
+satellite is a photograph underneath, and inking it white washed out the detail
+the imagery was chosen for. `groundIsDark` answers the real question — *did the
+tiles that actually resulted come out dark* — and the attribution line reads
+from the same place, so the app can never credit tiles nobody is looking at.
+
+**Unverified when shipped.** The sandbox this was built in blocks every tile
+host, so the dark canvas endpoints could not be exercised before merging. The
+max zoom is deliberately under-claimed at 16: past a source's real limit the
+provider returns nothing and the map goes blank, short of it MapLibre overzooms
+the last good tile. Blurry beats blank. The credit is `Tiles © Esri` and no
+contributor list, because the real list is the service's own `copyrightText` and
+nobody has read it — inventing one to sit beside a true credit would be worse
+than the short version.
 
 ### Saying what the data is worth
 

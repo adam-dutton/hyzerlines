@@ -208,9 +208,44 @@ const shown = (on: boolean) => (on ? ('visible' as const) : ('none' as const));
  */
 export const MINOR_RATIO = 0.64;
 
-/** The shadow ink at a given strength. See the note in `hillshadeLayerSpec`. */
-export const shadowColor = (opacity: number): string =>
-  `rgba(0, 0, 0, ${Math.max(0, Math.min(1, opacity))})`;
+/**
+ * Which side of a slope the shading inks, and how strongly.
+ *
+ * Igor shading splits every slope into a lit half and a shaded half and paints
+ * them with two separate colours — from the shader:
+ *
+ *     fragColor = shadow * shadow_strength + highlight * highlight_strength
+ *
+ * where the two strengths are complements by aspect. So relief can be drawn
+ * with *either* ink alone, and which one is right depends entirely on what is
+ * underneath.
+ *
+ * Over a light or photographic base, black on the shaded side. Over a dark
+ * base, black is invisible — a shadow on near-black ground is nothing at all —
+ * and the relief has to come from light on the lit side instead. Same layer,
+ * same strength, opposite ink: the map keeps reading as terrain rather than
+ * turning into a grey haze.
+ *
+ * `darkGround` is therefore a fact about the *tiles*, not about the interface.
+ * A dark theme over satellite imagery still wants black, because imagery has no
+ * dark twin to switch to and what is on screen is still a photograph — see
+ * `groundIsDark`, which is the only thing that should be answering this.
+ *
+ * Opacity lives in the ink's alpha because there is nowhere else. MapLibre has
+ * no `hillshade-opacity`, and with the accent transparent and only one of these
+ * two carrying colour, that alpha *is* the layer's opacity rather than an
+ * approximation of one.
+ */
+export function hillshadeInk(
+  opacity: number,
+  darkGround: boolean,
+): { shadow: string; highlight: string } {
+  const alpha = Math.max(0, Math.min(1, opacity));
+  const clear = 'rgba(0, 0, 0, 0)';
+  return darkGround
+    ? { shadow: clear, highlight: `rgba(255, 255, 255, ${alpha})` }
+    : { shadow: `rgba(0, 0, 0, ${alpha})`, highlight: clear };
+}
 
 /**
  * How deep a DEM to read the shading from, given a softness setting.
@@ -257,7 +292,9 @@ export function hillshadeLayerSpec(
   source: string,
   visible: boolean,
   opacity = 1,
+  darkGround = false,
 ): LayerSpecification {
+  const ink = hillshadeInk(opacity, darkGround);
   return {
     id,
     type: 'hillshade',
@@ -283,17 +320,13 @@ export function hillshadeLayerSpec(
        */
       'hillshade-exaggeration': 1,
       /*
-       * Opacity lives in the shadow's alpha, because there is nowhere else.
-       *
-       * MapLibre has no `hillshade-opacity`. With Igor shading and both the
-       * highlight and accent fully transparent, the shadow is the only ink the
-       * layer puts down — so its alpha *is* the layer's opacity rather than an
-       * approximation of one.
+       * One ink, on whichever side of the slope the base calls for. Over
+       * imagery a white-lit slope would wash out the very detail the imagery
+       * was chosen for; over a dark canvas a black one would not show at all.
+       * See `hillshadeInk`.
        */
-      'hillshade-shadow-color': shadowColor(opacity),
-      // Fully transparent highlights: over imagery, a white-lit slope washes
-      // out the very detail the imagery was chosen for.
-      'hillshade-highlight-color': 'rgba(255, 255, 255, 0)',
+      'hillshade-shadow-color': ink.shadow,
+      'hillshade-highlight-color': ink.highlight,
       'hillshade-accent-color': 'rgba(0, 0, 0, 0)',
     },
   };
@@ -373,13 +406,14 @@ export function contourLayerSpecs(
  * corrected. A course saved with contours on should open with contours on, not
  * open bare and grow them a frame later.
  */
-export function terrainLayers(overlays: Overlays): LayerSpecification[] {
+export function terrainLayers(overlays: Overlays, darkGround = false): LayerSpecification[] {
   return [
     hillshadeLayerSpec(
       HILLSHADE_LAYER,
       DEM_SOURCE,
       overlays.hillshade,
       overlays.hillshadeOpacity,
+      darkGround,
     ),
     ...contourLayerSpecs(
       CONTOUR_LINE_LAYER,

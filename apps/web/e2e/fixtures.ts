@@ -394,6 +394,29 @@ export async function setAid(page: Page, name: string, on: boolean): Promise<voi
   await setSwitch(page, name, on);
 }
 
+/**
+ * Put the interface into light or dark.
+ *
+ * Dark is the default and is never taken from the OS, so a test that wants
+ * light has to ask. Driven through the menu rather than by writing the
+ * attribute, because the theme decides which basemap tiles are drawn and which
+ * way round the shading is inked — setting `data-theme` directly would move the
+ * stylesheet and leave the map behind, which is the exact failure worth
+ * catching.
+ *
+ * Idempotent, and it waits for the change to land rather than for the click.
+ */
+export async function setTheme(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  const current = () => page.evaluate(() => document.documentElement.dataset['theme']);
+  if ((await current()) !== theme) {
+    await page.getByRole('button', { name: 'Menu', exact: true }).click();
+    await page
+      .getByRole('menuitem', { name: theme === 'dark' ? 'Dark theme' : 'Light theme' })
+      .click();
+  }
+  await expect.poll(current).toBe(theme);
+}
+
 /** Choose a basemap by name, opening the layers panel if it is closed. */
 export async function chooseBasemap(page: Page, name: string): Promise<void> {
   await openLayers(page);

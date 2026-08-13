@@ -8,7 +8,7 @@ import {
 import type { Smoothing, View } from '@hyzerlines/core';
 
 import { MapCanvas } from './map/MapCanvas';
-import { basemaps } from './map/basemaps';
+import { basemaps, groundIsDark } from './map/basemaps';
 import { Attribution } from './chrome/Attribution';
 import { MapControls } from './chrome/MapControls';
 import { LayersDrawer } from './chrome/LayersDrawer';
@@ -188,9 +188,15 @@ function Shell() {
           overlays={course.overlays}
           units={units}
           suppressTerrain={hasSurvey}
+          dark={theme === 'dark'}
           onViewChange={handleViewChange}
         >
-          <SurveyLayers state={survey.state} overlays={course.overlays} units={units} />
+          <SurveyLayers
+            state={survey.state}
+            overlays={course.overlays}
+            units={units}
+            darkGround={groundIsDark(course.basemapId, theme === 'dark')}
+          />
 
           {!chromeHidden && (
             <>
@@ -198,6 +204,7 @@ function Shell() {
                 basemapId={course.basemapId}
                 overlays={course.overlays}
                 hasSurvey={hasSurvey}
+                dark={theme === 'dark'}
               />
               <MapControls
                 layersOpen={layersOpen}
@@ -217,6 +224,7 @@ function Shell() {
                 overlays={course.overlays}
                 display={course.display}
                 units={units}
+                dark={theme === 'dark'}
                 survey={{
                   state: survey.state,
                   status: survey.state.status,

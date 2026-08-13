@@ -5,6 +5,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Overlays } from '@hyzerlines/core';
 
 import { MapContext, type MapViewState } from './MapContext';
+import { groundIsDark } from './basemaps';
 import {
   applyBasemap,
   applyContourUnits,
@@ -29,6 +30,15 @@ interface MapCanvasProps {
    * different resolutions, stacked.
    */
   suppressTerrain: boolean;
+  /**
+   * Whether the interface is dark, which decides two things about the map.
+   *
+   * Which tiles a basemap draws — the light ones or its dark twin — and which
+   * way round the hillshade is inked. Both are visibility and paint changes on
+   * a style that already holds every option, so a theme switch costs no more
+   * than a basemap switch does. See `applyBasemap` and `hillshadeInk`.
+   */
+  dark: boolean;
   children?: React.ReactNode;
   /** Debounced camera reports, for persisting where the user was working. */
   onViewChange?: (view: MapViewState) => void;
@@ -65,6 +75,7 @@ export function MapCanvas({
   overlays,
   units,
   suppressTerrain,
+  dark,
   children,
   onViewChange,
 }: MapCanvasProps) {
@@ -88,7 +99,7 @@ export function MapCanvas({
 
     const instance = new maplibregl.Map({
       container: containerRef.current,
-      style: buildStyle(basemapId, overlays, units),
+      style: buildStyle(basemapId, overlays, units, dark),
       center: view.center,
       zoom: view.zoom,
       // Course design is a plan-view task. Rotation and tilt are available but
@@ -167,8 +178,8 @@ export function MapCanvas({
    * Values come from a ref rather than the closure, so a listener registered on
    * one render applies whatever is current when it finally runs.
    */
-  const desiredRef = useRef({ basemapId, overlays, units, suppressTerrain });
-  desiredRef.current = { basemapId, overlays, units, suppressTerrain };
+  const desiredRef = useRef({ basemapId, overlays, units, suppressTerrain, dark });
+  desiredRef.current = { basemapId, overlays, units, suppressTerrain, dark };
 
   useEffect(() => {
     if (!map) return;
@@ -176,7 +187,7 @@ export function MapCanvas({
     const apply = (): boolean => {
       if (!styleReady(map)) return false;
       const desired = desiredRef.current;
-      applyBasemap(map, desired.basemapId);
+      applyBasemap(map, desired.basemapId, desired.dark);
       /*
        * Suppression turns the global overlays off without touching the rest of
        * the settings: an imported survey draws its own hillshade and contours
@@ -188,7 +199,9 @@ export function MapCanvas({
         : desired.overlays;
 
       applyOverlays(map, effective);
-      applyOverlayStyling(map, effective);
+      // The basemap decides the ink, not the theme: in a dark interface over
+      // imagery there is still a photograph underneath. See `groundIsDark`.
+      applyOverlayStyling(map, effective, groundIsDark(desired.basemapId, desired.dark));
       applyDemSoftness(map, effective);
       applyContourUnits(map, desired.units, effective.contourSmoothing);
       return true;
@@ -203,7 +216,7 @@ export function MapCanvas({
     return () => {
       map.off('styledata', retry);
     };
-  }, [map, basemapId, overlays, units, suppressTerrain]);
+  }, [map, basemapId, overlays, units, suppressTerrain, dark]);
 
   return (
     <MapContext.Provider value={{ map, view }}>

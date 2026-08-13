@@ -8,6 +8,7 @@ import {
   openLayers,
   place,
   setSwitch,
+  setTheme,
   waitForSave,
 } from './fixtures';
 
@@ -200,6 +201,13 @@ test.describe('one style, switched rather than swapped', () => {
     await page.waitForTimeout(600);
     expect(requested.has('osm'), 'a hidden basemap should not fetch').toBe(false);
 
+    /*
+     * In light, because a dark interface draws the Street map's dark twin from
+     * Esri and never touches OpenStreetMap at all. The claim under test is
+     * about hidden sources, not about which of the two is on screen — see the
+     * dark basemaps block for that.
+     */
+    await setTheme(page, 'light');
     await chooseBasemap(page, 'Street');
     await expect.poll(() => requested.has('osm'), { timeout: 10_000 }).toBe(true);
   });
@@ -359,5 +367,102 @@ test.describe('overlay adjustments', () => {
 
     await setSwitch(page, 'Hillshade', true);
     await expect(page.getByRole('slider', { name: 'Hillshade opacity' })).toBeEnabled();
+  });
+});
+
+/**
+ * Dark basemaps, and which way round the shading is inked.
+ *
+ * Two claims a browser has to settle. The first is that a theme switch reaches
+ * the map at all: the tiles are a *different source*, not a filter over the
+ * light ones, because MapLibre's raster paint has no invert and darkening a
+ * light map without inverting it leaves black labels on grey paper.
+ *
+ * The second is the one that is easy to get wrong, and did: the shading's ink
+ * follows the **ground**, not the interface. Imagery has no dark twin, so a
+ * dark theme over satellite leaves a photograph on screen — and inking that in
+ * white washes out the detail the imagery was chosen for.
+ */
+test.describe('dark basemaps', () => {
+  const TOPO = 'basemap-esri-topo';
+  const TOPO_DARK = 'basemap-esri-topo-dark';
+  const TOPO_DARK_LABELS = 'basemap-esri-topo-dark-labels';
+
+  /* Dark is the default, so this is what the app opens as. */
+  test('the topographic map draws its dark twin, labels and all', async ({ page }) => {
+    await openEditor(page);
+    await chooseBasemap(page, 'Topographic');
+
+    await expect.poll(() => layerVisible(page, TOPO_DARK)).toBe(true);
+    expect(await layerVisible(page, TOPO)).toBe(false);
+    /*
+     * Esri ships the dark canvas's labels as a second service, so this is the
+     * one basemap drawn as two layers. Without it a street map is a picture of
+     * roads rather than a map.
+     */
+    expect(await layerVisible(page, TOPO_DARK_LABELS)).toBe(true);
+  });
+
+  test('and goes back to the light tiles in a light interface', async ({ page }) => {
+    await openEditor(page);
+    await chooseBasemap(page, 'Topographic');
+    await setTheme(page, 'light');
+
+    await expect.poll(() => layerVisible(page, TOPO)).toBe(true);
+    expect(await layerVisible(page, TOPO_DARK)).toBe(false);
+    expect(await layerVisible(page, TOPO_DARK_LABELS)).toBe(false);
+  });
+
+  /* A photograph has no light mode to invert: it is whatever colour the ground is. */
+  test('imagery has no dark twin and keeps its own tiles', async ({ page }) => {
+    await openEditor(page);
+
+    expect(await layerVisible(page, 'basemap-esri-imagery')).toBe(true);
+    const twin = await page.evaluate(
+      () => window.hyzerlinesMap!.getLayer('basemap-esri-imagery-dark') !== undefined,
+    );
+    expect(twin, 'imagery should not have a dark layer at all').toBe(false);
+  });
+
+  /* The credit follows the tiles. Crediting a provider nobody is looking at is
+     not a smaller obligation met — it is a specific false claim. */
+  test('the dark twin carries its own attribution', async ({ page }) => {
+    await openEditor(page);
+    await chooseBasemap(page, 'Topographic');
+
+    await expect(page.getByText(/Tiles © Esri/)).toBeVisible();
+    await expect(page.getByText(/DeLorme/)).toHaveCount(0);
+  });
+
+  /**
+   * The regression this describe block exists for.
+   *
+   * Inking off the theme rather than off the basemap put white highlights over
+   * satellite imagery the moment dark became the default — which is every
+   * first load. See `groundIsDark`.
+   */
+  test('the shading inks for the ground, not for the theme', async ({ page }) => {
+    await openEditor(page, { center: [-93.1, 44.9], zoom: 14 });
+    await openLayers(page);
+    await setSwitch(page, 'Hillshade', true);
+
+    // Dark interface, imagery underneath: still black on the shaded side.
+    expect(await paint(page, HILLSHADE, 'hillshade-shadow-color')).toBe('rgba(0, 0, 0, 1)');
+    expect(await paint(page, HILLSHADE, 'hillshade-highlight-color')).toBe('rgba(0, 0, 0, 0)');
+
+    // Dark canvas underneath: black would be invisible, so the relief comes
+    // from light on the lit side instead.
+    await chooseBasemap(page, 'Topographic');
+    await expect
+      .poll(() => paint(page, HILLSHADE, 'hillshade-highlight-color'))
+      .toBe('rgba(255, 255, 255, 1)');
+    expect(await paint(page, HILLSHADE, 'hillshade-shadow-color')).toBe('rgba(0, 0, 0, 0)');
+
+    // And back, when the interface goes light and the light tiles return.
+    await setTheme(page, 'light');
+    await expect
+      .poll(() => paint(page, HILLSHADE, 'hillshade-shadow-color'))
+      .toBe('rgba(0, 0, 0, 1)');
+    expect(await paint(page, HILLSHADE, 'hillshade-highlight-color')).toBe('rgba(0, 0, 0, 0)');
   });
 });
