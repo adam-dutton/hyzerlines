@@ -686,10 +686,35 @@ test.describe('a hole you cannot see the fairway of', () => {
     await settleCamera(page);
     const onCorridor = await shotPoint(page, 0.65);
 
+    /*
+     * Corridor shapes on the map, hidden ones included.
+     *
+     * `drawnCorridors` deliberately drops the hidden ones — that is what it is
+     * for below — but a click needs the *shape* to exist, and a hidden corridor
+     * is still the thing being clicked: it keeps its geometry so the ground a
+     * shot runs over stays selectable. Counting both is what makes this a valid
+     * wait on either side of the switch.
+     */
+    const corridorsOnMap = () =>
+      page.evaluate(
+        () =>
+          (window.hyzerlinesMap?.querySourceFeatures('derived-geometry') ?? []).filter(
+            (f) => f.properties?.['derived'] === 'corridor',
+          ).length,
+      );
+
     const holePanel = page.getByRole('textbox', { name: 'Hole name' });
     const selectFromTheCorridor = async () => {
       await page.keyboard.press('Escape');
       await expect(holePanel).toBeHidden();
+      /*
+       * And only once the corridor is actually painted. A settled camera is not
+       * the same as a drawn frame: the derived source is pushed to the map
+       * asynchronously, and under a full suite's load the click was landing in
+       * the gap between the two and hitting nothing at all. Passing alone and
+       * failing in the suite is the signature of exactly that.
+       */
+      await expect.poll(corridorsOnMap).toBeGreaterThan(0);
       await clickAt(page, onCorridor.x, onCorridor.y);
     };
 
