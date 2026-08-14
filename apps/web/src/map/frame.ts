@@ -147,18 +147,22 @@ export const HOLE_FRAME_MS = 600;
  */
 export const HOLE_MAX_ZOOM = 19.5;
 
-/** Extra zoom past the fit, so a framed hole fills the channel rather than floating in it. */
-export const HOLE_TIGHTEN = 0.45;
-
 export interface FrameOptions {
   /** 0 jumps. Use a duration for a deliberate gesture, not for a document load. */
   duration?: number;
   /** Defaults to MapLibre's own. See `EASE_IN_OUT`. */
   easing?: (t: number) => number;
-  /** Ceiling on the fitted zoom. Defaults to `SINGLE_FEATURE_ZOOM`. */
+  /**
+   * Ceiling on the fitted zoom. Defaults to `SINGLE_FEATURE_ZOOM`.
+   *
+   * A ceiling and nothing more. There was briefly a `tighten` beside it that
+   * added zoom *past* the fit to make a hole fill more of the channel — which
+   * spends the padding that keeps the tee and the basket out from under the
+   * rail. The fit is already the closest camera that shows the whole hole in
+   * the space the chrome leaves; the only honest way to get closer is to stop
+   * capping it, which is what this does.
+   */
   maxZoom?: number;
-  /** Zoom levels added to the fit before the ceiling applies. */
-  tighten?: number;
   /**
    * Turn the map so this compass bearing points up the screen.
    *
@@ -186,7 +190,6 @@ export function frameFeatures(
     bearing,
     easing,
     maxZoom = SINGLE_FEATURE_ZOOM,
-    tighten = 0,
   }: FrameOptions = {},
 ): boolean {
   const bounds = boundsOf(features);
@@ -202,7 +205,7 @@ export function frameFeatures(
    */
   if (east - west < DEGENERATE_SPAN_DEGREES && north - south < DEGENERATE_SPAN_DEGREES) {
     const center: [number, number] = [(west + east) / 2, (south + north) / 2];
-    const camera = { center, zoom: Math.min(SINGLE_FEATURE_ZOOM + tighten, maxZoom), ...turn };
+    const camera = { center, zoom: Math.min(SINGLE_FEATURE_ZOOM, maxZoom), ...turn };
     if (duration > 0) map.easeTo({ ...camera, duration, ...(easing ? { easing } : {}) });
     else map.jumpTo(camera);
     return true;
@@ -234,12 +237,11 @@ export function frameFeatures(
   map.easeTo({
     ...camera,
     /*
-     * Tightened, then capped. The fit itself is what scales with the subject —
-     * a short hole is a smaller box and lands closer — and `tighten` only takes
-     * the slack out of it. The ceiling is still there because filling the screen
-     * with two tees a metre apart is technically a fit and practically useless.
+     * Capped, never pushed past. The fit itself is what scales with the
+     * subject — a short hole is a smaller box and lands closer — and the
+     * ceiling is what stops two tees a metre apart filling the screen.
      */
-    zoom: Math.min((camera.zoom ?? SINGLE_FEATURE_ZOOM) + tighten, maxZoom),
+    zoom: Math.min(camera.zoom ?? SINGLE_FEATURE_ZOOM, maxZoom),
     duration,
     ...(easing ? { easing } : {}),
   });

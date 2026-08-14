@@ -38,7 +38,6 @@ import {
   EASE_IN_OUT,
   HOLE_FRAME_MS,
   HOLE_MAX_ZOOM,
-  HOLE_TIGHTEN,
   frameFeatures,
 } from './map/frame';
 import type { Tool } from './map/tools';
@@ -523,14 +522,15 @@ export function CourseEditor({
        *
        * The zoom is not a constant: `frameFeatures` fits the hole's own extent,
        * so a short hole lands closer than a long one without anything here
-       * doing arithmetic — raising the ceiling is what lets that difference
-       * show. See `HOLE_MAX_ZOOM`.
+       * doing arithmetic. Raising the ceiling is what lets that difference
+       * show — and it is the *only* lever, because anything that zooms past
+       * the fit spends the padding holding the shot clear of the rail. See
+       * `HOLE_MAX_ZOOM`.
        */
       frameFeatures(map, holeFeatures(id), {
         duration: HOLE_FRAME_MS,
         easing: EASE_IN_OUT,
         maxZoom: HOLE_MAX_ZOOM,
-        tighten: HOLE_TIGHTEN,
         ...(turn === null ? {} : { bearing: turn }),
       });
     },
