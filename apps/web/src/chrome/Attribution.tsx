@@ -1,11 +1,14 @@
 import { ChromeLayer } from '@hyzerlines/design';
 import { hasOverlays, type Overlays } from '@hyzerlines/core';
 
-import { basemapById, effectiveBasemap } from '../map/basemaps';
+import { basemapById, effectiveBasemap, usingMapbox } from '../map/basemaps';
 import { TERRAIN_ATTRIBUTION } from '../map/terrain';
-import { GUTTER, READOUT_BOTTOM } from './layout';
+import { MapboxLogo } from './MapboxLogo';
 
 export const SOURCE_URL = 'https://github.com/adam-dutton/hyzerlines';
+
+/** How far the credit sits from the visible map's bottom-right corner. */
+const ATTRIBUTION_INSET = 5;
 
 /**
  * Provider credit and the source link. Everything here is an obligation.
@@ -71,51 +74,59 @@ export function Attribution({
   const credits = [basemap.attribution, elevationCredit].filter(Boolean).join(' &middot; ');
 
   return (
-    /*
-     * Bottom left of the free channel, not of the viewport.
-     *
-     * The panel columns run the full height now, so `left-4` put this underneath
-     * the left panel — and an obligation to *display* a credit is not met by
-     * drawing it behind a card. Measuring from the rail keeps it in the gap
-     * between the columns, on the same line as the zoom cluster at the other end
-     * and below the tool bar, so none of the three can reach the others at any
-     * viewport width.
-     */
-    /*
-     * Wide enough for two lines, not three.
-     *
-     * `max-w-sm` wrapped the Esri credit onto a third line, which grew this box
-     * upwards into the tool bar's line 56px above it. The channel is much wider
-     * than the credit needs, so the cap is a wrapping preference rather than a
-     * fit constraint — and the readout line has room to spend.
-     */
-    <ChromeLayer
-      className="max-w-lg"
-      style={{ left: `calc(var(--hz-rail, 236px) + ${GUTTER}px)`, bottom: READOUT_BOTTOM }}
-    >
-      <div className="pointer-events-auto flex flex-wrap items-center gap-x-2 rounded bg-surface-overlay/75 px-1.5 py-0.5 text-2xs leading-4 text-text-secondary backdrop-blur-sm">
-        {/* Attribution strings are compile-time constants in basemaps.ts and
-            terrain.ts, never user or network input, and providers require the
-            embedded links. */}
-        <span
-          className="[&_a]:underline [&_a]:underline-offset-2 hover:[&_a]:text-text-secondary"
-          dangerouslySetInnerHTML={{ __html: credits }}
-        />
-        {/* The separator rides with the link so it never dangles at a wrap. */}
-        <span className="whitespace-nowrap">
-          <span aria-hidden="true" className="mr-2">
-            &middot;
+    <>
+      {/*
+        The wordmark, bottom left, and only while Mapbox is drawing.
+
+        Guarded rather than always rendered, for the reason every credit in this
+        app is: putting Mapbox's mark over MapTiler's tiles would be a specific
+        false claim about where the map came from, and a required attribution
+        shown against the wrong provider is worse than none.
+      */}
+      {usingMapbox && <MapboxLogo />}
+
+      {/*
+        The text, bottom right, 5px in.
+
+        Both insets are measured from the *chrome* rather than the viewport —
+        `--hz-rail` on one side and `--hz-drawer` on the other. The rail and the
+        drawer run the full height of the window, so a credit 5px from the
+        window's corner would sit underneath one of them, and an obligation to
+        *display* a credit is not met by drawing it behind a panel. Measured
+        this way it stays in the visible map at every width, and slides with the
+        panels because they publish their widths as custom properties.
+      */}
+      <ChromeLayer
+        className="max-w-lg"
+        style={{
+          right: `calc(var(--hz-drawer, 0px) + ${ATTRIBUTION_INSET}px)`,
+          bottom: ATTRIBUTION_INSET,
+        }}
+      >
+        <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-x-2 rounded bg-surface-overlay/75 px-1.5 py-0.5 text-2xs leading-4 text-text-secondary backdrop-blur-sm">
+          {/* Attribution strings are compile-time constants in basemaps.ts and
+              terrain.ts, never user or network input, and providers require the
+              embedded links. */}
+          <span
+            className="[&_a]:underline [&_a]:underline-offset-2 hover:[&_a]:text-text-secondary"
+            dangerouslySetInnerHTML={{ __html: credits }}
+          />
+          {/* The separator rides with the link so it never dangles at a wrap. */}
+          <span className="whitespace-nowrap">
+            <span aria-hidden="true" className="mr-2">
+              &middot;
+            </span>
+            <a
+              href={SOURCE_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="underline underline-offset-2 hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+            >
+              Source
+            </a>
           </span>
-          <a
-            href={SOURCE_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="underline underline-offset-2 hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-          >
-            Source
-          </a>
-        </span>
-      </div>
-    </ChromeLayer>
+        </div>
+      </ChromeLayer>
+    </>
   );
 }
