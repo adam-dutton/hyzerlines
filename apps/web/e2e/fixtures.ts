@@ -428,6 +428,19 @@ export async function setTheme(page: Page, theme: 'light' | 'dark'): Promise<voi
   await expect.poll(current).toBe(theme);
 }
 
+/**
+ * Turn the basemap's dark variant on or off.
+ *
+ * Separate from `setTheme`, because the two stopped being the same question:
+ * the theme is how bright the panels are, and this is how bright the ground
+ * under the drawing is. A designer can work in a dark room on a light
+ * topographic sheet, so the map no longer follows the interface.
+ */
+export async function setBasemapDark(page: Page, on: boolean): Promise<void> {
+  await openLayers(page);
+  await setSwitch(page, 'Dark basemap', on);
+}
+
 /** Choose a basemap by name, opening the layers panel if it is closed. */
 export async function chooseBasemap(page: Page, name: string): Promise<void> {
   await openLayers(page);

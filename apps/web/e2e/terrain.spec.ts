@@ -7,6 +7,7 @@ import {
   openEditor,
   openLayers,
   place,
+  setBasemapDark,
   setSwitch,
   setTheme,
   waitForSave,
@@ -202,13 +203,16 @@ test.describe('one style, switched rather than swapped', () => {
     expect(requested.has('osm'), 'a hidden basemap should not fetch').toBe(false);
 
     /*
-     * In light, because a dark interface draws the Street map's dark twin from
-     * Esri and never touches OpenStreetMap at all. The claim under test is
-     * about hidden sources, not about which of the two is on screen — see the
-     * dark basemaps block for that.
+     * Street first, then its dark switch off — in that order, because the
+     * switch only exists for a basemap that *has* a dark twin, and Satellite
+     * does not. Turning it off first looked for a control correctly absent.
+     *
+     * Off at all, because the dark Street map is drawn from Esri and never
+     * touches OpenStreetMap. The claim under test is about hidden sources, not
+     * about which of the two is on screen — see the dark basemaps block.
      */
-    await setTheme(page, 'light');
     await chooseBasemap(page, 'Street');
+    await setBasemapDark(page, false);
     await expect.poll(() => requested.has('osm'), { timeout: 10_000 }).toBe(true);
   });
 });
@@ -403,14 +407,36 @@ test.describe('dark basemaps', () => {
     expect(await layerVisible(page, TOPO_DARK_LABELS)).toBe(true);
   });
 
-  test('and goes back to the light tiles in a light interface', async ({ page }) => {
+  test('and goes back to the light tiles when the dark basemap is switched off', async ({
+    page,
+  }) => {
     await openEditor(page);
     await chooseBasemap(page, 'Topographic');
-    await setTheme(page, 'light');
+    await setBasemapDark(page, false);
 
     await expect.poll(() => layerVisible(page, TOPO)).toBe(true);
     expect(await layerVisible(page, TOPO_DARK)).toBe(false);
     expect(await layerVisible(page, TOPO_DARK_LABELS)).toBe(false);
+  });
+
+  /**
+   * The separation, asserted directly.
+   *
+   * The basemap used to follow the interface theme, and the two are different
+   * questions: how bright the panels are, and how bright the ground under the
+   * drawing is. A designer working at night may still want a light topographic
+   * sheet because that is what their corridors read against — so switching the
+   * application to light must leave the map exactly where they put it.
+   */
+  test('the interface theme does not touch the basemap', async ({ page }) => {
+    await openEditor(page);
+    await chooseBasemap(page, 'Topographic');
+    await expect.poll(() => layerVisible(page, TOPO_DARK)).toBe(true);
+
+    await setTheme(page, 'light');
+
+    expect(await layerVisible(page, TOPO_DARK), 'the map follows its own switch').toBe(true);
+    expect(await layerVisible(page, TOPO)).toBe(false);
   });
 
   /* A photograph has no light mode to invert: it is whatever colour the ground is. */
@@ -458,8 +484,8 @@ test.describe('dark basemaps', () => {
       .toBe('rgba(255, 255, 255, 1)');
     expect(await paint(page, HILLSHADE, 'hillshade-shadow-color')).toBe('rgba(0, 0, 0, 0)');
 
-    // And back, when the interface goes light and the light tiles return.
-    await setTheme(page, 'light');
+    // And back, when the dark basemap is switched off and the light tiles return.
+    await setBasemapDark(page, false);
     await expect
       .poll(() => paint(page, HILLSHADE, 'hillshade-shadow-color'))
       .toBe('rgba(0, 0, 0, 1)');
