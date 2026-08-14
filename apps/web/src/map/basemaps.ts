@@ -363,10 +363,10 @@ function mapboxBasemap(
  * stated where it also applies.
  */
 const MAPBOX_STYLES = {
-  satellite: 'dutts/cmst7q60h007301rf4lav3l98',
-  topo: 'dutts/cmst7nxiu008101rgawtq7136',
-  street: 'dutts/cmssd7uwz003j01px15yofy5r',
-  streetDark: 'dutts/cmst7tl6e008201rgajgy82fm',
+  satellite: 'dutts/cmstgt7nr007d01rf3mf6hs6r',
+  topo: 'dutts/cmstgodd3008b01rgfpknayte',
+  street: 'dutts/cmstgn908004t01px8tjsfkir',
+  streetDark: 'dutts/cmstgr0ox008e01rg3bhk04pk',
 } as const;
 
 const MAPBOX_BASEMAPS: readonly Basemap[] = [
