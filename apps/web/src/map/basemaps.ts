@@ -294,16 +294,35 @@ function mapboxBasemap(
 /**
  * Mapbox for all three — and the finding this spike exists to record.
  *
- * **Mapbox publishes no per-style dark variants.** MapTiler ships
- * `topo-v4-dark` and `streets-v4-dark`, so the dark topographic map is still a
- * topographic map. Mapbox ships one generic `dark-v11`, so both entries below
- * point at the same tiles — which is exactly the defect that got Esri's dark
- * canvas rejected: pick Topographic or Street in dark mode and you get an
- * identical grey ground either way, and the Street map stops showing street
- * names as its own cartography.
+ * **Mapbox Standard has a proper dark mode, and this cannot reach it.** Their
+ * v3 Standard style carries a `lightPreset` — dawn, day, dusk, night — and the
+ * night preset is a night rendering of the *same* map rather than a separate
+ * generic dark one. It is the right answer to the problem, and it is the thing
+ * you see offered in Studio.
  *
- * That is not a detail to be fixed later. It is the thing the last round of
- * work was about, and switching providers would undo it.
+ * It is unreachable from here for a specific, dated reason: the Static Tiles
+ * API does not support Standard or Standard Satellite, and Mapbox document that
+ * custom styles importing either are unsupported too, with support "planned for
+ * a future release". Raster tiles are the only path that keeps this app's
+ * one-style architecture — see `mapboxTiles` — so Standard's night preset sits
+ * behind an API we cannot use.
+ *
+ * Reaching it would mean rendering vector with Mapbox GL JS v3, which is a
+ * different proposition entirely: that library is proprietary from v2 onward,
+ * and this app's terrain and survey layers are built on MapLibre's `addProtocol`
+ * — `maplibre-contour` computes its isolines through it. That is an engine
+ * replacement, not a provider switch.
+ *
+ * So the classic styles are what is available over raster, and they have no
+ * per-style dark: `outdoors-v12` and `streets-v12` both fall back to the generic
+ * `dark-v11` below, which is the same "two maps, one grey ground" result that
+ * got Esri's dark canvas rejected.
+ *
+ * **The way out, if Mapbox is wanted anyway,** is Studio: author a dark
+ * topographic and a dark street style there and serve those style ids. Static
+ * Tiles serves custom styles fine as long as they do not import Standard. That
+ * is real work and a real capability MapTiler's fixed catalogue does not offer —
+ * it is just not something a token alone unlocks.
  */
 const MAPBOX_BASEMAPS: readonly Basemap[] = [
   mapboxBasemap('satellite', 'Satellite', 'satellite-v9', MAPBOX_SATELLITE_ATTRIBUTION, true),
