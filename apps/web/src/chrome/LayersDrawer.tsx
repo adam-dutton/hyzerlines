@@ -375,9 +375,7 @@ export function LayersDrawer({
               key={kind}
               label={KIND_DEFINITIONS[kind].label}
               checked={display.kinds[kind]}
-              onChange={(on) =>
-                onDisplayChange({ kinds: { ...display.kinds, [kind]: on } })
-              }
+              onChange={(on) => onDisplayChange({ kinds: { ...display.kinds, [kind]: on } })}
             />
           ))}
         </div>

@@ -209,8 +209,21 @@ function maptilerBasemap(
  * chrome and does not have a theme.
  */
 const MAPTILER_BASEMAPS: readonly Basemap[] = [
-  maptilerBasemap('satellite', 'Satellite', 'satellite-v4', MAPTILER_SATELLITE_ATTRIBUTION, true),
-  maptilerBasemap('topo', 'Topographic', 'topo-v4', MAPTILER_ATTRIBUTION, false, 'topo-v4-dark'),
+  maptilerBasemap(
+    'satellite',
+    'Satellite',
+    'satellite-v4',
+    MAPTILER_SATELLITE_ATTRIBUTION,
+    true,
+  ),
+  maptilerBasemap(
+    'topo',
+    'Topographic',
+    'topo-v4',
+    MAPTILER_ATTRIBUTION,
+    false,
+    'topo-v4-dark',
+  ),
   maptilerBasemap(
     'street',
     'Street',

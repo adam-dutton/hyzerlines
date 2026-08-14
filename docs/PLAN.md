@@ -1012,13 +1012,13 @@ Dark is the default theme, and the topographic and street maps were bright white
 rectangles inside it. **A dark basemap has to be different tiles, not a filter.**
 MapLibre's raster paint offers brightness, contrast, saturation and hue — and no
 invert. Darkening a light map without inverting it drags the paper to mid-grey
-while the labels stay black, so the result is *less* readable than what it
+while the labels stay black, so the result is _less_ readable than what it
 replaced. Only tiles a provider drew dark are actually dark.
 
 Esri's Dark Gray Canvas stands in for both, because keyless dark tiles are what
 exists. That is the better half of the trade here: a canvas is deliberately
 drained of terrain colouring so whatever is drawn over it reads, and this app
-draws hillshade and contours from a real DEM — so the dark Topographic is *our*
+draws hillshade and contours from a real DEM — so the dark Topographic is _our_
 terrain on a neutral ground rather than Esri's tinting fighting ours. It ships
 its labels as a second service, so it is the one basemap drawn as two layers; a
 street map with no street names is a picture of roads.
@@ -1028,7 +1028,7 @@ invert — it is whatever colour that ground is.
 
 **The shading's ink follows the ground, not the interface.** Igor splits every
 slope into a lit half and a shaded half and paints them with two separate
-colours, so relief can be drawn with *either* ink alone. Over a light or
+colours, so relief can be drawn with _either_ ink alone. Over a light or
 photographic base, black on the shaded side; over a dark canvas black is
 invisible — a shadow on near-black ground is nothing at all — so the relief has
 to come from light on the lit side instead.
@@ -1036,8 +1036,8 @@ to come from light on the lit side instead.
 The first version of this keyed the ink off the theme, which is a different
 question and was wrong on the app's most common screen: dark theme over
 satellite is a photograph underneath, and inking it white washed out the detail
-the imagery was chosen for. `groundIsDark` answers the real question — *did the
-tiles that actually resulted come out dark* — and the attribution line reads
+the imagery was chosen for. `groundIsDark` answers the real question — _did the
+tiles that actually resulted come out dark_ — and the attribution line reads
 from the same place, so the app can never credit tiles nobody is looking at.
 
 **Unverified when shipped.** The sandbox this was built in blocks every tile
@@ -1054,7 +1054,7 @@ than the short version.
 There is no dark map from OpenStreetMap: the openstreetmap-carto maintainers
 declined to make one and asked for colour variants to live in separate projects.
 That is what sent the Street map to Esri's canvas in dark mode — a change of
-*data*, not only of colour — and it is what made a keyed provider worth the
+_data_, not only of colour — and it is what made a keyed provider worth the
 trade at last.
 
 **Two registries, chosen at build time.** With `VITE_MAPTILER_KEY` set, all

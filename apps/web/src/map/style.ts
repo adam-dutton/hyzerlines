@@ -122,11 +122,7 @@ export function buildStyle(
         const layers = [raster(basemapLayerId(basemap.id), basemap.id, chosen && !dark)];
         if (basemap.dark) {
           layers.push(
-            raster(
-              basemapDarkLayerId(basemap.id),
-              `${basemap.id}-dark`,
-              chosen && dark,
-            ),
+            raster(basemapDarkLayerId(basemap.id), `${basemap.id}-dark`, chosen && dark),
           );
           // Labels directly over their own ground, and under the terrain — the
           // same place the baked-in labels of the light maps already sit.

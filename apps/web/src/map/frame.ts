@@ -185,12 +185,7 @@ export interface FrameOptions {
 export function frameFeatures(
   map: maplibregl.Map,
   features: readonly Feature[],
-  {
-    duration = 0,
-    bearing,
-    easing,
-    maxZoom = SINGLE_FEATURE_ZOOM,
-  }: FrameOptions = {},
+  { duration = 0, bearing, easing, maxZoom = SINGLE_FEATURE_ZOOM }: FrameOptions = {},
 ): boolean {
   const bounds = boundsOf(features);
   if (!bounds) return false;

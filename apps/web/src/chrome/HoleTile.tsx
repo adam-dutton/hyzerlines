@@ -116,7 +116,10 @@ function fitRoute(
   const cos = Math.cos(heading);
   const sin = Math.sin(heading);
   // Rotated so the tee-to-basket run lies along +x.
-  const turned = flat.map(([x, y]): [number, number] => [x * cos + y * sin, -x * sin + y * cos]);
+  const turned = flat.map(([x, y]): [number, number] => [
+    x * cos + y * sin,
+    -x * sin + y * cos,
+  ]);
 
   const xs = turned.map(([x]) => x);
   const ys = turned.map(([, y]) => y);
@@ -177,7 +180,13 @@ function RouteSchematic({ route }: { route: readonly Position[] | null }) {
   const end = fitted?.end ?? [44, 7];
 
   return (
-    <svg width={TILE_W} height={TILE_H} viewBox={`0 0 ${TILE_W} ${TILE_H}`} fill="none" aria-hidden="true">
+    <svg
+      width={TILE_W}
+      height={TILE_H}
+      viewBox={`0 0 ${TILE_W} ${TILE_H}`}
+      fill="none"
+      aria-hidden="true"
+    >
       <path
         d={d}
         stroke="currentColor"

@@ -34,12 +34,7 @@ import { derivedGeometry } from './map/derived';
 import { useVertexEditing, type EditableShape } from './map/useVertexEditing';
 import { useFeatureDragging } from './map/useFeatureDragging';
 import { useNavigation } from './map/useNavigation';
-import {
-  EASE_IN_OUT,
-  HOLE_FRAME_MS,
-  HOLE_MAX_ZOOM,
-  frameFeatures,
-} from './map/frame';
+import { EASE_IN_OUT, HOLE_FRAME_MS, HOLE_MAX_ZOOM, frameFeatures } from './map/frame';
 import type { Tool } from './map/tools';
 import { ToolBar } from './chrome/ToolBar';
 import type { SelectedPair } from './chrome/HoleProperties';

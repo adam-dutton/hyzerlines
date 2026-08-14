@@ -285,7 +285,9 @@ export function FeatureList({
                         'grid h-7 w-6 shrink-0 place-items-center rounded-md',
                         'transition-colors duration-fast hover:bg-surface-hover',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
-                        hidden ? 'text-text-disabled' : 'text-text-muted hover:text-text-primary',
+                        hidden
+                          ? 'text-text-disabled'
+                          : 'text-text-muted hover:text-text-primary',
                       )}
                     >
                       <EyeIcon open={!hidden} />
