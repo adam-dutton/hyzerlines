@@ -8,7 +8,7 @@ import {
 } from '@hyzerlines/core';
 
 import type { Tool } from '../map/tools';
-import { COLUMN, TOOL_BAR_BOTTOM } from './layout';
+import { GUTTER, TOOL_BAR_BOTTOM } from './layout';
 import { FEATURE_ICONS, SelectIcon, hasIcon, type IconKind } from './featureIcons';
 
 /**
@@ -23,7 +23,7 @@ import { FEATURE_ICONS, SelectIcon, hasIcon, type IconKind } from './featureIcon
  *
  * ## It clips rather than overlapping
  *
- * The bar is centred inside `left: COLUMN, right: COLUMN` — the free map between
+ * The bar is centred inside the free map between the rail and the drawer —
  * the panels — rather than on the viewport. On a narrow window that means the
  * bar runs out of room and is clipped at the panel edge, which is deliberate and
  * is the better failure: overlapping would put a tool button underneath a panel,
@@ -234,9 +234,17 @@ export function ToolBar({
     <div
       className="pointer-events-none absolute flex justify-center overflow-hidden"
       style={{
-        left: COLUMN,
-        right: COLUMN,
+        /*
+         * The channel the rail and the drawer leave, read off the shell rather
+         * than restated. Both widths change, and both animate, so a literal
+         * here would be wrong at every moment except the two it was measured
+         * at. See `useShellEdge`.
+         */
+        left: `calc(var(--hz-rail, 236px) + ${GUTTER}px)`,
+        right: `calc(var(--hz-drawer, 0px) + ${GUTTER}px)`,
         bottom: TOOL_BAR_BOTTOM,
+        transition:
+          'left 190ms cubic-bezier(0.32, 0.72, 0, 1), right 190ms cubic-bezier(0.32, 0.72, 0, 1)',
         zIndex: 'var(--hz-z-chrome)',
       }}
     >

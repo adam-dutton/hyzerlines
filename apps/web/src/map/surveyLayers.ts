@@ -74,6 +74,8 @@ export function applySurveyLayers(
   survey: SiteSurvey,
   overlays: Overlays,
   units: UnitSystem,
+  /** Whether the tiles under the shading are dark ones. See `groundIsDark`. */
+  darkGround: boolean,
 ): void {
   removeSurveyLayers(map);
   registerSurveyProtocol();
@@ -119,6 +121,7 @@ export function applySurveyLayers(
       SURVEY_DEM_SOURCE,
       overlays.hillshade,
       overlays.hillshadeOpacity,
+      darkGround,
     ),
     ...contourLayerSpecs(
       SURVEY_CONTOUR_LINE_LAYER,
@@ -159,8 +162,12 @@ export function applySurveyVisibility(map: maplibregl.Map, overlays: Overlays): 
  * Softness is absent on purpose: it changes the source's depth, which cannot be
  * edited in place, so `SurveyLayers` rebuilds for it instead.
  */
-export function applySurveyStyling(map: maplibregl.Map, overlays: Overlays): void {
-  setHillshadeOpacity(map, SURVEY_HILLSHADE_LAYER, overlays.hillshadeOpacity);
+export function applySurveyStyling(
+  map: maplibregl.Map,
+  overlays: Overlays,
+  darkGround: boolean,
+): void {
+  setHillshadeOpacity(map, SURVEY_HILLSHADE_LAYER, overlays.hillshadeOpacity, darkGround);
   setContourOpacity(
     map,
     SURVEY_CONTOUR_LINE_LAYER,

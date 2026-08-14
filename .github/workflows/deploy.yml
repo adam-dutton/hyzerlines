@@ -48,6 +48,13 @@ jobs:
       - name: Build
         env:
           VITE_BASE: ${{ steps.paths.outputs.base }}
+          # The MapTiler key, if the repository has one. Absent it builds the
+          # keyless basemaps and still works — see `basemaps.ts` — so a fork with
+          # no secret is not a broken deploy. It is compiled into the bundle and
+          # is public by construction, which is why the MapTiler dashboard has to
+          # restrict it by origin; a `secrets` entry keeps it out of the logs and
+          # out of the diff, not out of the download.
+          VITE_MAPTILER_KEY: ${{ secrets.MAPTILER_KEY }}
         run: pnpm build
 
       # Pages has no server, so a deep link would 404. Serving index.html as the

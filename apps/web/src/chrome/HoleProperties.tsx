@@ -14,6 +14,7 @@ import {
 } from '@hyzerlines/core';
 
 import { formatDistance, type UnitSystem } from '../units';
+import { FeatureRow } from './FeatureList';
 import { useHoleProfile, useProfiles } from '../survey/useProfiles';
 import { ElevationProfileChart } from './ElevationProfile';
 import {
@@ -98,6 +99,7 @@ function EndList({
   ids,
   value,
   course,
+  units,
   onChange,
   onReveal,
   onOp,
@@ -109,6 +111,7 @@ function EndList({
   ids: readonly string[];
   value: string | null;
   course: Course;
+  units: UnitSystem;
   onChange: (id: string) => void;
   onReveal: (id: string) => void;
   onOp: (op: Op) => void;
@@ -154,70 +157,70 @@ function EndList({
           two rows reading "Target"; the group is what tells a screen reader
           which set of ends they are, and it is the only name they have.
         */
-        <div role="radiogroup" aria-label={label} className="mt-1">
+        <ul role="radiogroup" aria-label={label} className="mt-1">
           {features.map((feature) => {
             const chosen = feature.id === value;
             return (
-              <div key={feature.id} className="flex items-center gap-2 py-0.5">
-                {/*
-                  A radio even when there is one of them. The control is what
-                  says "this is the shot being measured", and a row that loses
-                  its mark when a hole drops to one tee reads as the panel
-                  having stopped tracking anything.
-                */}
-                <input
-                  type="radio"
-                  name={`${hole.id}-${kind}`}
-                  // Carried so the choice is identifiable from the DOM: two
-                  // unnamed baskets are two identical rows otherwise.
-                  value={feature.id}
-                  checked={chosen}
-                  onChange={() => onChange(feature.id)}
-                  aria-label={`${verb} ${featureName(feature)}`}
-                  /*
-                   * `--hz-accent-solid`, not `--hz-color-accent-solid`.
-                   *
-                   * The latter does not exist and never did: the generator emits
-                   * semantic roles as `--hz-<role>` and only registers the
-                   * `--color-*` aliases inside `@theme inline`, for utilities to
-                   * resolve. So this radio has been falling back to the browser's
-                   * own accent colour — which is blue on most platforms, close
-                   * enough to the old palette to go unnoticed, and wrong now that
-                   * the accent is teal.
-                   */
-                  className="size-3 shrink-0 accent-[var(--hz-accent-solid)]"
-                />
-                <button
-                  type="button"
-                  onClick={() => onReveal(feature.id)}
-                  aria-label={`Select ${featureName(feature)}`}
-                  className="min-w-0 flex-1 truncate text-left text-xs text-text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-                >
-                  {featureName(feature)}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const op = assignToHole(course, feature.id, null);
-                    if (op) onOp(op);
-                  }}
-                  aria-label={`Remove ${featureName(feature)} from this hole`}
-                  title="Remove from this hole — the feature stays on the map"
-                  className="shrink-0 rounded p-0.5 text-text-muted hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-                >
-                  <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-                    <path
-                      d="M1 1l8 8M9 1l-8 8"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </button>
-              </div>
+              <FeatureRow
+                key={feature.id}
+                feature={feature}
+                units={units}
+                selected={chosen}
+                onSelect={() => onReveal(feature.id)}
+                /*
+                  The radio leads the row because it answers a different
+                  question from the row itself. Clicking the row *opens* the
+                  tee; clicking the radio says "measure the hole from this one".
+                  Two verbs, so two controls — and a radio even when there is
+                  one of them, because a row that loses its mark when a hole
+                  drops to a single tee reads as the panel having stopped
+                  tracking anything.
+                */
+                leading={
+                  <input
+                    type="radio"
+                    name={`${hole.id}-${kind}`}
+                    // Carried so the choice is identifiable from the DOM: two
+                    // unnamed baskets are two identical rows otherwise.
+                    value={feature.id}
+                    checked={chosen}
+                    onChange={() => onChange(feature.id)}
+                    aria-label={`${verb} ${featureName(feature)}`}
+                    /*
+                     * `--hz-accent-solid`, not `--hz-color-accent-solid`. The
+                     * generator emits semantic roles as `--hz-<role>` and only
+                     * registers the `--color-*` aliases inside `@theme inline`,
+                     * so the longer name silently falls back to the browser's
+                     * own accent — blue, where ours is teal.
+                     */
+                    className="mr-1.5 size-3 shrink-0 accent-[var(--hz-accent-solid)]"
+                  />
+                }
+                trailing={
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const op = assignToHole(course, feature.id, null);
+                      if (op) onOp(op);
+                    }}
+                    aria-label={`Remove ${featureName(feature)} from this hole`}
+                    title="Remove from this hole — the feature stays on the map"
+                    className="grid h-7 w-6 shrink-0 place-items-center rounded-md text-text-muted transition-colors duration-fast hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                  >
+                    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                      <path
+                        d="M1 1l8 8M9 1l-8 8"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </button>
+                }
+              />
             );
           })}
-        </div>
+        </ul>
       )}
 
       {/*
@@ -494,6 +497,7 @@ export function HoleProperties({
             const targetId = pair?.targetId ?? hole.targetIds[0];
             if (targetId) onSelectPair({ teeId, targetId });
           }}
+          units={units}
           onReveal={onRevealFeature}
           onOp={onOp}
           onDraw={() => onDrawFeature('tee')}
@@ -505,6 +509,7 @@ export function HoleProperties({
           ids={hole.targetIds}
           value={pair?.targetId ?? null}
           course={course}
+          units={units}
           onChange={(targetId) => {
             const teeId = pair?.teeId ?? hole.teeIds[0];
             if (teeId) onSelectPair({ teeId, targetId });

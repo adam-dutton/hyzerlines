@@ -33,10 +33,22 @@ export function SurveyLayers({
   state,
   overlays,
   units,
+  darkGround,
 }: {
   state: SurveyState;
   overlays: Overlays;
   units: UnitSystem;
+  /**
+   * Which way round to ink the shading — a fact about the tiles underneath,
+   * not about the theme. See `groundIsDark`.
+   *
+   * An imported survey shades through the same helpers as the global model, for
+   * the reason those helpers are shared at all: moving between them should look
+   * like a change of *data*, never a change of settings. That includes this —
+   * a survey that stayed black-shaded over a dark canvas would look like the
+   * import had broken the terrain.
+   */
+  darkGround: boolean;
 }) {
   const { map } = useMap();
   const ready = state.status === 'ready' ? state.survey : null;
@@ -47,7 +59,7 @@ export function SurveyLayers({
       removeSurveyLayers(map);
       return;
     }
-    applySurveyLayers(map, ready, overlays, units);
+    applySurveyLayers(map, ready, overlays, units, darkGround);
     return () => {
       removeSurveyLayers(map);
     };
@@ -57,15 +69,15 @@ export function SurveyLayers({
      * Listing it here would rebuild the contour source on every switch.
      */
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, ready, units, overlays.hillshadeSoftness, overlays.contourSmoothing]);
+  }, [map, ready, units, darkGround, overlays.hillshadeSoftness, overlays.contourSmoothing]);
 
   useEffect(() => {
     if (map && ready) applySurveyVisibility(map, overlays);
   }, [map, ready, overlays]);
 
   useEffect(() => {
-    if (map && ready) applySurveyStyling(map, overlays);
-  }, [map, ready, overlays]);
+    if (map && ready) applySurveyStyling(map, overlays, darkGround);
+  }, [map, ready, overlays, darkGround]);
 
   return null;
 }

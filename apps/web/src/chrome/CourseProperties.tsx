@@ -10,23 +10,14 @@ import {
   COURSE_LENGTH_HOLE_COUNT,
   feetToMeters,
   SKILL_LEVEL_INFO,
-  TARGET_CIRCLES,
   type Course,
-  type Display,
   type Op,
   type Smoothing,
 } from '@hyzerlines/core';
 
 import { formatArea, formatRange, type UnitSystem } from '../units';
 import { SMOOTHING_OPTIONS } from '../prefs';
-import {
-  Row,
-  SectionTitle,
-  ToggleRow,
-  fieldWidth,
-  sectionClass,
-  selectClass,
-} from './propertyRow';
+import { Row, fieldWidth, sectionClass, selectClass } from './propertyRow';
 
 /**
  * What the app has worked out about the course, and what it draws.
@@ -77,9 +68,6 @@ export function CourseProperties({
   const skill = courseSkillLevel(layout, course.features, featureById);
   const playable = layout ? isLayoutPlayable(layout, featureById) : true;
   const range = skill ? COURSE_LENGTH_FT[skill] : null;
-
-  const display = course.display;
-  const setDisplay = (changes: Partial<Display>) => onOp({ type: 'setDisplay', changes });
 
   /*
    * The closed-state summary: the level and the acreage, the two answers
@@ -254,9 +242,10 @@ export function CourseProperties({
         </Accordion>
 
         {/*
-        Settings, not "Show on map" — the drawing aids were the first thing to
-        go in here and they will not be the last, and a section named after its
-        current contents has to be renamed the moment anything else arrives.
+        Settings: how this reader wants the course *read*, which is why the
+        drawing aids are no longer among them. Units and elevation smoothing
+        are facts about the person at the keyboard — they live in this browser
+        rather than in the file — and what is left is exactly that.
       */}
         <Accordion title="Settings">
           {/*
@@ -319,47 +308,15 @@ export function CourseProperties({
             the raw data and never smoothed.
           </p>
 
-          <div className="mt-3">
-            <SectionTitle>Show on map</SectionTitle>
-            <ToggleRow
-              label="Fairways"
-              checked={display.fairways}
-              onChange={(fairways) => setDisplay({ fairways })}
-            />
-            <ToggleRow
-              label="Lines"
-              indent
-              checked={display.fairwayLines}
-              disabled={!display.fairways}
-              onChange={(fairwayLines) => setDisplay({ fairwayLines })}
-            />
-            <ToggleRow
-              label="Corridors"
-              indent
-              checked={display.fairwayAreas}
-              disabled={!display.fairways}
-              onChange={(fairwayAreas) => setDisplay({ fairwayAreas })}
-            />
+          {/*
+            The drawing aids moved to the layers drawer.
 
-            <ToggleRow
-              label="Putting circles"
-              checked={display.circles}
-              onChange={(circles) => setDisplay({ circles })}
-            />
-            {/* Named and ordered from TARGET_CIRCLES, so a ring the app draws can
-              never be a ring this panel has no switch for. Outermost first,
-              which is how they are read on the ground. */}
-            {[...TARGET_CIRCLES].reverse().map((circle) => (
-              <ToggleRow
-                key={circle.id}
-                label={circle.label}
-                indent
-                checked={display[circle.id]}
-                disabled={!display.circles}
-                onChange={(on) => setDisplay({ [circle.id]: on })}
-              />
-            ))}
-          </div>
+            They were here because they travel in the document, next to units
+            and smoothing, which do not — a grouping by where the value is
+            stored rather than by what it does. What a fairway switch has in
+            common with the hillshade switch is the only thing that matters when
+            you reach for one: it decides what is on the map. See `LayersDrawer`.
+          */}
         </Accordion>
 
         {/*

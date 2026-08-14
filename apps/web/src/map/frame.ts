@@ -1,7 +1,14 @@
 import type maplibregl from 'maplibre-gl';
 import { boundsOf, type Feature } from '@hyzerlines/core';
 
-import { COLUMN, GAP, PANEL_TOP, TOOL_BAR_BOTTOM, TOOL_BAR_HEIGHT } from '../chrome/layout';
+import {
+  GAP,
+  GUTTER,
+  TOOL_BAR_BOTTOM,
+  TOOL_BAR_HEIGHT,
+  TOP_BAR_HEIGHT,
+  shellEdges,
+} from '../chrome/layout';
 
 /**
  * Putting the work on screen.
@@ -25,15 +32,18 @@ import { COLUMN, GAP, PANEL_TOP, TOOL_BAR_BOTTOM, TOOL_BAR_HEIGHT } from '../chr
  * tool bar, so every fit was being padded for furniture that had moved. Read
  * from `layout.ts` and the numbers cannot drift again.
  */
-const CHROME_PADDING = {
-  top: PANEL_TOP,
+const chromePadding = () => ({
+  top: TOP_BAR_HEIGHT + GAP,
   // The whole tool bar — the gap under it, the bar itself, and a gap above.
   // Subtracting only `TOOL_BAR_BOTTOM` clears the attribution line and leaves
   // the palette sitting on the map, which is where a fitted tee ended up.
   bottom: TOOL_BAR_BOTTOM + TOOL_BAR_HEIGHT + GAP,
-  left: COLUMN,
-  right: COLUMN,
-};
+  // Read at call time, not at module load: the rail is two widths and the
+  // drawer is open or shut, so framing has to ask what the chrome is covering
+  // *now*. See `shellEdges`.
+  left: shellEdges.rail + GUTTER,
+  right: shellEdges.drawer + GUTTER,
+});
 
 /** A course this small is a single tee, not an extent worth fitting to. */
 const DEGENERATE_SPAN_DEGREES = 1e-6;
@@ -47,11 +57,12 @@ function padding(map: maplibregl.Map) {
   // still gets a usable box instead of a negative one.
   const maxX = canvas.clientWidth / 3;
   const maxY = canvas.clientHeight / 3;
+  const chrome = chromePadding();
   return {
-    top: Math.min(CHROME_PADDING.top, maxY),
-    bottom: Math.min(CHROME_PADDING.bottom, maxY),
-    left: Math.min(CHROME_PADDING.left, maxX),
-    right: Math.min(CHROME_PADDING.right, maxX),
+    top: Math.min(chrome.top, maxY),
+    bottom: Math.min(chrome.bottom, maxY),
+    left: Math.min(chrome.left, maxX),
+    right: Math.min(chrome.right, maxX),
   };
 }
 
@@ -98,9 +109,60 @@ export function courseIsAdrift(map: maplibregl.Map, features: readonly Feature[]
   return span < viewport * 0.1;
 }
 
+/**
+ * Cubic ease in and out, for camera moves between holes.
+ *
+ * MapLibre's default easing starts at full speed and decelerates, which suits a
+ * move you asked for at a point you were already looking at. Stepping through a
+ * routing is different: the camera leaves one hole and arrives at another, and
+ * the departure needs a moment of acceleration or the map appears to snap and
+ * then settle. Symmetric in and out, so the two ends of the move read the same.
+ */
+export const EASE_IN_OUT = (t: number): number =>
+  t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+/**
+ * How long a hole-to-hole move takes.
+ *
+ * Slower than a normal camera nudge on purpose. This move usually also turns
+ * the map to face down the shot, and a rotation fast enough to feel snappy is
+ * fast enough to lose which way you were pointing — you arrive facing a
+ * direction you did not watch the map reach.
+ */
+export const HOLE_FRAME_MS = 600;
+
+/**
+ * How close framing a single hole is allowed to get.
+ *
+ * Higher than the general cap, because a hole is a thing you are *reading* —
+ * where the gap is, which side the basket favours — rather than a course you
+ * are locating. The shared cap held every short hole at the same distance as a
+ * long one, so a 60m ace run and a 180m par 4 arrived looking the same size,
+ * and the one measurement the framing could have given you for free was thrown
+ * away.
+ *
+ * Nothing else here scales the zoom by length: `cameraForBounds` already does,
+ * because a short hole is a smaller box. Raising the ceiling is what lets that
+ * variation show.
+ */
+export const HOLE_MAX_ZOOM = 19.5;
+
 export interface FrameOptions {
   /** 0 jumps. Use a duration for a deliberate gesture, not for a document load. */
   duration?: number;
+  /** Defaults to MapLibre's own. See `EASE_IN_OUT`. */
+  easing?: (t: number) => number;
+  /**
+   * Ceiling on the fitted zoom. Defaults to `SINGLE_FEATURE_ZOOM`.
+   *
+   * A ceiling and nothing more. There was briefly a `tighten` beside it that
+   * added zoom *past* the fit to make a hole fill more of the channel — which
+   * spends the padding that keeps the tee and the basket out from under the
+   * rail. The fit is already the closest camera that shows the whole hole in
+   * the space the chrome leaves; the only honest way to get closer is to stop
+   * capping it, which is what this does.
+   */
+  maxZoom?: number;
   /**
    * Turn the map so this compass bearing points up the screen.
    *
@@ -123,7 +185,7 @@ export interface FrameOptions {
 export function frameFeatures(
   map: maplibregl.Map,
   features: readonly Feature[],
-  { duration = 0, bearing }: FrameOptions = {},
+  { duration = 0, bearing, easing, maxZoom = SINGLE_FEATURE_ZOOM }: FrameOptions = {},
 ): boolean {
   const bounds = boundsOf(features);
   if (!bounds) return false;
@@ -138,8 +200,8 @@ export function frameFeatures(
    */
   if (east - west < DEGENERATE_SPAN_DEGREES && north - south < DEGENERATE_SPAN_DEGREES) {
     const center: [number, number] = [(west + east) / 2, (south + north) / 2];
-    const camera = { center, zoom: SINGLE_FEATURE_ZOOM, ...turn };
-    if (duration > 0) map.easeTo({ ...camera, duration });
+    const camera = { center, zoom: Math.min(SINGLE_FEATURE_ZOOM, maxZoom), ...turn };
+    if (duration > 0) map.easeTo({ ...camera, duration, ...(easing ? { easing } : {}) });
     else map.jumpTo(camera);
     return true;
   }
@@ -169,10 +231,14 @@ export function frameFeatures(
 
   map.easeTo({
     ...camera,
-    // Not maxZoom 21: filling the screen with two tees a metre apart is
-    // technically a fit and practically useless.
-    zoom: Math.min(camera.zoom ?? SINGLE_FEATURE_ZOOM, SINGLE_FEATURE_ZOOM),
+    /*
+     * Capped, never pushed past. The fit itself is what scales with the
+     * subject — a short hole is a smaller box and lands closer — and the
+     * ceiling is what stops two tees a metre apart filling the screen.
+     */
+    zoom: Math.min(camera.zoom ?? SINGLE_FEATURE_ZOOM, maxZoom),
     duration,
+    ...(easing ? { easing } : {}),
   });
   return true;
 }

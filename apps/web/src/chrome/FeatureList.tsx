@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { cn } from '@hyzerlines/design';
 import {
   KIND_DEFINITIONS,
@@ -151,6 +151,74 @@ function EyeIcon({ open }: { open: boolean }) {
   );
 }
 
+/**
+ * One feature, as every list in the app draws it.
+ *
+ * Extracted so the hole panel and the course list cannot drift apart. They did:
+ * the course list grew icons, measurements and a hover state while the hole
+ * panel kept a bare radio and an underlined link, so the same tee looked like
+ * two different kinds of thing depending on which column you found it in.
+ *
+ * `leading` and `trailing` are what let one row serve both. The hole panel puts
+ * a radio in front — which tee is being measured from is a question only it
+ * asks — and a remove control behind it; the course list puts the eye behind.
+ * Both sit *outside* the row's own button, because a button inside a button is
+ * invalid and the inner one's clicks are swallowed.
+ */
+export function FeatureRow({
+  feature,
+  units,
+  selected,
+  dimmed = false,
+  onSelect,
+  leading,
+  trailing,
+}: {
+  feature: Feature;
+  units: UnitSystem;
+  selected: boolean;
+  /** Reads as absent without leaving the list, so it can still be brought back. */
+  dimmed?: boolean;
+  onSelect: () => void;
+  leading?: ReactNode;
+  trailing?: ReactNode;
+}) {
+  return (
+    <li className="flex items-center">
+      {leading}
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-label={`Select ${featureName(feature)}`}
+        className={cn(
+          'flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md pl-2 pr-1 text-left',
+          'transition-colors duration-fast',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+          selected ? 'bg-accent-soft' : 'hover:bg-surface-hover',
+          dimmed && 'opacity-50',
+        )}
+      >
+        <span
+          aria-hidden="true"
+          className={cn(
+            'grid w-4 shrink-0 place-items-center',
+            selected ? 'text-text-accent' : 'text-text-muted',
+          )}
+        >
+          <FeatureIcon kind={feature.kind} size={16} />
+        </span>
+        <span className="min-w-0 flex-1 truncate text-xs text-text-primary">
+          {featureName(feature)}
+        </span>
+        <span className="shrink-0 whitespace-nowrap text-2xs tabular-nums text-text-muted">
+          {metaFor(feature, units)}
+        </span>
+      </button>
+      {trailing}
+    </li>
+  );
+}
+
 export function FeatureList({
   features,
   order,
@@ -199,59 +267,33 @@ export function FeatureList({
               const hidden = hiddenIds.has(feature.id);
 
               return (
-                <li key={feature.id} className="flex items-center">
-                  {/*
-                    The row selects and the eye does not, so they are siblings
-                    rather than nested. A button inside a button is invalid and
-                    the inner one's clicks get swallowed — the same reason the
-                    old hole rows kept their par control outside the row button.
-                  */}
-                  <button
-                    type="button"
-                    onClick={() => onSelect(feature.id)}
-                    className={cn(
-                      'flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md pl-2 pr-1 text-left',
-                      'transition-colors duration-fast',
-                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
-                      selected ? 'bg-accent-soft' : 'hover:bg-surface-hover',
-                      // A hidden feature reads as absent without leaving the
-                      // list, so you can still find it to bring it back.
-                      hidden && 'opacity-50',
-                    )}
-                  >
-                    <span
-                      aria-hidden="true"
+                <FeatureRow
+                  key={feature.id}
+                  feature={feature}
+                  units={units}
+                  selected={selected}
+                  dimmed={hidden}
+                  onSelect={() => onSelect(feature.id)}
+                  trailing={
+                    <button
+                      type="button"
+                      onClick={() => onToggleHidden(feature.id)}
+                      aria-pressed={hidden}
+                      aria-label={`${hidden ? 'Show' : 'Hide'} ${featureName(feature)}`}
+                      title={hidden ? 'Hidden on the map' : 'Visible on the map'}
                       className={cn(
-                        'grid w-4 shrink-0 place-items-center',
-                        selected ? 'text-text-accent' : 'text-text-muted',
+                        'grid h-7 w-6 shrink-0 place-items-center rounded-md',
+                        'transition-colors duration-fast hover:bg-surface-hover',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
+                        hidden
+                          ? 'text-text-disabled'
+                          : 'text-text-muted hover:text-text-primary',
                       )}
                     >
-                      <FeatureIcon kind={feature.kind} size={16} />
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-xs text-text-primary">
-                      {featureName(feature)}
-                    </span>
-                    <span className="shrink-0 whitespace-nowrap text-2xs tabular-nums text-text-muted">
-                      {metaFor(feature, units)}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => onToggleHidden(feature.id)}
-                    aria-pressed={hidden}
-                    aria-label={`${hidden ? 'Show' : 'Hide'} ${featureName(feature)}`}
-                    title={hidden ? 'Hidden on the map' : 'Visible on the map'}
-                    className={cn(
-                      'grid h-7 w-6 shrink-0 place-items-center rounded-md',
-                      'transition-colors duration-fast hover:bg-surface-hover',
-                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
-                      hidden ? 'text-text-disabled' : 'text-text-muted hover:text-text-primary',
-                    )}
-                  >
-                    <EyeIcon open={!hidden} />
-                  </button>
-                </li>
+                      <EyeIcon open={!hidden} />
+                    </button>
+                  }
+                />
               );
             })}
           </ul>

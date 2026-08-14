@@ -2,7 +2,7 @@ import type maplibregl from 'maplibre-gl';
 import type { StyleSpecification } from 'maplibre-gl';
 import type { Overlays } from '@hyzerlines/core';
 
-import { basemaps, basemapById } from './basemaps';
+import { basemaps, basemapById, groundIsDark } from './basemaps';
 import {
   CONTOUR_LABEL_LAYER,
   CONTOUR_LINE_LAYER,
@@ -12,7 +12,7 @@ import {
   contourTilesUrl,
   demSourceSpec,
   MINOR_RATIO,
-  shadowColor,
+  hillshadeInk,
   terrainLayers,
 } from './terrain';
 import type { UnitSystem } from '../units';
@@ -47,13 +47,24 @@ import type { UnitSystem } from '../units';
 /** Glyphs for every symbol layer. Labels are the one thing not drawn locally. */
 const GLYPHS = 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf';
 
-/** Layer id for a basemap's raster layer. One per entry in the registry. */
+/**
+ * Layer ids for a basemap's rasters.
+ *
+ * Up to three per registry entry: the light tiles, the dark tiles, and — for a
+ * dark twin that ships its labels separately — the reference layer over them.
+ * A dark variant is not a new mechanism, just another hidden layer, which is
+ * the whole point of building every basemap into one style: switching theme is
+ * the same visibility change as switching basemap.
+ */
 export const basemapLayerId = (id: string): string => `basemap-${id}`;
+export const basemapDarkLayerId = (id: string): string => `basemap-${id}-dark`;
+export const basemapDarkLabelsLayerId = (id: string): string => `basemap-${id}-dark-labels`;
 
 export function buildStyle(
   basemapId: string,
   overlays: Overlays,
   units: UnitSystem,
+  dark: boolean,
 ): StyleSpecification {
   const active = basemapById(basemapId);
 
@@ -69,10 +80,29 @@ export function buildStyle(
     sources[basemap.id] = {
       type: 'raster',
       tiles: [...basemap.tiles],
-      tileSize: 256,
+      tileSize: basemap.tileSize,
       maxzoom: basemap.maxZoom,
       attribution: basemap.attribution,
     };
+    if (!basemap.dark) continue;
+    sources[`${basemap.id}-dark`] = {
+      type: 'raster',
+      tiles: [...basemap.dark.tiles],
+      tileSize: basemap.dark.tileSize,
+      maxzoom: basemap.dark.maxZoom,
+      attribution: basemap.dark.attribution,
+    };
+    if (basemap.dark.reference) {
+      sources[`${basemap.id}-dark-labels`] = {
+        type: 'raster',
+        tiles: [...basemap.dark.reference],
+        tileSize: basemap.dark.tileSize,
+        maxzoom: basemap.dark.maxZoom,
+        // Credited by the ground beneath it; the two are one service split in
+        // two, and printing Esri twice on one line helps nobody.
+        attribution: '',
+      };
+    }
   }
 
   return {
@@ -80,14 +110,41 @@ export function buildStyle(
     glyphs: GLYPHS,
     sources,
     layers: [
-      ...basemaps.map((basemap) => ({
-        id: basemapLayerId(basemap.id),
-        type: 'raster' as const,
-        source: basemap.id,
-        layout: { visibility: (basemap.id === active.id ? 'visible' : 'none') as 'visible' },
-        paint: { 'raster-fade-duration': 120 },
-      })),
-      ...terrainLayers(overlays),
+      ...basemaps.flatMap((basemap) => {
+        const raster = (id: string, source: string, visible: boolean) => ({
+          id,
+          type: 'raster' as const,
+          source,
+          layout: { visibility: (visible ? 'visible' : 'none') as 'visible' },
+          paint: { 'raster-fade-duration': 120 },
+        });
+        const chosen = basemap.id === active.id;
+        const layers = [raster(basemapLayerId(basemap.id), basemap.id, chosen && !dark)];
+        if (basemap.dark) {
+          layers.push(
+            raster(basemapDarkLayerId(basemap.id), `${basemap.id}-dark`, chosen && dark),
+          );
+          // Labels directly over their own ground, and under the terrain — the
+          // same place the baked-in labels of the light maps already sit.
+          if (basemap.dark.reference) {
+            layers.push(
+              raster(
+                basemapDarkLabelsLayerId(basemap.id),
+                `${basemap.id}-dark-labels`,
+                chosen && dark,
+              ),
+            );
+          }
+        }
+        return layers;
+      }),
+      /*
+       * Inked for the ground, not for the interface. `dark` decides which
+       * basemap tiles are drawn; whether those tiles came out dark is a
+       * separate question, and it is the one the shading has to ask — see
+       * `groundIsDark`.
+       */
+      ...terrainLayers(overlays, groundIsDark(basemapId, dark)),
     ],
   } as StyleSpecification;
 }
@@ -129,10 +186,16 @@ export function styleReady(map: maplibregl.Map): boolean {
   return map.getLayer(basemapLayerId(basemaps[0]!.id)) !== undefined;
 }
 
-export function applyBasemap(map: maplibregl.Map, basemapId: string): void {
+export function applyBasemap(map: maplibregl.Map, basemapId: string, dark: boolean): void {
   const active = basemapById(basemapId);
   for (const basemap of basemaps) {
-    setVisible(map, basemapLayerId(basemap.id), basemap.id === active.id);
+    const chosen = basemap.id === active.id;
+    // A basemap with no dark twin stays itself in a dark interface. Imagery is
+    // the case that matters: a photograph has no light mode to invert.
+    const showDark = chosen && dark && basemap.dark !== undefined;
+    setVisible(map, basemapLayerId(basemap.id), chosen && !showDark);
+    setVisible(map, basemapDarkLayerId(basemap.id), showDark);
+    setVisible(map, basemapDarkLabelsLayerId(basemap.id), showDark);
   }
 }
 
@@ -157,8 +220,12 @@ export function applyOverlays(map: maplibregl.Map, overlays: Overlays): void {
  * identically and switching between them looks like a change of data rather
  * than a change of settings.
  */
-export function applyOverlayStyling(map: maplibregl.Map, overlays: Overlays): void {
-  setHillshadeOpacity(map, HILLSHADE_LAYER, overlays.hillshadeOpacity);
+export function applyOverlayStyling(
+  map: maplibregl.Map,
+  overlays: Overlays,
+  darkGround: boolean,
+): void {
+  setHillshadeOpacity(map, HILLSHADE_LAYER, overlays.hillshadeOpacity, darkGround);
   setContourOpacity(map, CONTOUR_LINE_LAYER, CONTOUR_LABEL_LAYER, overlays.contourOpacity);
 }
 
@@ -167,9 +234,12 @@ export function setHillshadeOpacity(
   map: maplibregl.Map,
   layerId: string,
   opacity: number,
+  darkGround: boolean,
 ): void {
   if (!map.getLayer(layerId)) return;
-  map.setPaintProperty(layerId, 'hillshade-shadow-color', shadowColor(opacity));
+  const ink = hillshadeInk(opacity, darkGround);
+  map.setPaintProperty(layerId, 'hillshade-shadow-color', ink.shadow);
+  map.setPaintProperty(layerId, 'hillshade-highlight-color', ink.highlight);
 }
 
 export function setContourOpacity(

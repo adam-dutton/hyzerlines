@@ -8,9 +8,10 @@ import {
 import type { Smoothing, View } from '@hyzerlines/core';
 
 import { MapCanvas } from './map/MapCanvas';
-import { basemaps } from './map/basemaps';
+import { basemaps, groundIsDark, resolveBasemapId } from './map/basemaps';
 import { Attribution } from './chrome/Attribution';
 import { MapControls } from './chrome/MapControls';
+import { LayersDrawer } from './chrome/LayersDrawer';
 import { LocationSearch } from './chrome/LocationSearch';
 import { TopBar } from './chrome/TopBar';
 import { CourseProperties } from './chrome/CourseProperties';
@@ -25,6 +26,7 @@ import { useSurvey } from './survey/useSurvey';
 import { ProfileProvider } from './survey/useProfiles';
 import { SurveyLayers } from './survey/SurveyLayers';
 import { downloadCourse, openCourseFile } from './document/fileActions';
+import { LAYERS_WIDTH, useShellEdge } from './chrome/layout';
 
 /**
  * The shell.
@@ -74,8 +76,20 @@ function Shell() {
   const [units, setUnits] = useState<UnitSystem>(getStoredUnits);
   const [smoothing, setSmoothing] = useState<Smoothing>(getStoredSmoothing);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  /*
+   * The layers drawer, open or shut.
+   *
+   * Shell state rather than document state: which basemap you chose travels
+   * with the course, and whether the drawer you chose it in happens to be open
+   * does not. It also has to be here rather than inside the drawer, because the
+   * button that opens it lives in a different component and the tool bar has to
+   * know how much of the right edge is covered.
+   */
+  const [layersOpen, setLayersOpen] = useState(false);
   const [chromeHidden, setChromeHidden] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
+
+  useShellEdge('drawer', chromeHidden || !layersOpen ? 0 : LAYERS_WIDTH);
 
   /*
    * The search card is first-run only: no autosaved document means nothing to
@@ -134,7 +148,11 @@ function Shell() {
     'edit.redo': redo,
     'view.toggleTheme': () => setTheme((t) => (t === 'dark' ? 'light' : 'dark')),
     'view.toggleBasemap': () => {
-      const i = basemaps.findIndex((b) => b.id === course.basemapId);
+      // Resolved, so a course carrying an older provider-named id advances from
+      // the map it is actually showing. Raw equality returns -1 and sends every
+      // such course to Satellite instead of to the next one.
+      const current = resolveBasemapId(course.basemapId);
+      const i = basemaps.findIndex((b) => b.id === current);
       dispatch({ type: 'setBasemap', basemapId: basemaps[(i + 1) % basemaps.length]!.id });
     },
     // Presentation mode: strip the interface to show a client the land itself.
@@ -146,6 +164,7 @@ function Shell() {
       // and closes it before this ever runs.
       if (fileError) setFileError(null);
       else if (showSearch) setDismissedSearch(true);
+      else if (layersOpen) setLayersOpen(false);
       else if (chromeHidden) setChromeHidden(false);
     },
   });
@@ -173,9 +192,15 @@ function Shell() {
           overlays={course.overlays}
           units={units}
           suppressTerrain={hasSurvey}
+          dark={course.basemapDark}
           onViewChange={handleViewChange}
         >
-          <SurveyLayers state={survey.state} overlays={course.overlays} units={units} />
+          <SurveyLayers
+            state={survey.state}
+            overlays={course.overlays}
+            units={units}
+            darkGround={groundIsDark(course.basemapId, course.basemapDark)}
+          />
 
           {!chromeHidden && (
             <>
@@ -183,18 +208,27 @@ function Shell() {
                 basemapId={course.basemapId}
                 overlays={course.overlays}
                 hasSurvey={hasSurvey}
+                dark={course.basemapDark}
               />
               <MapControls
-                basemapId={course.basemapId}
-                overlays={course.overlays}
-                units={units}
+                layersOpen={layersOpen}
+                onToggleLayers={() => setLayersOpen((open) => !open)}
                 /*
-                  The recenter prompt shares the camera cluster's line.
-                  It has no position of its own on purpose — see the note on
+                  The recenter prompt shares the camera cluster's line. It has
+                  no position of its own on purpose — see the note on
                   `MapControls` — and this is the cluster it belongs to: every
                   other control in it moves the camera too.
                 */
                 recenter={<RecenterButton features={course.features} />}
+              />
+              <LayersDrawer
+                open={layersOpen}
+                onClose={() => setLayersOpen(false)}
+                basemapId={course.basemapId}
+                overlays={course.overlays}
+                display={course.display}
+                units={units}
+                dark={course.basemapDark}
                 survey={{
                   state: survey.state,
                   status: survey.state.status,
@@ -203,7 +237,9 @@ function Shell() {
                   onDismissError: survey.dismissError,
                 }}
                 onBasemapChange={(basemapId) => dispatch({ type: 'setBasemap', basemapId })}
+                onBasemapDarkChange={(dark) => dispatch({ type: 'setBasemapDark', dark })}
                 onOverlaysChange={(changes) => dispatch({ type: 'setOverlays', changes })}
+                onDisplayChange={(changes) => dispatch({ type: 'setDisplay', changes })}
               />
             </>
           )}

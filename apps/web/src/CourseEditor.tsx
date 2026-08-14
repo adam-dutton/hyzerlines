@@ -15,6 +15,7 @@ import {
   moveFeatureTo,
   shapeFairway,
   showsFairwayLines,
+  showsKind,
   type FairwayChoices,
   type Focus,
   type Feature,
@@ -33,13 +34,15 @@ import { derivedGeometry } from './map/derived';
 import { useVertexEditing, type EditableShape } from './map/useVertexEditing';
 import { useFeatureDragging } from './map/useFeatureDragging';
 import { useNavigation } from './map/useNavigation';
-import { frameFeatures } from './map/frame';
+import { EASE_IN_OUT, HOLE_FRAME_MS, HOLE_MAX_ZOOM, frameFeatures } from './map/frame';
 import type { Tool } from './map/tools';
 import { ToolBar } from './chrome/ToolBar';
-import { RightPanel } from './chrome/RightPanel';
 import type { SelectedPair } from './chrome/HoleProperties';
-import { LeftPanel } from './chrome/LeftPanel';
+import { Rail } from './chrome/Rail';
+import { FeatureDetail, HoleDetail } from './chrome/DetailPanel';
+import { FindingsList } from './chrome/FindingsList';
 import { StyleSubjectPanel, type StyleSubject } from './chrome/StyleProperties';
+import { railWidth, useShellEdge } from './chrome/layout';
 import { DEFAULT_FEATURE_STYLES, DEFAULT_LETTERING_STYLE } from './map/mapStyle';
 import { useShortcuts } from './keyboard/useShortcuts';
 import type { UnitSystem } from './units';
@@ -119,6 +122,19 @@ export function CourseEditor({
     setFocus(next);
     storeFocus(next);
     setTool('select');
+    /*
+     * And drop what the style focus was describing.
+     *
+     * `styleSubject` opens the rail's second column, and only the style focus
+     * can render into it or clear it. Left set on the way out it produced a
+     * blank column in Play that nothing on screen could dismiss — every control
+     * that closes level 2 belongs to a selection, and there was none.
+     *
+     * Cleared here rather than guarded at the reader, because a subject with no
+     * focus to display it is not a state worth keeping: coming back to Style
+     * should show the palette, not reopen whatever you last clicked.
+     */
+    setStyleSubject(null);
   }, []);
 
   /**
@@ -154,6 +170,15 @@ export function CourseEditor({
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedHoleId, setSelectedHoleId] = useState<string | null>(null);
+
+  /*
+   * Which of the rail's two lists is showing: the holes, or the course itself.
+   *
+   * Session state rather than document state, and not persisted either. It is a
+   * statement about what you are looking at right now, and a course reopened
+   * two days later should open on its holes — which is what it is.
+   */
+  const [railTab, setRailTab] = useState<'holes' | 'course'>('holes');
 
   /*
    * Features the designer has hidden, for the session.
@@ -198,6 +223,19 @@ export function CourseEditor({
 
   const selected = course.features.find((f) => f.id === selectedId) ?? null;
   const selectedHole = course.holes.find((h) => h.id === selectedHoleId) ?? null;
+
+  /*
+   * How much of the left edge the rail is covering, published for everything
+   * that has to stay clear of it — the tool bar, the attribution, the camera
+   * cluster and the map's own framing. See `useShellEdge`.
+   */
+  useShellEdge(
+    'rail',
+    railWidth(
+      !hidden && (selectedHole !== null || styleSubject !== null || selected !== null),
+      !hidden && focus !== 'style' && (selectedHole !== null || selected !== null),
+    ),
+  );
 
   /*
    * Which of the hole's shots the panels are describing.
@@ -300,13 +338,40 @@ export function CourseEditor({
     [course, hiddenIds],
   );
 
+  /**
+   * What the kind switches hide, and what they deliberately do not.
+   *
+   * Two different filters, because "stop drawing tee pads" and "pretend there
+   * is no tee" are different instructions. The kind switches mean the first:
+   * they take the feature's own drawing off the map and leave everything
+   * *measured* from it alone, so turning tees off to read the canopy does not
+   * also delete every fairway on the course and change the pars beside them.
+   *
+   * The property boundary is the one exception, and it is not really one: the
+   * shading outside a boundary has no existence apart from that boundary, so
+   * hiding the line while its ground stayed tinted would leave a shadow of a
+   * feature that is switched off.
+   */
+  const drawnFeatures = useMemo(
+    () => visible.features.filter((f) => showsKind(course.display, f.kind)),
+    [visible.features, course.display],
+  );
+
+  const derivedInput = useMemo(
+    () =>
+      course.display.kinds.boundary
+        ? visible
+        : { ...visible, features: visible.features.filter((f) => f.kind !== 'boundary') },
+    [visible, course.display.kinds.boundary],
+  );
+
   const derived = useMemo(
     () =>
       // So the map shows the shots the panels are showing. Without this, picking
       // pin B would re-measure the hole while the fairway stayed on pin A — and
       // passing only the selected hole's choice snapped every other hole back
       // the moment the selection moved.
-      derivedGeometry(visible, {
+      derivedGeometry(derivedInput, {
         ...(pairChoices ? { choices: pairChoices } : {}),
         holeNumberOffset: course.style.holeNumber.offset ?? 0,
         lineGap: course.style.features.mando?.lineGap ?? DEFAULT_FEATURE_STYLES.mando.lineGap,
@@ -326,7 +391,7 @@ export function CourseEditor({
         zoom,
       }),
     [
-      visible,
+      derivedInput,
       pairChoices,
       course.style.holeNumber.offset,
       course.style.features.mando?.lineGap,
@@ -447,8 +512,20 @@ export function CourseEditor({
       if (!id || !map) return;
 
       const turn = shotBearing(id);
+      /*
+       * Closer than the general fit, and eased at both ends.
+       *
+       * The zoom is not a constant: `frameFeatures` fits the hole's own extent,
+       * so a short hole lands closer than a long one without anything here
+       * doing arithmetic. Raising the ceiling is what lets that difference
+       * show — and it is the *only* lever, because anything that zooms past
+       * the fit spends the padding holding the shot clear of the rail. See
+       * `HOLE_MAX_ZOOM`.
+       */
       frameFeatures(map, holeFeatures(id), {
-        duration: 400,
+        duration: HOLE_FRAME_MS,
+        easing: EASE_IN_OUT,
+        maxZoom: HOLE_MAX_ZOOM,
         ...(turn === null ? {} : { bearing: turn }),
       });
     },
@@ -839,7 +916,7 @@ export function CourseEditor({
   return (
     <>
       <FeatureLayer
-        features={visible.features}
+        features={drawnFeatures}
         selectedIds={highlighted}
         onSelect={selectAt}
         preview={drawingPreview(nav.effective, drawing.pending, drawing.cursor)}
@@ -878,14 +955,13 @@ export function CourseEditor({
 
           <ToolBar tool={nav.effective} focus={focus} onToolChange={setTool} />
 
-          <LeftPanel
+          <Rail
             course={course}
             units={units}
-            findings={findings}
             choices={pairChoices}
             focus={focus}
-            styleSubject={styleSubject}
-            onSelectStyleSubject={setStyleSubject}
+            tab={railTab}
+            onTab={setRailTab}
             hiddenIds={hiddenIds}
             selectedFeatureId={selectedId}
             onSelectFeature={selectFeature}
@@ -894,26 +970,46 @@ export function CourseEditor({
             onSelectHole={selectHoleFromList}
             onOp={handleOp}
             onAddHole={addHole}
-            onRevealFinding={reveal}
-            onDismissRule={dismissRule}
-          />
-
-          <RightPanel
-            course={course}
-            units={units}
-            feature={selected}
-            hole={selectedHole}
-            pair={selectedPair}
-            holeNumber={holePosition}
-            holeCount={course.holes.length}
-            onOp={handleOp}
-            onDeleteFeature={deleteSelected}
-            onDeleteHole={deleteSelectedHole}
-            onSelectFeature={selectFeature}
-            onSelectHole={selectHole}
-            onSelectPair={choosePair}
-            onStepHole={stepHole}
-            styleSubject={
+            styleSubject={styleSubject}
+            onSelectStyleSubject={setStyleSubject}
+            courseProperties={courseProperties({
+              drawBoundary: () => armKind('boundary'),
+            })}
+            findings={
+              <FindingsList findings={findings} onReveal={reveal} onDismissRule={dismissRule} />
+            }
+            holeDetail={
+              selectedHole && (
+                <HoleDetail
+                  course={course}
+                  hole={selectedHole}
+                  pair={selectedPair}
+                  units={units}
+                  holeNumber={holePosition}
+                  holeCount={course.holes.length}
+                  onOp={handleOp}
+                  onSelectPair={choosePair}
+                  onDrawFeature={armKind}
+                  onDelete={deleteSelectedHole}
+                  onSelectFeature={selectFeature}
+                  onStepHole={stepHole}
+                />
+              )
+            }
+            featureDetail={
+              selected && (
+                <FeatureDetail
+                  course={course}
+                  feature={selected}
+                  units={units}
+                  onOp={handleOp}
+                  onDelete={deleteSelected}
+                  onSelectHole={selectHole}
+                  onClose={() => setSelectedId(null)}
+                />
+              )
+            }
+            styleDetail={
               focus === 'style' && styleSubject ? (
                 <StyleSubjectPanel
                   subject={styleSubject}
@@ -923,14 +1019,6 @@ export function CourseEditor({
                 />
               ) : null
             }
-            onDrawFeature={armKind}
-            onClearSelection={() => {
-              setSelectedId(null);
-              setSelectedHoleId(null);
-            }}
-            courseProperties={courseProperties({
-              drawBoundary: () => armKind('boundary'),
-            })}
           />
 
           {/* While drawing a multi-point shape, say how to finish it. Nothing

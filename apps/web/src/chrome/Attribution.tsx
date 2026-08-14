@@ -1,9 +1,9 @@
 import { ChromeLayer } from '@hyzerlines/design';
 import { hasOverlays, type Overlays } from '@hyzerlines/core';
 
-import { basemapById } from '../map/basemaps';
+import { basemapById, effectiveBasemap } from '../map/basemaps';
 import { TERRAIN_ATTRIBUTION } from '../map/terrain';
-import { COLUMN, READOUT_BOTTOM } from './layout';
+import { GUTTER, READOUT_BOTTOM } from './layout';
 
 export const SOURCE_URL = 'https://github.com/adam-dutton/hyzerlines';
 
@@ -39,13 +39,22 @@ export function Attribution({
   basemapId,
   overlays,
   hasSurvey,
+  dark,
 }: {
   basemapId: string;
   overlays: Overlays;
   /** An imported survey is supplying the elevation instead of the global one. */
   hasSurvey: boolean;
+  /**
+   * Whether the dark twin of the basemap is the one being drawn.
+   *
+   * It has its own provider and therefore its own credit. Printing the light
+   * map's contributors under a dark map is not a smaller obligation met — it is
+   * a specific false statement about where the tiles came from.
+   */
+  dark: boolean;
 }) {
-  const basemap = basemapById(basemapId);
+  const basemap = effectiveBasemap(basemapById(basemapId), dark);
 
   /*
    * Both terrain overlays read one elevation source, so they credit it once —
@@ -67,7 +76,7 @@ export function Attribution({
      *
      * The panel columns run the full height now, so `left-4` put this underneath
      * the left panel — and an obligation to *display* a credit is not met by
-     * drawing it behind a card. Measuring from `COLUMN` keeps it in the gap
+     * drawing it behind a card. Measuring from the rail keeps it in the gap
      * between the columns, on the same line as the zoom cluster at the other end
      * and below the tool bar, so none of the three can reach the others at any
      * viewport width.
@@ -80,7 +89,10 @@ export function Attribution({
      * than the credit needs, so the cap is a wrapping preference rather than a
      * fit constraint — and the readout line has room to spend.
      */
-    <ChromeLayer className="max-w-lg" style={{ left: COLUMN, bottom: READOUT_BOTTOM }}>
+    <ChromeLayer
+      className="max-w-lg"
+      style={{ left: `calc(var(--hz-rail, 236px) + ${GUTTER}px)`, bottom: READOUT_BOTTOM }}
+    >
       <div className="pointer-events-auto flex flex-wrap items-center gap-x-2 rounded bg-surface-overlay/75 px-1.5 py-0.5 text-2xs leading-4 text-text-secondary backdrop-blur-sm">
         {/* Attribution strings are compile-time constants in basemaps.ts and
             terrain.ts, never user or network input, and providers require the

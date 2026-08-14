@@ -259,6 +259,17 @@ export async function openEditor(page: Page, options: OpenOptions = {}): Promise
   await page.route('**://server.arcgisonline.com/**', (route) =>
     route.fulfill({ status: 200, contentType: 'image/png', body: tile }),
   );
+  /*
+   * MapTiler too, for builds that carry a key.
+   *
+   * Which registry the bundle holds is decided at build time, so a suite run
+   * against a keyed build would otherwise spend real tile quota to look at a
+   * blank canvas. Harmless when the key is absent — the route simply never
+   * matches.
+   */
+  await page.route('**://api.maptiler.com/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'image/png', body: tile }),
+  );
   // Elevation too, for the same reason: no test should fail because AWS was
   // slow. Stubbed for every test rather than only the terrain ones, since the
   // overlays are off by default and nothing requests these until they are on.
@@ -331,6 +342,9 @@ export async function openSection(page: Page, title: string): Promise<void> {
   for (let attempt = 0; attempt < 3 && (await header.count()) === 0; attempt++) {
     await page.keyboard.press('Escape');
   }
+  // The course's own sections live in the rail's Course tab now, so getting to
+  // one means getting out of whatever is open and switching lists.
+  if ((await header.count()) === 0) await openCourseTab(page);
   await expect(header).toBeVisible();
 
   if ((await header.getAttribute('aria-expanded')) !== 'true') await header.click();
@@ -338,7 +352,32 @@ export async function openSection(page: Page, title: string): Promise<void> {
 }
 
 /**
- * Open the layers panel, which holds the basemap choice and the overlays.
+ * The rail's Course tab, which holds the course's own properties.
+ *
+ * Escape first, because the tabs are only drawn while the rail is showing its
+ * list — drilled into a hole, the header is that hole's name.
+ */
+export async function openCourseTab(page: Page): Promise<void> {
+  const tab = page.getByRole('button', { name: 'Course', exact: true });
+  for (let attempt = 0; attempt < 3 && (await tab.count()) === 0; attempt++) {
+    await page.keyboard.press('Escape');
+  }
+  /*
+   * Only Play has two lists to switch between. Every other focus lists the
+   * course's own features and puts its properties at the top of them, so there
+   * is no tab and nothing to click — being already there is the success case.
+   */
+  if (await tab.count()) await tab.click();
+}
+
+/** Back to the rail's list of holes, after a trip through the Course tab. */
+export async function openHolesTab(page: Page): Promise<void> {
+  const tab = page.getByRole('button', { name: 'Holes', exact: true });
+  if (await tab.count()) await tab.click();
+}
+
+/**
+ * Open the layers drawer, which holds the basemap choice and the overlays.
  *
  * A popover rather than a menu now — you keep it open while flipping several
  * things and watching the map — so unlike the old menu it does not close when
@@ -348,9 +387,77 @@ export async function openSection(page: Page, title: string): Promise<void> {
  * left open.
  */
 export async function openLayers(page: Page): Promise<void> {
-  const trigger = page.getByRole('button', { name: 'Layers' });
+  const trigger = page.getByRole('button', { name: 'Layers', exact: true });
   if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
   await expect(page.getByRole('radiogroup', { name: 'Basemap' })).toBeVisible();
+}
+
+/**
+ * Set one of the course's drawing aids, which live in the layers drawer.
+ *
+ * They were switches inside the course's Settings, grouped with units and
+ * elevation smoothing because all three are preferences. What they actually
+ * have in common with the terrain overlays is that they decide what is on the
+ * map, which is the question you are asking when you reach for one.
+ */
+export async function setAid(page: Page, name: string, on: boolean): Promise<void> {
+  await openLayers(page);
+  await setSwitch(page, name, on);
+}
+
+/**
+ * Put the interface into light or dark.
+ *
+ * Dark is the default and is never taken from the OS, so a test that wants
+ * light has to ask. Driven through the menu rather than by writing the
+ * attribute, because the theme decides which basemap tiles are drawn and which
+ * way round the shading is inked — setting `data-theme` directly would move the
+ * stylesheet and leave the map behind, which is the exact failure worth
+ * catching.
+ *
+ * Idempotent, and it waits for the change to land rather than for the click.
+ */
+export async function setTheme(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  const current = () => page.evaluate(() => document.documentElement.dataset['theme']);
+  if ((await current()) !== theme) {
+    await page.getByRole('button', { name: 'Menu', exact: true }).click();
+    await page
+      .getByRole('menuitem', { name: theme === 'dark' ? 'Dark theme' : 'Light theme' })
+      .click();
+  }
+  await expect.poll(current).toBe(theme);
+}
+
+/**
+ * Wait until the camera has stopped moving.
+ *
+ * Anything that projects a world coordinate to a screen point has to wait for
+ * this first. `map.project` answers for the frame it is asked in, so a point
+ * computed mid-flight is stale by the time a click lands on it — the test reads
+ * one camera and clicks against another.
+ *
+ * It matters more than it used to: selecting a hole now eases over 600ms rather
+ * than snapping, so the window in which a projection is wrong is wide enough to
+ * lose a click in. Polling the map is right where a fixed sleep is not, because
+ * the duration is a product decision that will change again.
+ */
+export async function settleCamera(page: Page): Promise<void> {
+  await expect
+    .poll(() => page.evaluate(() => window.hyzerlinesMap?.isMoving() === false))
+    .toBe(true);
+}
+
+/**
+ * Turn the basemap's dark variant on or off.
+ *
+ * Separate from `setTheme`, because the two stopped being the same question:
+ * the theme is how bright the panels are, and this is how bright the ground
+ * under the drawing is. A designer can work in a dark room on a light
+ * topographic sheet, so the map no longer follows the interface.
+ */
+export async function setBasemapDark(page: Page, on: boolean): Promise<void> {
+  await openLayers(page);
+  await setSwitch(page, 'Dark basemap', on);
 }
 
 /** Choose a basemap by name, opening the layers panel if it is closed. */

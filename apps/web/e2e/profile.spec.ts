@@ -6,6 +6,7 @@ import {
   holeChip,
   openEditor,
   openLayers,
+  openHolesTab,
   openSection,
   place,
   project,
@@ -318,6 +319,9 @@ async function setSmoothing(page: Page, level: 'off' | 'light' | 'medium' | 'str
   await openSection(page, 'Settings');
   await page.getByRole('combobox', { name: 'Smooth elevation' }).selectOption(level);
 
+  // Back to the holes, and into the one whose chart the caller is about to
+  // read: the setting is the course's and the chart belongs to a hole.
+  await openHolesTab(page);
   const chip = holeChip(page, 1);
   if ((await chip.count()) > 0) await chip.click();
 }
