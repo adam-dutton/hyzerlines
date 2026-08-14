@@ -429,6 +429,25 @@ export async function setTheme(page: Page, theme: 'light' | 'dark'): Promise<voi
 }
 
 /**
+ * Wait until the camera has stopped moving.
+ *
+ * Anything that projects a world coordinate to a screen point has to wait for
+ * this first. `map.project` answers for the frame it is asked in, so a point
+ * computed mid-flight is stale by the time a click lands on it — the test reads
+ * one camera and clicks against another.
+ *
+ * It matters more than it used to: selecting a hole now eases over 600ms rather
+ * than snapping, so the window in which a projection is wrong is wide enough to
+ * lose a click in. Polling the map is right where a fixed sleep is not, because
+ * the duration is a product decision that will change again.
+ */
+export async function settleCamera(page: Page): Promise<void> {
+  await expect
+    .poll(() => page.evaluate(() => window.hyzerlinesMap?.isMoving() === false))
+    .toBe(true);
+}
+
+/**
  * Turn the basemap's dark variant on or off.
  *
  * Separate from `setTheme`, because the two stopped being the same question:

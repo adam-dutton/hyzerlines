@@ -10,6 +10,7 @@ import {
   project,
   setAid,
   setSwitch,
+  settleCamera,
 } from './fixtures';
 
 /**
@@ -680,6 +681,9 @@ test.describe('a hole you cannot see the fairway of', () => {
      * centreline" is not a place that exists near the tee, and a hard-coded
      * point a few pixels off the line lands on nothing at all.
      */
+    // After the camera has arrived: adding a hole selects it, which flies the
+    // map to it, and a point projected mid-flight is not where the click lands.
+    await settleCamera(page);
     const onCorridor = await shotPoint(page, 0.65);
 
     const holePanel = page.getByRole('textbox', { name: 'Hole name' });
