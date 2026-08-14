@@ -24,12 +24,13 @@ interface ImportMetaEnv {
   readonly VITE_MAPTILER_KEY?: string;
 
   /**
-   * A Mapbox access token — a spike, not the shipping path.
+   * A Mapbox access token.
    *
-   * Set it *instead of* the MapTiler key to draw the basemaps from Mapbox and
-   * compare the two on the real app. MapTiler wins if both are set. Same
-   * public-by-construction caveat as above: restrict it by URL in the Mapbox
-   * dashboard, because it is in the bundle.
+   * The intended provider: with this set, the basemaps come from the Studio
+   * styles drawn for this app. **Mapbox wins if both keys are set**, and
+   * MapTiler stays reachable by removing this one, which is the road back if
+   * the styles turn out wrong. Same public-by-construction caveat as above:
+   * restrict it by URL in the Mapbox dashboard, because it is in the bundle.
    */
   readonly VITE_MAPBOX_TOKEN?: string;
 }

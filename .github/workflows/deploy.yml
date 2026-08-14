@@ -55,6 +55,10 @@ jobs:
           # restrict it by origin; a `secrets` entry keeps it out of the logs and
           # out of the diff, not out of the download.
           VITE_MAPTILER_KEY: ${{ secrets.MAPTILER_KEY }}
+          # The intended provider. Mapbox wins when both are present, so adding
+          # this secret is what switches the deployed site over, and removing it
+          # is what switches it back — see `basemaps.ts`.
+          VITE_MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN }}
         run: pnpm build
 
       # Pages has no server, so a deep link would 404. Serving index.html as the

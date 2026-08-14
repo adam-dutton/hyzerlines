@@ -1088,6 +1088,37 @@ the old spellings forward — without it every course saved on the topographic m
 would silently reopen on satellite, which is the kind of quiet data damage a
 migration exists to prevent.
 
+### Mapbox, on styles drawn for this app
+
+The provider changes; the engine does not. MapLibre still renders, the basemap
+is still one raster layer, and switching is still a `visibility` change — what
+moves is where the tiles come from.
+
+**Studio, not the catalogue, and that is the whole point.** Mapbox's stock
+styles have no per-style dark: `outdoors` and `streets` both fall back to one
+generic `dark-v11`, so choosing between them in dark mode gets you the same grey
+ground twice — the exact defect that got Esri's dark canvas rejected. Their
+Standard style _does_ carry a proper night preset, and the Static Tiles API
+cannot serve Standard at all. Drawing the dark map yourself is the way past
+both, and it buys something no catalogue does: the cartography is designed for
+the thing drawn on top of it rather than chosen to clash least.
+
+**Mapbox wins a tie, MapTiler stays reachable.** Three registries now sit in one
+file, chosen by which key the build has. MapTiler is not deleted, because it is
+what production ran on and these styles could not be exercised from the sandbox
+they were wired up in — an unverifiable switch should keep the road back open,
+and here that road is one environment variable.
+
+**The topographic map has no dark style yet**, so its switch correctly does not
+appear. That is a different absence from Satellite's, which is permanent: a
+photograph has no theme. This one is simply not drawn yet, and adding it is a
+style reference and nothing else.
+
+**Two obligations still open.** Mapbox require their wordmark as an image, which
+no attribution string satisfies — the credit line carries the two copyrights and
+the "Improve this map" link and stops there. And a custom style that imports
+Standard cannot be served as raster tiles at all, so these must not.
+
 **Two obligations to settle before launch.** MapTiler's free tier is
 non-commercial and requires their logo as a linked image, which no attribution
 string satisfies; a paid plan removes both problems. And the satellite credit is
