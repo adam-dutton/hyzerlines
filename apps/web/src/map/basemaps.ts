@@ -37,7 +37,18 @@
  */
 const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_KEY ?? '';
 
+/**
+ * A Mapbox access token, compiled in. Public for the same reason the MapTiler
+ * key is, and restricted the same way — by URL, in the Mapbox dashboard.
+ *
+ * **This is a spike.** It exists so the two providers can be compared on the
+ * real app by swapping one environment variable, not because a decision has
+ * been made. See `MAPBOX_BASEMAPS` for what the comparison actually turns on.
+ */
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN ?? '';
+
 export const usingMapTiler = MAPTILER_KEY !== '';
+export const usingMapbox = MAPBOX_TOKEN !== '';
 
 export interface Basemap {
   id: string;
@@ -211,6 +222,96 @@ const MAPTILER_BASEMAPS: readonly Basemap[] = [
 ] as const;
 
 /* ------------------------------------------------------------------ *
+ * Mapbox — spike
+ * ------------------------------------------------------------------ */
+
+/**
+ * A Mapbox style, rasterised by their Static Tiles API.
+ *
+ * `@2x` on a 512 tile returns a 1024px image for the same *request*, and Mapbox
+ * bills by request — so the sharper tile is free in the only currency that
+ * matters here. `tileSize` stays 512 because that is the tile's extent on the
+ * ground; the doubling is pixel density, not coverage.
+ *
+ * Rendering with MapLibre rather than Mapbox GL JS is documented and supported
+ * by Mapbox themselves, which is worth writing down because it used to be the
+ * blocker: Mapbox GL JS went proprietary at v2 and MapLibre is the fork of the
+ * last open version. Their own guide now covers using their APIs from MapLibre
+ * over plain HTTPS tile URLs, which is exactly what this does.
+ */
+const mapboxTiles = (styleId: string): string[] => [
+  `https://api.mapbox.com/styles/v1/mapbox/${styleId}/tiles/512/{z}/{x}/{y}@2x?access_token=${MAPBOX_TOKEN}`,
+];
+
+/**
+ * What Mapbox requires on the map.
+ *
+ * Their terms also require the Mapbox **wordmark** as an image, and an
+ * "Improve this map" link back to their feedback tool — neither of which a
+ * string can satisfy. Confirm the current wording and the logo rules from their
+ * attribution page before this ships as anything but a spike; what is below is
+ * the text half only.
+ */
+const MAPBOX_ATTRIBUTION =
+  '&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+
+const MAPBOX_SATELLITE_ATTRIBUTION =
+  '&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a>';
+
+const MAPBOX_MAX_ZOOM = 20;
+
+function mapboxBasemap(
+  id: string,
+  label: string,
+  styleId: string,
+  attribution: string,
+  imagery: boolean,
+  darkStyleId?: string,
+): Basemap {
+  return {
+    id,
+    label,
+    hint: `Mapbox ${label}`,
+    tiles: mapboxTiles(styleId),
+    attribution,
+    maxZoom: MAPBOX_MAX_ZOOM,
+    tileSize: 512,
+    imagery,
+    ...(darkStyleId
+      ? {
+          dark: {
+            tiles: mapboxTiles(darkStyleId),
+            hint: 'Mapbox Dark',
+            attribution,
+            maxZoom: MAPBOX_MAX_ZOOM,
+            tileSize: 512,
+          },
+        }
+      : {}),
+  };
+}
+
+/**
+ * Mapbox for all three — and the finding this spike exists to record.
+ *
+ * **Mapbox publishes no per-style dark variants.** MapTiler ships
+ * `topo-v4-dark` and `streets-v4-dark`, so the dark topographic map is still a
+ * topographic map. Mapbox ships one generic `dark-v11`, so both entries below
+ * point at the same tiles — which is exactly the defect that got Esri's dark
+ * canvas rejected: pick Topographic or Street in dark mode and you get an
+ * identical grey ground either way, and the Street map stops showing street
+ * names as its own cartography.
+ *
+ * That is not a detail to be fixed later. It is the thing the last round of
+ * work was about, and switching providers would undo it.
+ */
+const MAPBOX_BASEMAPS: readonly Basemap[] = [
+  mapboxBasemap('satellite', 'Satellite', 'satellite-v9', MAPBOX_SATELLITE_ATTRIBUTION, true),
+  mapboxBasemap('topo', 'Topographic', 'outdoors-v12', MAPBOX_ATTRIBUTION, false, 'dark-v11'),
+  mapboxBasemap('street', 'Street', 'streets-v12', MAPBOX_ATTRIBUTION, false, 'dark-v11'),
+] as const;
+
+/* ------------------------------------------------------------------ *
  * Keyless
  * ------------------------------------------------------------------ */
 
@@ -310,9 +411,19 @@ const KEYLESS_BASEMAPS: readonly Basemap[] = [
  * Lookup
  * ------------------------------------------------------------------ */
 
+/**
+ * Which registry the build got.
+ *
+ * MapTiler wins a tie deliberately: it is the provider this app is actually
+ * on, and the Mapbox entry is a spike reached only by setting its token and
+ * nothing else. Keyless remains the floor — see the note at the top of this
+ * file for why a missing key must not mean a blank map.
+ */
 export const basemaps: readonly Basemap[] = usingMapTiler
   ? MAPTILER_BASEMAPS
-  : KEYLESS_BASEMAPS;
+  : usingMapbox
+    ? MAPBOX_BASEMAPS
+    : KEYLESS_BASEMAPS;
 
 export const DEFAULT_BASEMAP = basemaps[0]!;
 

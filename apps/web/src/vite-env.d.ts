@@ -22,6 +22,16 @@ interface ImportMetaEnv {
    * stops somebody else spending your tile quota.
    */
   readonly VITE_MAPTILER_KEY?: string;
+
+  /**
+   * A Mapbox access token — a spike, not the shipping path.
+   *
+   * Set it *instead of* the MapTiler key to draw the basemaps from Mapbox and
+   * compare the two on the real app. MapTiler wins if both are set. Same
+   * public-by-construction caveat as above: restrict it by URL in the Mapbox
+   * dashboard, because it is in the bundle.
+   */
+  readonly VITE_MAPBOX_TOKEN?: string;
 }
 
 interface ImportMeta {
