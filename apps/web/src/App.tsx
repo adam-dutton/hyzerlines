@@ -192,14 +192,14 @@ function Shell() {
           overlays={course.overlays}
           units={units}
           suppressTerrain={hasSurvey}
-          dark={theme === 'dark'}
+          dark={course.basemapDark}
           onViewChange={handleViewChange}
         >
           <SurveyLayers
             state={survey.state}
             overlays={course.overlays}
             units={units}
-            darkGround={groundIsDark(course.basemapId, theme === 'dark')}
+            darkGround={groundIsDark(course.basemapId, course.basemapDark)}
           />
 
           {!chromeHidden && (
@@ -208,7 +208,7 @@ function Shell() {
                 basemapId={course.basemapId}
                 overlays={course.overlays}
                 hasSurvey={hasSurvey}
-                dark={theme === 'dark'}
+                dark={course.basemapDark}
               />
               <MapControls
                 layersOpen={layersOpen}
@@ -228,7 +228,7 @@ function Shell() {
                 overlays={course.overlays}
                 display={course.display}
                 units={units}
-                dark={theme === 'dark'}
+                dark={course.basemapDark}
                 survey={{
                   state: survey.state,
                   status: survey.state.status,
@@ -237,6 +237,7 @@ function Shell() {
                   onDismissError: survey.dismissError,
                 }}
                 onBasemapChange={(basemapId) => dispatch({ type: 'setBasemap', basemapId })}
+                onBasemapDarkChange={(dark) => dispatch({ type: 'setBasemapDark', dark })}
                 onOverlaysChange={(changes) => dispatch({ type: 'setOverlays', changes })}
                 onDisplayChange={(changes) => dispatch({ type: 'setDisplay', changes })}
               />

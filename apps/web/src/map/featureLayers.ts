@@ -270,7 +270,7 @@ function corridorLayers(style: ResolvedStyle): LayerSpecification[] {
       source: DERIVED_SOURCE,
       filter: ['==', ['get', 'derived'], 'approach'],
       paint: {
-        'fill-color': selectable(fairway.secondFill, 'fill'),
+        'fill-color': fairway.secondFill,
         'fill-opacity': fairway.secondFillOpacity,
       },
     },
@@ -289,7 +289,7 @@ function corridorLayers(style: ResolvedStyle): LayerSpecification[] {
       source: DERIVED_SOURCE,
       filter: ['==', ['get', 'derived'], 'corridor'],
       paint: {
-        'fill-color': selectable(fairway.fill, 'fill'),
+        'fill-color': fairway.fill,
         // Zero when the designer has switched fairways off — see `derived.ts`.
         // The shape stays on the map so the ground a hole's shot runs over
         // still selects that hole; hiding the drawing must not take the target
@@ -307,6 +307,18 @@ function corridorLayers(style: ResolvedStyle): LayerSpecification[] {
 
 /**
  * The fairway line: the shot in play, and the shots the hole also offers.
+ *
+ * **Selection does not recolour a fairway**, here or in the corridors above,
+ * and that is the one place in this file where selection is silent. Picking a
+ * hole selects every feature on it, so the corridor and its centreline used to
+ * flood with the selection colour — which is most of the ink on screen, on the
+ * single act you perform most often. It read as the map changing rather than
+ * as a hole being chosen, and it hid the thing you selected the hole to look
+ * at: how the shot sits on the ground it actually runs over.
+ *
+ * The selection still shows. The camera moves to the hole, the panel opens on
+ * it, the tee and basket take the accent, and a directly selected fairway grows
+ * its vertex handles. None of that repaints the shot corridor.
  *
  * Always dashed. A fairway is a drawing aid the app worked out, not a thing on
  * the ground, and it should say so whether or not anybody has bent it. It used
@@ -335,7 +347,7 @@ function fairwayLineLayers(style: ResolvedStyle): LayerSpecification[] {
       filter: ['==', ['get', 'derived'], 'alternative'],
       layout: { 'line-join': 'round', 'line-cap': 'butt' },
       paint: {
-        'line-color': selectable(fairway.stroke, 'stroke'),
+        'line-color': fairway.stroke,
         'line-width': fairway.strokeWidth * ALTERNATIVE_SCALE,
         'line-opacity': ALTERNATIVE_OPACITY,
         'line-dasharray': [...ALTERNATIVE_DASH],
@@ -361,7 +373,7 @@ function fairwayLineLayers(style: ResolvedStyle): LayerSpecification[] {
       filter: isCentreline,
       layout: { 'line-join': 'round', 'line-cap': 'butt' },
       paint: {
-        'line-color': selectable(fairway.stroke, 'stroke'),
+        'line-color': fairway.stroke,
         'line-opacity': fairway.strokeOpacity,
         'line-width': fairway.strokeWidth,
         ...dashPaint(DASH_PATTERNS[fairway.dash]),

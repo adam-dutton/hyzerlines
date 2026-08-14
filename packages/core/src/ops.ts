@@ -24,6 +24,7 @@ export type Op =
   | { type: 'setName'; name: string }
   | { type: 'setView'; view: View }
   | { type: 'setBasemap'; basemapId: string }
+  | { type: 'setBasemapDark'; dark: boolean }
   | { type: 'setNotes'; notes: string }
   /**
    * `seeded` marks a value the app worked out rather than one the designer
@@ -206,6 +207,13 @@ export function applyOp(course: Course, op: Op): ApplyResult {
       return result(
         { ...course, basemapId: op.basemapId },
         { type: 'setBasemap', basemapId: course.basemapId },
+        undoable,
+      );
+
+    case 'setBasemapDark':
+      return result(
+        { ...course, basemapDark: op.dark },
+        { type: 'setBasemapDark', dark: course.basemapDark },
         undoable,
       );
 

@@ -91,6 +91,25 @@ export const courseSchema = z.object({
   dismissedRules: z.array(z.string()).default([]),
 
   /**
+   * Whether the basemap draws its dark variant.
+   *
+   * **Not the interface theme.** It was, briefly, and that conflated two
+   * unrelated questions: how bright the panels are, and how bright the ground
+   * under the drawing is. A designer working in a dark room still wants a light
+   * topographic sheet if that is what reads best under their corridors, and
+   * saying so should not mean switching the whole application to a light theme.
+   *
+   * Satellite ignores it entirely — see `basemaps.ts`. A photograph has no
+   * theme, and the dark variant of an aerial is night imagery, which throws away
+   * the tree lines the aerial is on screen for.
+   *
+   * In the document rather than in the browser, for the same reason `display`
+   * is: it is a decision about how this course is presented, and a `.hyzer`
+   * sent to a reviewer should open looking the way its author left it.
+   */
+  basemapDark: z.boolean().default(true),
+
+  /**
    * Which drawing aids the map shows. See display.ts for why it is in here.
    *
    * Additive with defaults, so a document written before this existed parses

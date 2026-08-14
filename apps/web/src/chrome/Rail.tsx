@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { IconButton, Segmented, cn } from '@hyzerlines/design';
 import {
   FOCUS_DEFINITIONS,
+  fairwayLine,
   hasMultipleTees,
   holeOfFeature,
   pairElevationKey,
@@ -65,35 +66,6 @@ import {
 /** Which hole a feature is in — membership or scope, as core resolves it. */
 const holeIdOf = (course: Course, feature: Feature): string | null =>
   holeOfFeature(course, feature.id)?.id ?? null;
-
-/**
- * How far a routed shot leaves the straight line, as a fraction of its length.
- *
- * The tile's schematic is drawn from this, so a tile showing a dogleg is showing
- * one somebody routed. Measured as the furthest perpendicular departure of the
- * line from its own two ends — the standard sagitta — in degrees, which is fine
- * because it is immediately divided by a length in the same units.
- */
-function bendOf(line: readonly Position[] | undefined): number {
-  if (!line || line.length < 3) return 0;
-  const [from] = line;
-  const to = line[line.length - 1];
-  if (!from || !to) return 0;
-
-  const dx = to[0] - from[0];
-  const dy = to[1] - from[1];
-  const span = Math.hypot(dx, dy);
-  if (span === 0) return 0;
-
-  let furthest = 0;
-  for (const [x, y] of line.slice(1, -1)) {
-    // Signed, so a hole that bends left draws left. The cross product's sign is
-    // the side the point falls on.
-    const side = ((x - from[0]) * dy - (y - from[1]) * dx) / span;
-    if (Math.abs(side) > Math.abs(furthest)) furthest = side;
-  }
-  return furthest / span;
-}
 
 /** One level of the rail: a fixed-width column that animates its width. */
 function Level({
@@ -312,24 +284,21 @@ export function Rail({
     course.features.find((feature) => feature.id === selectedFeatureId) ?? null;
 
   /**
-   * Every routed fairway, so a tile can draw the shape it was routed into.
+   * The shot each pair actually plays, so a tile can draw its real shape.
    *
-   * Read off the stored features rather than recomputed: a hole nobody has bent
-   * has no stored fairway and therefore no bend, which is exactly the answer.
+   * `fairwayLine` rather than the stored feature: a hole nobody has bent has no
+   * stored fairway at all, and the honest drawing of it is still the straight
+   * run from its pad to its basket. Reading only stored features left every
+   * unbent hole with the same generic schematic, which is most of a new course.
    */
-  const bends = useMemo(() => {
-    const byPair = new Map<string, number>();
-    for (const feature of course.features) {
-      if (feature.kind !== 'fairway' || feature.geometry.type !== 'line') continue;
-      const pair = course.pairs.find((p) => p.fairwayId === feature.id);
-      if (pair)
-        byPair.set(
-          pairElevationKey(pair.teeId, pair.targetId),
-          bendOf(feature.geometry.coordinates),
-        );
+  const routes = useMemo(() => {
+    const byPair = new Map<string, readonly Position[]>();
+    for (const pair of course.pairs) {
+      const line = fairwayLine(course, pair.teeId, pair.targetId);
+      if (line) byPair.set(pairElevationKey(pair.teeId, pair.targetId), line);
     }
     return byPair;
-  }, [course.features, course.pairs]);
+  }, [course]);
 
   /*
    * What level 1 lists when it is not listing holes.
@@ -359,7 +328,17 @@ export function Rail({
    * course-level feature, which needs somewhere to be and has no parent to sit
    * over. Level 3 is a feature that *does* have a hole behind it.
    */
-  const detail = selectedHole ?? styleSubject ?? (selectedFeature ? 'feature' : null);
+  /*
+   * The style subject only counts while Style is the focus.
+   *
+   * Belt to `changeFocus`'s braces, which clears it on the way out. Stated here
+   * as well because this is the line that decides whether a column exists, and a
+   * column nothing can render into is the one failure that strands the reader:
+   * every control that closes level 2 hangs off a selection, so a subject
+   * without its focus left a blank panel with no way out of it.
+   */
+  const activeStyleSubject = focus === 'style' ? styleSubject : null;
+  const detail = selectedHole ?? activeStyleSubject ?? (selectedFeature ? 'feature' : null);
   const detailOpen = detail !== null;
   const overlayOpen = selectedHole !== null && selectedFeature !== null;
 
@@ -523,7 +502,7 @@ export function Rail({
                       hole={hole}
                       view={view}
                       profile={(key && profiles.get(key)) || null}
-                      bend={(key && bends.get(key)) || 0}
+                      route={(key && routes.get(key)) || null}
                       units={units}
                       selected={hole.id === selectedHoleId}
                       shrunk={shrunk}
@@ -548,7 +527,7 @@ export function Rail({
       <Level width={detailOpen ? DETAIL_WIDTH : 0} label="Properties">
         <div className="relative h-full">
           <div className="flex h-full flex-col">
-            {styleSubject ? styleDetail : selectedHole ? holeDetail : featureDetail}
+            {activeStyleSubject ? styleDetail : selectedHole ? holeDetail : featureDetail}
           </div>
 
           {/*

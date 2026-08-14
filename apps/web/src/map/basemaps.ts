@@ -160,6 +160,8 @@ function maptilerBasemap(
   mapId: string,
   attribution: string,
   imagery: boolean,
+  /** Absent for imagery. See `MAPTILER_BASEMAPS`. */
+  darkMapId?: string,
 ): Basemap {
   return {
     id,
@@ -170,35 +172,42 @@ function maptilerBasemap(
     maxZoom: MAPTILER_MAX_ZOOM,
     tileSize: MAPTILER_TILE_SIZE,
     imagery,
-    dark: {
-      tiles: maptilerTiles(`${mapId}-dark`),
-      hint: `MapTiler ${label} Dark`,
-      attribution,
-      maxZoom: MAPTILER_MAX_ZOOM,
-      tileSize: MAPTILER_TILE_SIZE,
-    },
+    ...(darkMapId
+      ? {
+          dark: {
+            tiles: maptilerTiles(darkMapId),
+            hint: `MapTiler ${label} Dark`,
+            attribution,
+            maxZoom: MAPTILER_MAX_ZOOM,
+            tileSize: MAPTILER_TILE_SIZE,
+          },
+        }
+      : {}),
   };
 }
 
 /**
- * MapTiler for all three, dark twins included.
+ * MapTiler for all three, dark twins for the two that should have one.
  *
- * Satellite has one too, which the keyless registry cannot offer: `satellite-v4-dark`
- * is night imagery rather than a filter over the day pass, so for the first time
- * the aerial has somewhere to go in a dark interface. Everything else on this
- * path follows from that symmetry — every map has a dark twin, so the
- * "this basemap has no dark version" branch simply never fires.
+ * **Satellite is never dark, on any path.** MapTiler does publish
+ * `satellite-v4-dark`, and it was wired up here on the reasoning that every map
+ * deserves a dark twin — which mistook symmetry for correctness. That style is
+ * *night imagery*: it darkens the ground itself. Aerial is the layer a designer
+ * reads tree lines, mown paths and clearings off, and dimming it to suit the
+ * interface destroys the information it is on screen for. A photograph is not
+ * chrome and does not have a theme.
  */
 const MAPTILER_BASEMAPS: readonly Basemap[] = [
+  maptilerBasemap('satellite', 'Satellite', 'satellite-v4', MAPTILER_SATELLITE_ATTRIBUTION, true),
+  maptilerBasemap('topo', 'Topographic', 'topo-v4', MAPTILER_ATTRIBUTION, false, 'topo-v4-dark'),
   maptilerBasemap(
-    'satellite',
-    'Satellite',
-    'satellite-v4',
-    MAPTILER_SATELLITE_ATTRIBUTION,
-    true,
+    'street',
+    'Street',
+    'streets-v4',
+    MAPTILER_ATTRIBUTION,
+    false,
+    'streets-v4-dark',
   ),
-  maptilerBasemap('topo', 'Topographic', 'topo-v4', MAPTILER_ATTRIBUTION, false),
-  maptilerBasemap('street', 'Street', 'streets-v4', MAPTILER_ATTRIBUTION, false),
 ] as const;
 
 /* ------------------------------------------------------------------ *

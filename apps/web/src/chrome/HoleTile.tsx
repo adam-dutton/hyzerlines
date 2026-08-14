@@ -1,5 +1,5 @@
 import { cn } from '@hyzerlines/design';
-import { holeName, type Hole, type PairView } from '@hyzerlines/core';
+import { holeName, type Hole, type PairView, type Position } from '@hyzerlines/core';
 
 import { formatDistance, type UnitSystem } from '../units';
 import type { HoleProfile } from '../survey/useProfiles';
@@ -74,29 +74,134 @@ function ElevationSpark({ profile }: { profile: HoleProfile | null }) {
   );
 }
 
+const TILE_W = 52;
+const TILE_H = 30;
+/** Room for the pad and the basket, which are drawn *on* the endpoints. */
+const TILE_PAD = 5;
+
 /**
- * The route, as a schematic: a pad, a dashed flight, a basket.
+ * The routed line, fitted to the tile.
  *
- * Not the real geometry — at 52 by 30 pixels a real fairway is a smudge — but
- * the same three marks the map draws, in the same order. It says "tee here,
- * basket there" and, once fairways are shaped, roughly which way the hole bends.
+ * Turned so the shot runs left to right, which is the one decision here that is
+ * not arithmetic. The tile is landscape and a hole is long and thin, so any
+ * other orientation wastes most of the box — and once every hole is drawn along
+ * the same axis, the tiles become comparable: the deviation you see above or
+ * below the line is the hole's shape rather than its compass bearing. It is also
+ * what the map does when you pick the hole, which turns to face down the shot.
+ *
+ * Longitude is scaled by the cosine of the latitude before anything else. Skip
+ * that and every hole outside the tropics is drawn wider than it is, so a
+ * straight hole at 45° reads as a shallow dogleg.
+ *
+ * Returns null when there is nothing to draw, so the caller can fall back to the
+ * straight schematic rather than render an empty box.
  */
-function RouteSchematic({ bend }: { bend: number }) {
-  // Clamped, so a hairpin dogleg draws as a strong curve rather than a knot.
-  const pull = Math.max(-14, Math.min(14, bend));
+function fitRoute(
+  route: readonly Position[] | null,
+): { d: string; start: [number, number]; end: [number, number] } | null {
+  if (!route || route.length < 2) return null;
+  const first = route[0];
+  const last = route[route.length - 1];
+  if (!first || !last) return null;
+
+  const lonScale = Math.cos((first[1] * Math.PI) / 180);
+  const flat = route.map(([lon, lat]): [number, number] => [
+    (lon - first[0]) * lonScale,
+    lat - first[1],
+  ]);
+  const end = flat[flat.length - 1]!;
+  const heading = Math.atan2(end[1], end[0]);
+  if (!Number.isFinite(heading)) return null;
+
+  const cos = Math.cos(heading);
+  const sin = Math.sin(heading);
+  // Rotated so the tee-to-basket run lies along +x.
+  const turned = flat.map(([x, y]): [number, number] => [x * cos + y * sin, -x * sin + y * cos]);
+
+  const xs = turned.map(([x]) => x);
+  const ys = turned.map(([, y]) => y);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  const spanX = Math.max(...xs) - minX;
+  const spanY = Math.max(...ys) - minY;
+  if (spanX <= 0 && spanY <= 0) return null;
+
+  /*
+   * One scale for both axes. Fitting each independently would stretch a
+   * near-straight hole's few metres of wander across the full height and draw a
+   * gentle bend as a hairpin — the tile would be describing a hole that is not
+   * there.
+   */
+  const usableX = TILE_W - TILE_PAD * 2;
+  const usableY = TILE_H - TILE_PAD * 2;
+  const scale = Math.min(
+    spanX > 0 ? usableX / spanX : Infinity,
+    spanY > 0 ? usableY / spanY : Infinity,
+  );
+  if (!Number.isFinite(scale)) return null;
+
+  const offsetX = (TILE_W - spanX * scale) / 2;
+  const offsetY = (TILE_H - spanY * scale) / 2;
+  const place = ([x, y]: [number, number]): [number, number] => [
+    offsetX + (x - minX) * scale,
+    // Inverted: SVG y grows downward, and north should be up.
+    TILE_H - offsetY - (y - minY) * scale,
+  ];
+
+  const points = turned.map(place);
+  const d = points
+    .map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`)
+    .join(' ');
+  return { d, start: points[0]!, end: points[points.length - 1]! };
+}
+
+/**
+ * The route: a pad, a dashed flight, a basket.
+ *
+ * The real routed line now, not a single-bend approximation of it. The old
+ * version drew one quadratic curve whose bulge came from the furthest point off
+ * the straight line, which collapsed every shape into "bends this much, this
+ * way" — a double dogleg and a long gentle arc drew identically, and those are
+ * the two holes a designer most wants to tell apart in a list.
+ *
+ * Still a schematic: at 52 by 30 pixels there is no room for corridor width or
+ * for the ground underneath. What it now gets right is the *shape*.
+ */
+function RouteSchematic({ route }: { route: readonly Position[] | null }) {
+  const fitted = fitRoute(route);
+
+  // Nothing routed and nothing to measure: the honest drawing of a hole with no
+  // pair yet is the generic one.
+  const d = fitted?.d ?? `M6 24 L44 7`;
+  const start = fitted?.start ?? [6, 24];
+  const end = fitted?.end ?? [44, 7];
+
   return (
-    <svg width="52" height="30" viewBox="0 0 52 30" fill="none" aria-hidden="true">
+    <svg width={TILE_W} height={TILE_H} viewBox={`0 0 ${TILE_W} ${TILE_H}`} fill="none" aria-hidden="true">
       <path
-        d={`M6 24 Q ${26 + pull} ${16 + pull / 2} 44 7`}
+        d={d}
         stroke="currentColor"
         strokeWidth="1.2"
         strokeDasharray="2.6 2.6"
         strokeLinecap="round"
+        strokeLinejoin="round"
         opacity="0.6"
       />
-      <rect x="2" y="23" width="6" height="3.4" rx="0.8" fill="currentColor" opacity="0.75" />
-      <circle cx="46" cy="6" r="2.6" fill="currentColor" />
-      <path d="M46 3.4 V9.6" stroke="currentColor" strokeWidth="1" />
+      <rect
+        x={start[0] - 3}
+        y={start[1] - 1.7}
+        width="6"
+        height="3.4"
+        rx="0.8"
+        fill="currentColor"
+        opacity="0.75"
+      />
+      <circle cx={end[0]} cy={end[1]} r="2.6" fill="currentColor" />
+      <path
+        d={`M${end[0]} ${end[1] - 2.6} V${end[1] + 2.6}`}
+        stroke="currentColor"
+        strokeWidth="1"
+      />
     </svg>
   );
 }
@@ -105,7 +210,7 @@ export function HoleTile({
   hole,
   view,
   profile,
-  bend,
+  route,
   units,
   selected,
   shrunk,
@@ -115,13 +220,12 @@ export function HoleTile({
   view: PairView | null;
   profile: HoleProfile | null;
   /**
-   * How far the shot leaves the straight line, as a fraction of its length.
+   * The shot, as the map draws it: tee, any bends the designer routed, basket.
    *
-   * Measured off the fairway the map is drawing, so a tile showing a dogleg is
-   * showing one the designer routed. Zero for a hole nobody has bent, which is
-   * the honest schematic for a straight line between two points.
+   * Null for a hole with no pair yet, which draws the generic schematic — there
+   * is no route to be accurate about.
    */
-  bend: number;
+  route: readonly Position[] | null;
   units: UnitSystem;
   selected: boolean;
   /** The rail has given its width to the detail column beside it. */
@@ -202,7 +306,7 @@ export function HoleTile({
             */}
             {!shrunk && (
               <span className="ml-auto shrink-0 text-text-muted">
-                <RouteSchematic bend={bend * 28} />
+                <RouteSchematic route={route} />
               </span>
             )}
           </span>

@@ -1,5 +1,7 @@
 import { IconButton, Slider, Switch, cn } from '@hyzerlines/design';
 import {
+  KIND_DEFINITIONS,
+  SWITCHABLE_KINDS,
   TARGET_CIRCLES,
   type Display,
   type OverlayAmount,
@@ -176,6 +178,7 @@ export function LayersDrawer({
   dark,
   survey,
   onBasemapChange,
+  onBasemapDarkChange,
   onOverlaysChange,
   onDisplayChange,
 }: {
@@ -185,7 +188,12 @@ export function LayersDrawer({
   overlays: Overlays;
   display: Display;
   units: UnitSystem;
-  /** Whether the dark twin is the one being drawn. See `effectiveBasemap`. */
+  /**
+   * Whether the basemap draws its dark variant.
+   *
+   * The document's `basemapDark`, not the interface theme. See the field's note
+   * in the schema for why the two were separated.
+   */
   dark: boolean;
   survey: {
     state: SurveyState;
@@ -195,6 +203,7 @@ export function LayersDrawer({
     onDismissError: () => void;
   };
   onBasemapChange: (id: string) => void;
+  onBasemapDarkChange: (dark: boolean) => void;
   onOverlaysChange: (changes: Partial<Overlays>) => void;
   onDisplayChange: (changes: Partial<Display>) => void;
 }) {
@@ -272,16 +281,36 @@ export function LayersDrawer({
           })}
         </div>
         {/*
-          The source actually being drawn, which in a dark interface is the
-          dark twin rather than the map it stands in for. Naming the light one
-          under dark tiles would be the drawer describing something else.
+          Light or dark, for the basemap alone.
+
+          Deliberately not the application theme. Those were one control
+          briefly, which conflated how bright the panels are with how bright the
+          ground under the drawing is — and they are not the same question. A
+          designer working at night may still want a light topographic sheet
+          because that is what their corridors read best against.
+
+          Absent for imagery, and that is not an omission: a photograph has no
+          theme, and the "dark" variant of an aerial is night imagery, which
+          throws away the tree lines the aerial is on screen for.
+        */}
+        {basemapById(basemapId).dark ? (
+          <div className="flex items-center justify-between gap-3 pt-2.5">
+            <span className="text-xs text-text-secondary">Dark basemap</span>
+            <Switch label="Dark basemap" checked={dark} onChange={onBasemapDarkChange} />
+          </div>
+        ) : null}
+
+        {/*
+          The source actually being drawn, which may be the dark twin rather
+          than the map it stands in for. Naming the light one under dark tiles
+          would be the drawer describing something else.
         */}
         <p className="pt-2 text-2xs text-text-muted">
           {effectiveBasemap(basemapById(basemapId), dark).hint}
         </p>
 
         <div className="mt-4 border-t border-border-subtle pt-2">
-          <GroupTitle>On the map</GroupTitle>
+          <GroupTitle>Course feature visibility</GroupTitle>
           {/*
             The course's own drawing aids. They travel in the document, unlike
             everything above them — see the note at the top of this file for why
@@ -324,6 +353,31 @@ export function LayersDrawer({
               checked={display[circle.id]}
               disabled={!display.circles}
               onChange={(on) => onDisplayChange({ [circle.id]: on })}
+            />
+          ))}
+
+          {/*
+            Everything else that can be drawn, one row each.
+
+            Listed from `KIND_DEFINITIONS` rather than written out here, so a
+            kind added to the model arrives in this panel with its own switch
+            instead of becoming a thing the map draws and nobody can turn off.
+            The order is the model's, which groups the playing surface before
+            the regulated areas before the site notes — the order they are drawn
+            in and the order they are thought about.
+
+            Fairways are absent because they are already above: they are the one
+            kind with a master and two halves, and a fourth switch of equal
+            standing would be two controls fighting over one geometry.
+          */}
+          {SWITCHABLE_KINDS.map((kind) => (
+            <ToggleRow
+              key={kind}
+              label={KIND_DEFINITIONS[kind].label}
+              checked={display.kinds[kind]}
+              onChange={(on) =>
+                onDisplayChange({ kinds: { ...display.kinds, [kind]: on } })
+              }
             />
           ))}
         </div>
