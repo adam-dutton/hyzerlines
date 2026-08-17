@@ -32,13 +32,36 @@ interface UseFeatureDraggingArgs {
   map: maplibregl.Map | null;
   /** Off unless the select tool is live and nothing is being drawn. */
   enabled: boolean;
+  /**
+   * The one feature that may be moved, or null for none.
+   *
+   * Everything drawn used to be draggable whenever the select tool was live,
+   * which made the map's most common gesture — press and move to pan — able to
+   * pick up whatever happened to be under the cursor. On a course that is
+   * mostly features, that is most of the map, and the damage is silent: a
+   * basket slides two metres and nothing says so.
+   *
+   * Selecting first is the guard. It costs one click on the thing you are about
+   * to move, which is a click you would make anyway to check you had the right
+   * one.
+   */
+  movableId: string | null;
   /** Called with the feature id and where its anchor should land. */
   onMove: (id: string, to: Position, gesture: string) => void;
 }
 
-export function useFeatureDragging({ map, enabled, onMove }: UseFeatureDraggingArgs): void {
+export function useFeatureDragging({
+  map,
+  enabled,
+  movableId,
+  onMove,
+}: UseFeatureDraggingArgs): void {
   const onMoveRef = useRef(onMove);
   onMoveRef.current = onMove;
+  // Read through a ref so a change of selection does not rebind the handlers
+  // mid-gesture, which would drop a drag already in flight.
+  const movableRef = useRef(movableId);
+  movableRef.current = movableId;
 
   useEffect(() => {
     if (!map || !enabled) return;
@@ -67,6 +90,8 @@ export function useFeatureDragging({ map, enabled, onMove }: UseFeatureDraggingA
       // Hole labels are selectable but not draggable: the number's position is
       // derived from the hole's geometry, so there is nothing there to move.
       if (typeof id !== 'string' || hit?.properties?.['derived'] === 'holeLabel') return;
+      // Only the selected feature moves. See `movableId`.
+      if (id !== movableRef.current) return;
 
       const start = e.point;
       const gesture = crypto.randomUUID();

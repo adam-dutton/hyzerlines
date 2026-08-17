@@ -296,16 +296,29 @@ export function CourseEditor({
    * is most of the reason to make holes clickable at all.
    */
   const highlighted = useMemo<string[]>(() => {
-    if (selectedId) return [selectedId];
-    if (!selectedHole) return [];
+    const ids: string[] = [];
 
-    const ids = [`hole ${selectedHole.id}`, ...selectedHole.teeIds, ...selectedHole.targetIds];
-    if (selectedPair) {
-      const pair = findPair(course.pairs, selectedPair.teeId, selectedPair.targetId);
-      // The corridor is keyed by its feature when shaped and by the pair when
-      // still derived — the same key `derivedGeometry` writes.
-      ids.push(pair?.fairwayId ?? `${selectedPair.teeId} ${selectedPair.targetId}`);
+    /*
+     * The hole's own state survives drilling into one of its features.
+     *
+     * It used to be replaced: selecting a tee returned `[selectedId]` and every
+     * other part of the hole went back to its resting colour, so stepping from
+     * the hole to its basket made the hole appear to be deselected. The rail
+     * disagreed — it still showed the hole above the basket in its breadcrumb —
+     * and the map was the one that was wrong. Selection is a drill-down, and
+     * each level keeps the one above it.
+     */
+    if (selectedHole) {
+      ids.push(`hole ${selectedHole.id}`, ...selectedHole.teeIds, ...selectedHole.targetIds);
+      if (selectedPair) {
+        const pair = findPair(course.pairs, selectedPair.teeId, selectedPair.targetId);
+        // The corridor is keyed by its feature when shaped and by the pair when
+        // still derived — the same key `derivedGeometry` writes.
+        ids.push(pair?.fairwayId ?? `${selectedPair.teeId} ${selectedPair.targetId}`);
+      }
     }
+
+    if (selectedId && !ids.includes(selectedId)) ids.push(selectedId);
     return ids;
   }, [course.pairs, selectedId, selectedHole, selectedPair]);
 
@@ -754,8 +767,27 @@ export function CourseEditor({
     );
     if (!fairway) return null;
 
+    /*
+     * And only when the line itself is what is selected.
+     *
+     * Selecting a *hole* used to be enough, which put grabbable anchors on the
+     * shot the moment you picked a hole from the list — so the most common act
+     * in the app armed an edit nobody asked for, and a click meant to pan could
+     * bend the fairway instead. Editing is now always one level deeper than
+     * selecting: pick the hole to look at it, pick the line to change it.
+     *
+     * The key is the pair's, not a feature's, because an unrouted fairway has
+     * no stored feature to select — `derivedGeometry` writes this same key and
+     * `selectAt` already puts it in `selectedId` when the centreline is
+     * clicked. So clicking the line is what arms it, which is the gesture that
+     * bends it anyway.
+     */
+    const key = `${fairway.teeId} ${fairway.targetId}`;
+    const stored = findPair(course.pairs, fairway.teeId, fairway.targetId)?.fairwayId ?? null;
+    if (selectedId !== key && (stored === null || selectedId !== stored)) return null;
+
     return {
-      key: `${fairway.teeId} ${fairway.targetId}`,
+      key,
       type: 'line',
       coordinates: fairway.line,
       // The line starts at the tee and ends at the target, always. Those ends
@@ -769,7 +801,16 @@ export function CourseEditor({
           shapeFairway(course, fairway.teeId, fairway.targetId, next, selectedHole.id, gesture),
         ),
     };
-  }, [selected, hiddenIds, selectedHole, selectedPair, derived.fairways, course, dispatch]);
+  }, [
+    selected,
+    selectedId,
+    hiddenIds,
+    selectedHole,
+    selectedPair,
+    derived.fairways,
+    course,
+    dispatch,
+  ]);
 
   /*
    * Gated on the tool because handles are hit targets: leaving them up while a
@@ -792,6 +833,8 @@ export function CourseEditor({
   useFeatureDragging({
     map,
     enabled: nav.effective === 'select' && !drawing.active,
+    // One level deeper than selecting, the same rule the vertex handles follow.
+    movableId: selectedId,
     onMove: useCallback(
       (id: string, to: Position, gesture: string) => {
         const op = moveFeatureTo(course, id, to, gesture);
