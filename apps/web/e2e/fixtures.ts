@@ -743,13 +743,11 @@ export async function selectFairwayLine(page: Page): Promise<{ x: number; y: num
 }
 
 /**
- * A point on a hole's corridor but clear of its centreline.
+ * A point offset perpendicular to a hole's shot, in screen pixels.
  *
- * The line is a click target now, and it sits on top of the band, so a point
- * interpolated between the tee and the basket selects the *line*. Which is
- * right — the narrower target inside the band wins — and it means a test about
- * clicking the ground a shot runs over has to step off the line to find that
- * ground. Offset perpendicular to the shot, in screen pixels.
+ * The primitive `onTheCorridor` searches with. On its own it says nothing about
+ * what is under the point — see there for why that has to be looked up rather
+ * than assumed.
  */
 export async function besideTheShot(
   page: Page,
@@ -779,5 +777,50 @@ export async function besideTheShot(
       };
     },
     [t, offset] as const,
+  );
+}
+
+/**
+ * A point on a hole's corridor, clear of its centreline.
+ *
+ * The line is a click target now and it sits on top of the band, so a point
+ * interpolated between the tee and the basket selects the *line*. That is
+ * right — the narrower target inside the band wins — but it means a test about
+ * clicking the ground a shot runs over has to step off the line to find that
+ * ground.
+ *
+ * Searched for rather than computed, because the window is genuinely narrow: a
+ * corridor starts as wide as the pad and the line and its casing take several
+ * pixels out of the middle, so at a browser test's zoom there are only a few
+ * pixels that are corridor and not line. Hard-coding one of them would be a
+ * number that holds until somebody changes a stroke width, and fails then for a
+ * reason with nothing to do with what the test is about. Asking the map is
+ * cheap and stays true.
+ *
+ * Both sides, because a hole drawn near the edge of the viewport can have one
+ * of them off screen.
+ */
+export async function onTheCorridor(page: Page, t: number): Promise<{ x: number; y: number }> {
+  const layersAt = (at: { x: number; y: number }) =>
+    page.evaluate(
+      (point) =>
+        window
+          .hyzerlinesMap!.queryRenderedFeatures(point as [number, number])
+          .map((f) => f.layer.id),
+      [at.x, at.y] as [number, number],
+    );
+
+  for (const distance of [6, 8, 10, 13, 17, 22, 28, 36]) {
+    for (const side of [1, -1]) {
+      const at = await besideTheShot(page, t, distance * side);
+      const layers = await layersAt(at);
+      if (layers.includes('derived-corridor') && !layers.includes('derived-centreline')) {
+        return at;
+      }
+    }
+  }
+
+  throw new Error(
+    `No point beside the shot at ${t} is on the corridor and clear of the centreline.`,
   );
 }

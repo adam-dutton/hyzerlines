@@ -7,7 +7,7 @@ import {
   holeChip,
   openEditor,
   place,
-  besideTheShot,
+  onTheCorridor,
   project,
   selectFairwayLine,
   setAid,
@@ -678,21 +678,19 @@ test.describe('a hole you cannot see the fairway of', () => {
     await page.getByRole('button', { name: 'Add hole' }).click();
 
     /*
-     * Two thirds of the way down the shot and a little to one side: clear of
-     * the pad, the basket and the hole number, out where the corridor has
-     * tapered wide enough to hit — and off the centreline, which is a click
-     * target of its own and sits on top of the band. On the line the click
-     * selects the *line*, which is correct and is not what this test is about.
+     * Two thirds of the way down the shot: clear of the pad, the basket and the
+     * hole number, and out where the corridor has tapered wide enough to hit.
      *
-     * Projected rather than guessed at. A corridor starts as narrow as the pad
-     * — two metres, which is about one pixel at this zoom — so "beside the
-     * centreline" is not a place that exists near the tee, and a hard-coded
-     * point a few pixels off the line lands on nothing at all.
+     * Found by asking the map rather than by arithmetic. A corridor starts as
+     * narrow as the pad — two metres, which is about one pixel at this zoom —
+     * and the centreline takes several more out of the middle, so the band of
+     * pixels that is corridor and not line is only a few wide. See
+     * `onTheCorridor`.
      */
     // After the camera has arrived: adding a hole selects it, which flies the
     // map to it, and a point projected mid-flight is not where the click lands.
     await settleCamera(page);
-    const onCorridor = await besideTheShot(page, 0.65);
+    const onCorridor = await onTheCorridor(page, 0.65);
 
     /*
      * Corridor shapes on the map, hidden ones included.
