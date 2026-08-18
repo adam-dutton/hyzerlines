@@ -140,8 +140,9 @@ export function CourseEditor({
   /**
    * Arm a drawing tool, moving to the focus that offers it.
    *
-   * Buttons elsewhere in the interface arm tools — "Draw a tee" in the hole
-   * panel, "Draw a property boundary" in Analysis — and they cannot assume the
+   * Controls elsewhere in the interface arm tools — the `+` on a hole's
+   * Features heading, "Draw a property boundary" in Analysis — and they cannot
+   * assume the
    * rail is currently showing that tool. Setting the tool alone would leave the
    * map armed with something the palette has stopped admitting to, which is
    * precisely the hidden state a focus exists to remove.
@@ -296,16 +297,29 @@ export function CourseEditor({
    * is most of the reason to make holes clickable at all.
    */
   const highlighted = useMemo<string[]>(() => {
-    if (selectedId) return [selectedId];
-    if (!selectedHole) return [];
+    const ids: string[] = [];
 
-    const ids = [`hole ${selectedHole.id}`, ...selectedHole.teeIds, ...selectedHole.targetIds];
-    if (selectedPair) {
-      const pair = findPair(course.pairs, selectedPair.teeId, selectedPair.targetId);
-      // The corridor is keyed by its feature when shaped and by the pair when
-      // still derived — the same key `derivedGeometry` writes.
-      ids.push(pair?.fairwayId ?? `${selectedPair.teeId} ${selectedPair.targetId}`);
+    /*
+     * The hole's own state survives drilling into one of its features.
+     *
+     * It used to be replaced: selecting a tee returned `[selectedId]` and every
+     * other part of the hole went back to its resting colour, so stepping from
+     * the hole to its basket made the hole appear to be deselected. The rail
+     * disagreed — it still showed the hole above the basket in its breadcrumb —
+     * and the map was the one that was wrong. Selection is a drill-down, and
+     * each level keeps the one above it.
+     */
+    if (selectedHole) {
+      ids.push(`hole ${selectedHole.id}`, ...selectedHole.teeIds, ...selectedHole.targetIds);
+      if (selectedPair) {
+        const pair = findPair(course.pairs, selectedPair.teeId, selectedPair.targetId);
+        // The corridor is keyed by its feature when shaped and by the pair when
+        // still derived — the same key `derivedGeometry` writes.
+        ids.push(pair?.fairwayId ?? `${selectedPair.teeId} ${selectedPair.targetId}`);
+      }
     }
+
+    if (selectedId && !ids.includes(selectedId)) ids.push(selectedId);
     return ids;
   }, [course.pairs, selectedId, selectedHole, selectedPair]);
 
@@ -453,6 +467,25 @@ export function CourseEditor({
     if (id) setSelectedId(null);
   }, []);
 
+  /**
+   * The fairway line is the one thing you select *without* leaving its hole.
+   *
+   * Everything else on the map is an object that belongs to a hole, so picking
+   * it means "I am looking at this now" and the hole steps aside. A fairway is
+   * not an object: it is the shot the hole *is*, and an unrouted one has no
+   * feature in the document at all. Clearing the hole to select it would leave
+   * the panel with nothing to say — and, worse, would take the handles with it,
+   * because `editableShape` resolves the line through the selected hole's pair.
+   *
+   * So both are set. The hole keeps level 2 and the line arms level 3, which is
+   * the same drill-in the rest of the rail does; the difference is only that the
+   * thing drilled into may not exist yet.
+   */
+  const selectFairwayLine = useCallback((id: string, holeId: string | null) => {
+    setSelectedId(id);
+    if (holeId) setSelectedHoleId(holeId);
+  }, []);
+
   /** Everything a hole is made of, for framing it. */
   const holeFeatures = useCallback(
     (id: string) => {
@@ -581,13 +614,33 @@ export function CourseEditor({
       const labelled = id.startsWith('hole ') ? id.slice('hole '.length) : null;
       if (labelled) return selectHole(labelled);
 
+      /*
+       * A fairway line, matched against what the map actually drew rather than
+       * by parsing the id. An unrouted fairway's id is its pair key and a
+       * routed one's is its feature id, and only `derived.fairways` knows which
+       * is which — guessing from the shape of the string would be a second
+       * place that has to agree with `derivedGeometry`.
+       */
+      const line = derived.fairways.find(
+        (f) => (f.fairwayId ?? `${f.teeId} ${f.targetId}`) === id,
+      );
+      if (line) return selectFairwayLine(id, line.holeId ?? null);
+
       const hole = holeOfFeature(course, id);
       if (!hole || hole.id === selectedHoleId || id === selectedId) {
         return selectFeature(id);
       }
       selectHole(hole.id);
     },
-    [course, selectedHoleId, selectedId, selectFeature, selectHole],
+    [
+      course,
+      derived.fairways,
+      selectedHoleId,
+      selectedId,
+      selectFeature,
+      selectFairwayLine,
+      selectHole,
+    ],
   );
 
   /** Frame whatever a finding points at, so it can be seen rather than read. */
@@ -754,8 +807,28 @@ export function CourseEditor({
     );
     if (!fairway) return null;
 
+    /*
+     * And only when the line itself is what is selected.
+     *
+     * Selecting a *hole* used to be enough, which put grabbable anchors on the
+     * shot the moment you picked a hole from the list — so the most common act
+     * in the app armed an edit nobody asked for, and a click meant to pan could
+     * bend the fairway instead. Editing is now always one level deeper than
+     * selecting: pick the hole to look at it, pick the line to change it.
+     *
+     * The key is the pair's, not a feature's, because an unrouted fairway has
+     * no stored feature to select. `derivedGeometry` writes this same key onto
+     * the centreline, and the centreline is in `INTERACTIVE_LAYERS` so a click
+     * lands in `selectedId`. Both halves are load-bearing: leaving the line out
+     * of that list made the first bend impossible, because the only way to
+     * create a fairway is to reshape the line that does not exist yet.
+     */
+    const key = `${fairway.teeId} ${fairway.targetId}`;
+    const stored = findPair(course.pairs, fairway.teeId, fairway.targetId)?.fairwayId ?? null;
+    if (selectedId !== key && (stored === null || selectedId !== stored)) return null;
+
     return {
-      key: `${fairway.teeId} ${fairway.targetId}`,
+      key,
       type: 'line',
       coordinates: fairway.line,
       // The line starts at the tee and ends at the target, always. Those ends
@@ -769,7 +842,16 @@ export function CourseEditor({
           shapeFairway(course, fairway.teeId, fairway.targetId, next, selectedHole.id, gesture),
         ),
     };
-  }, [selected, hiddenIds, selectedHole, selectedPair, derived.fairways, course, dispatch]);
+  }, [
+    selected,
+    selectedId,
+    hiddenIds,
+    selectedHole,
+    selectedPair,
+    derived.fairways,
+    course,
+    dispatch,
+  ]);
 
   /*
    * Gated on the tool because handles are hit targets: leaving them up while a
@@ -792,6 +874,8 @@ export function CourseEditor({
   useFeatureDragging({
     map,
     enabled: nav.effective === 'select' && !drawing.active,
+    // One level deeper than selecting, the same rule the vertex handles follow.
+    movableId: selectedId,
     onMove: useCallback(
       (id: string, to: Position, gesture: string) => {
         const op = moveFeatureTo(course, id, to, gesture);
@@ -993,6 +1077,9 @@ export function CourseEditor({
                   onDelete={deleteSelectedHole}
                   onSelectFeature={selectFeature}
                   onStepHole={stepHole}
+                  onBack={() => selectHoleFromList(null)}
+                  hiddenIds={hiddenIds}
+                  onToggleHidden={toggleHidden}
                 />
               )
             }

@@ -33,9 +33,7 @@ export function ShortcutsOverlay({
       <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
         {groups.map(([group, items]) => (
           <section key={group}>
-            <h3 className="text-2xs font-semibold uppercase tracking-wider text-text-muted">
-              {group}
-            </h3>
+            <h3 className="text-xs font-semibold text-text-primary">{group}</h3>
             <ul className="mt-2">
               {items.map((s) => (
                 <li

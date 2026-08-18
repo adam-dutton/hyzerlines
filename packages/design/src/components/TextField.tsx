@@ -21,6 +21,24 @@ interface TextFieldProps extends Omit<
   variant?: 'bordered' | 'bare';
   size?: 'sm' | 'md';
   /**
+   * Which edge the value sits against.
+   *
+   * `right` is the default, and that is not a stylistic preference: an
+   * inspector is a column of quantities, and quantities are compared down their
+   * last digit. A left-aligned column of `423`, `1204`, `97` gives the eye
+   * three different places to look for the units place. Names are the exception
+   * — `left` is for a field holding words rather than a measurement.
+   */
+  align?: 'left' | 'right';
+  /**
+   * Marks the value as rejected. Draws the same one-pixel inset the focus state
+   * uses, in the danger colour.
+   *
+   * Sets `aria-invalid` with it, because a red edge is not an error message to
+   * anyone not looking at the screen.
+   */
+  invalid?: boolean;
+  /**
    * Sits inside the field, before the value. For the `W`/`L` that tell two
    * adjacent dimension boxes apart without spending a label row on each.
    */
@@ -54,6 +72,23 @@ const disabledClass = cn(
   'disabled:border-dashed disabled:border-border-subtle disabled:bg-transparent',
 );
 
+/**
+ * Focus draws *inside* the field, not around it.
+ *
+ * A field is 26px tall in a 236px column with 6px between rows, and an outer
+ * ring at any useful width spills into the rows above and below — so focusing
+ * one row visibly nudges its neighbours' apparent spacing. An inset edge costs
+ * no layout at all. It is also why the ring is one pixel rather than two: a
+ * pixel of accent on a filled control is already the loudest thing in the
+ * panel.
+ *
+ * Buttons keep the outer double ring. They sit in bars with room around them,
+ * and an inset ring on a solid accent fill would be invisible.
+ */
+const focusRing = 'focus:outline-none focus:shadow-[inset_0_0_0_1px_var(--color-focus-ring)]';
+
+const invalidRing = 'shadow-[inset_0_0_0_1px_var(--color-status-danger)]';
+
 const variants = {
   /**
    * Filled, not outlined.
@@ -64,46 +99,75 @@ const variants = {
    * a fill instead of a hairline. See `surface.field` for why.
    */
   bordered: cn(
-    'rounded-md border border-transparent bg-surface-field',
+    'rounded-sm border border-transparent bg-surface-field',
     'placeholder:text-text-muted',
-    'focus:outline-none focus:ring-2 focus:ring-focus-ring/50',
+    focusRing,
   ),
   bare: cn(
-    'rounded border border-transparent bg-transparent',
+    'rounded-sm border border-transparent bg-transparent',
     'transition-colors duration-fast',
     'hover:bg-surface-hover',
-    'focus:bg-surface-field focus:outline-none focus:ring-2 focus:ring-focus-ring',
+    'focus:bg-surface-field',
+    focusRing,
   ),
 } as const;
 
+/**
+ * Two heights, and the design only draws one of them.
+ *
+ * `sm` is the inspector field: 26px, 12px type, 8px of side padding, straight
+ * off the artboard. `md` exists for the few fields that are not in an
+ * inspector — the course title, the location search — where the control is the
+ * subject of the panel rather than one row of thirty.
+ */
 const sizes = {
-  sm: 'px-1.5 py-0.5 text-sm',
-  md: 'px-3.5 py-2.5 text-base',
+  sm: 'h-[26px] px-2 text-xs',
+  md: 'h-8 px-2.5 text-sm',
 } as const;
 
 /** Affix type, so a field with one keeps the same outer metrics as one without. */
 const affixSizes = {
   sm: 'text-2xs',
-  md: 'text-sm',
+  md: 'text-xs',
 } as const;
 
 export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function TextField(
-  { label, variant = 'bordered', size = 'md', prefix, suffix, className, ...rest },
+  {
+    label,
+    variant = 'bordered',
+    size = 'md',
+    align = 'right',
+    invalid = false,
+    prefix,
+    suffix,
+    className,
+    ...rest
+  },
   ref,
 ) {
+  const affixed = Boolean(prefix || suffix);
+
   const input = (
     <input
       ref={ref}
       aria-label={label}
+      aria-invalid={invalid || undefined}
       className={cn(
-        'text-text-primary',
-        // With an affix the wrapper owns the border and background, so the
-        // input drops both and keeps only its own focus behaviour — otherwise
-        // there would be a box inside a box.
-        prefix || suffix
-          ? 'min-w-0 flex-1 bg-transparent outline-none disabled:cursor-not-allowed disabled:text-text-disabled'
-          : cn(variants[variant], disabledClass),
+        'min-w-0 text-text-primary',
+        align === 'right' ? 'text-right' : 'text-left',
+        // With an affix the wrapper owns the fill and the focus edge, so the
+        // input drops both and keeps only its metrics — otherwise there would
+        // be a box inside a box.
+        affixed
+          ? cn(
+              'flex-1 bg-transparent outline-none',
+              'placeholder:text-text-muted',
+              'disabled:cursor-not-allowed disabled:text-text-disabled',
+            )
+          : cn(variants[variant], disabledClass, invalid && invalidRing),
         sizes[size],
+        // The affix owns the padding on its own side, so the input gives that
+        // side back rather than doubling it.
         prefix ? 'pl-1' : '',
         suffix ? 'pr-1' : '',
         className,
@@ -112,18 +176,22 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function T
     />
   );
 
-  if (!prefix && !suffix) return input;
+  if (!affixed) return input;
 
   return (
     /*
-     * `focus-within` rather than `focus`: the ring belongs to the whole
+     * `focus-within` rather than `focus`: the edge belongs to the whole
      * control, and the thing actually taking focus is the input inside it.
      */
     <span
       className={cn(
         'inline-flex items-center',
         variants[variant],
-        'focus-within:ring-2 focus-within:ring-focus-ring/50',
+        // The wrapper is sized by the input it holds, so it drops the height
+        // and keeps only the fill, the radius and the focus edge.
+        'h-auto px-0',
+        'focus-within:shadow-[inset_0_0_0_1px_var(--color-focus-ring)]',
+        invalid && invalidRing,
         className,
       )}
     >

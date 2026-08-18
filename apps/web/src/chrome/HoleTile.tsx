@@ -58,7 +58,7 @@ function ElevationSpark({ profile }: { profile: HoleProfile | null }) {
       viewBox="0 0 100 16"
       preserveAspectRatio="none"
       aria-hidden="true"
-      className="h-4 w-full"
+      className="block h-4 w-full"
     >
       <path d={`${line.join(' ')} L100 16 L0 16 Z`} fill="currentColor" opacity="0.16" />
       <path
@@ -220,6 +220,7 @@ export function HoleTile({
   view,
   profile,
   route,
+  maxLength,
   units,
   selected,
   shrunk,
@@ -235,6 +236,14 @@ export function HoleTile({
    * is no route to be accurate about.
    */
   route: readonly Position[] | null;
+  /**
+   * The longest hole on the course, in the same units the measurements are in.
+   *
+   * The tile draws its elevation spark to this scale rather than to its own
+   * width — see the note by `spark`. Null when nothing on the course is
+   * measured yet.
+   */
+  maxLength: number | null;
   units: UnitSystem;
   selected: boolean;
   /** The rail has given its width to the detail column beside it. */
@@ -243,6 +252,24 @@ export function HoleTile({
 }) {
   const length = view?.measurement.effective;
   const par = view?.par;
+
+  /*
+   * The spark is as wide as the hole is long, relative to the longest hole.
+   *
+   * Which makes the bottom of the rail a bar chart nobody had to draw: eighteen
+   * tiles stacked, and the one that runs furthest across its tile is the one you
+   * walk furthest on. A spark stretched to full width in every tile would throw
+   * that away and, worse, would draw a 200ft hole's ground at three times the
+   * horizontal scale of a 600ft hole's — so two identical slopes would look
+   * nothing alike.
+   *
+   * Falls back to full width when there is nothing to compare against, which is
+   * the honest answer for a one-hole course.
+   */
+  const spark =
+    length != null && maxLength != null && maxLength > 0
+      ? Math.max(8, Math.round((length / maxLength) * 100))
+      : 100;
 
   return (
     <li>
@@ -258,7 +285,7 @@ export function HoleTile({
         aria-label={holeName(hole)}
         aria-pressed={selected}
         className={cn(
-          'flex w-full items-stretch overflow-hidden rounded-md text-left',
+          'relative flex w-full items-stretch overflow-hidden rounded-md text-left',
           'transition-[height,background-color] duration-normal ease-standard',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
           selected
@@ -268,25 +295,38 @@ export function HoleTile({
         )}
       >
         {/*
-          The number, in its own block down the left edge.
+          The number, in its own filled block down the left edge.
 
-          Its own block rather than bled across the tile, because it is the one
-          part that survives the shrink — and something that has to stay legible
-          at 104px while two drawings disappear around it cannot be a background
-          treatment. It takes the accent when selected, which is the only strong
-          colour in the rail and therefore unmistakable in a list of eighteen.
+          Filled rather than set in the tile, because it is the one part that
+          survives the shrink — and something that has to stay legible at 104px
+          while two drawings disappear around it cannot be a background
+          treatment. Selected, the block itself takes the accent and the numeral
+          goes to ink, which is the strongest pair the palette has and therefore
+          the one thing findable in a list of eighteen without reading.
+
+          It narrows with the rail rather than holding its width, so the length
+          and par keep the room they need in the 104px state.
         */}
         <span
           aria-hidden="true"
           className={cn(
-            'grid w-8 shrink-0 place-items-center text-base font-bold tabular-nums leading-none',
-            selected ? 'text-text-accent' : 'text-text-secondary',
+            'grid shrink-0 place-items-center font-bold tabular-nums leading-none',
+            'tracking-[-0.03em] transition-[width,font-size] duration-normal ease-standard',
+            selected
+              ? 'bg-accent-solid text-accent-text-on-solid'
+              : 'bg-surface-tile text-text-primary',
+            shrunk ? 'w-[30px] text-[15px]' : 'w-11 text-[19px]',
           )}
         >
           {hole.number}
         </span>
 
-        <span className="flex min-w-0 flex-1 flex-col justify-center gap-1 py-1 pr-2">
+        <span
+          className={cn(
+            'relative flex min-w-0 flex-1 flex-col justify-center gap-0.5 self-stretch',
+            shrunk ? 'px-[7px]' : 'px-2.5',
+          )}
+        >
           {/*
             Side by side while there is room, stacked once there is not. The two
             figures are the tile at 104px — dropping either would leave a number
@@ -295,18 +335,29 @@ export function HoleTile({
           <span
             className={cn(
               'flex min-w-0 gap-1.5',
-              shrunk ? 'flex-col items-start gap-0.5' : 'items-center',
+              // `items-stretch`, not `items-start`. Stacked, the length has to
+              // be as wide as the tile before `truncate` has anything to
+              // truncate against — packed to the start it sizes to its own text
+              // and the tile clips it mid-digit with no ellipsis.
+              shrunk ? 'flex-col items-stretch gap-px' : 'items-baseline',
             )}
           >
             <span
               className={cn(
-                'min-w-0 truncate text-[11px] tabular-nums leading-none',
+                'min-w-0 truncate tabular-nums leading-[1.1]',
+                shrunk ? 'text-[10px]' : 'text-xs',
                 selected ? 'text-text-primary' : 'text-text-secondary',
               )}
             >
               {length == null ? '—' : formatDistance(length, units)}
             </span>
-            <span className="shrink-0 text-[9px] uppercase leading-none tracking-[0.04em] text-text-muted">
+            <span
+              className={cn(
+                'shrink-0 whitespace-nowrap uppercase leading-[1.1] tracking-[0.04em]',
+                shrunk ? 'text-[9px]' : 'text-[10px]',
+                selected ? 'text-text-secondary' : 'text-text-muted',
+              )}
+            >
               {par == null ? 'par —' : `par ${par}`}
             </span>
             {/*
@@ -314,13 +365,31 @@ export function HoleTile({
               hidden rather than by being a different tile. See the note above.
             */}
             {!shrunk && (
-              <span className="ml-auto shrink-0 text-text-muted">
+              <span
+                className={cn(
+                  'ml-auto shrink-0 self-center',
+                  selected ? 'text-text-accent opacity-90' : 'text-text-primary opacity-45',
+                )}
+              >
                 <RouteSchematic route={route} />
               </span>
             )}
           </span>
+          {/*
+            Under the figures rather than beside them, and behind them rather
+            than below: the ground is context for the numbers, not a third
+            column competing with them. At 16px tall against a 52px tile it
+            reads as a tint along the bottom edge until you look for it.
+          */}
           {!shrunk && (
-            <span className={selected ? 'text-text-accent' : 'text-text-muted'}>
+            <span
+              aria-hidden="true"
+              style={{ width: `${spark}%` }}
+              className={cn(
+                'pointer-events-none absolute bottom-0 left-0',
+                selected ? 'text-text-accent opacity-80' : 'text-text-primary opacity-30',
+              )}
+            >
               <ElevationSpark profile={profile} />
             </span>
           )}

@@ -320,24 +320,32 @@ export function addMarkerIcons(
     // Which drawing this ended up being, so the crop follows the artwork.
     const glyph = marker.variant === 'arrow' ? 'arrowhead' : drawn.glyph;
     const casingAlpha = drawn.casingOn ? drawn.casingOpacity : 0;
-    const variants: [string, string, string][] = [
-      [markerIcon(name), drawn.stroke, drawn.casing],
-      /*
-       * Selected: the accent, fill and casing both, exactly as every other
-       * vector on the map does it.
-       *
-       * The basket used to keep the feature colour and invert the casing to
-       * white, which worked while baskets were red. The monochrome pass made
-       * every feature white and left it as a white glyph cased in white —
-       * invisible as a casing, identical to the unselected glyph, so selecting
-       * a hole lit up its tee, its corridor and its number and left the basket
-       * looking untouched.
-       */
-      [markerIcon(name, true), featureColors.selected.stroke, featureColors.selected.casing],
+    /*
+     * Selection is the *casing*, not the fill.
+     *
+     * The glyph keeps the colour the designer gave it and gains an accent
+     * outline. Recolouring the fill as well was the old behaviour, and it made
+     * a selected hole read as a hole drawn in a different colour rather than as
+     * one that happens to be picked — on a map whose job is to be measured off,
+     * the drawing should not change because of what is selected.
+     *
+     * This is not the pre-monochrome arrangement returning. That one kept the
+     * feature colour and inverted the *casing to white*, which vanished once
+     * every feature became white: a white glyph cased in white is identical to
+     * an unselected one. Accent against white is not.
+     *
+     * The casing is forced to full strength for the selected variant, because a
+     * kind whose casing is switched off would otherwise have no selected state
+     * at all — here the casing is carrying the selection, not just the contrast
+     * floor it normally provides.
+     */
+    const variants: [string, string, string, number][] = [
+      [markerIcon(name), drawn.stroke, drawn.casing, casingAlpha],
+      [markerIcon(name, true), drawn.stroke, featureColors.selected.casing, 1],
     ];
 
-    for (const [id, color, casing] of variants) {
-      const image = render(marker, art, glyph, size, color, casing, casingAlpha);
+    for (const [id, color, casing, alpha] of variants) {
+      const image = render(marker, art, glyph, size, color, casing, alpha);
       if (!image) continue;
       if (map.hasImage(id)) map.removeImage(id);
       map.addImage(id, image, { pixelRatio: PIXEL_RATIO });

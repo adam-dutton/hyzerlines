@@ -6,6 +6,7 @@ import {
   holeOfFeature,
   type Course,
   type Feature,
+  type FeatureKind,
   type Hole,
   type Op,
 } from '@hyzerlines/core';
@@ -40,6 +41,7 @@ import { FeatureIcon } from './featureIcons';
  */
 function DetailHeader({
   parent,
+  back,
   title,
   subtitle,
   icon,
@@ -47,6 +49,17 @@ function DetailHeader({
   children,
 }: {
   parent: { label: string; onSelect: () => void } | null;
+  /**
+   * A bare arrow at the head of the title line, for a level whose parent needs
+   * no naming.
+   *
+   * The hole's parent is the list of holes, which is the column immediately to
+   * the left and already on screen — spelling out "Back to Holes" on a row of
+   * its own would spend 40 pixels saying what the arrow and the column beside
+   * it both already say. A feature's parent is a *specific* hole, and which one
+   * is worth a word, so that keeps `parent` and its own row.
+   */
+  back?: { label: string; onSelect: () => void };
   title: ReactNode;
   subtitle?: string;
   icon?: ReactNode;
@@ -55,9 +68,9 @@ function DetailHeader({
   children?: ReactNode;
 }) {
   return (
-    <header className="shrink-0 px-2.5 pb-1.5 pt-2">
+    <header className="shrink-0 px-2.5 pb-2">
       {(parent || onClose) && (
-        <div className="flex items-center gap-1">
+        <div className="flex h-10 items-center gap-1">
           {parent && (
             <button
               type="button"
@@ -72,7 +85,7 @@ function DetailHeader({
                * description of what the control does.
                */
               aria-label={`Back to ${parent.label}`}
-              className="flex min-w-0 items-center gap-0.5 rounded px-1 py-0.5 text-2xs text-text-muted transition-colors duration-fast hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+              className="flex h-[22px] min-w-0 items-center gap-0.5 rounded-sm px-1 text-xs text-text-muted transition-colors duration-fast hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             >
               <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
                 <path
@@ -108,7 +121,33 @@ function DetailHeader({
         </div>
       )}
 
-      <div className="flex items-center gap-2">
+      {/*
+        40px whether or not there is a row above it. A hole opens straight onto
+        its name and a feature opens onto a breadcrumb first, and the two panels
+        have to put their first field at the same height or switching between
+        them shifts the whole form.
+      */}
+      <div className="flex min-h-10 items-center gap-2">
+        {back && (
+          <IconButton
+            label={back.label}
+            size="sm"
+            tooltipSide="bottom"
+            className="-ml-1"
+            onClick={back.onSelect}
+          >
+            <svg width="12" height="12" viewBox="0 0 10 10" aria-hidden="true">
+              <path
+                d="M6.5 1.5 3 5l3.5 3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </IconButton>
+        )}
         {icon && (
           <span
             aria-hidden="true"
@@ -124,7 +163,7 @@ function DetailHeader({
           would say something the title does not — see the call sites.
         */}
         {subtitle && (
-          <span className="shrink-0 text-2xs tabular-nums text-text-muted">{subtitle}</span>
+          <span className="shrink-0 text-xs tabular-nums text-text-muted">{subtitle}</span>
         )}
         {children}
       </div>
@@ -136,7 +175,13 @@ function DetailHeader({
 function HoleStepper({ onPrevious, onNext }: { onPrevious: () => void; onNext: () => void }) {
   return (
     <span className="flex shrink-0 items-center gap-0.5">
-      <IconButton label="Previous hole" size="sm" tooltipSide="bottom" onClick={onPrevious}>
+      <IconButton
+        label="Previous hole"
+        size="sm"
+        tooltipSide="bottom"
+        className="bg-surface-field hover:bg-surface-active"
+        onClick={onPrevious}
+      >
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
           <path
             d="M6.5 1.5 3 5l3.5 3.5"
@@ -148,7 +193,13 @@ function HoleStepper({ onPrevious, onNext }: { onPrevious: () => void; onNext: (
           />
         </svg>
       </IconButton>
-      <IconButton label="Next hole" size="sm" tooltipSide="bottom" onClick={onNext}>
+      <IconButton
+        label="Next hole"
+        size="sm"
+        tooltipSide="bottom"
+        className="bg-surface-field hover:bg-surface-active"
+        onClick={onNext}
+      >
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
           <path
             d="M3.5 1.5 7 5 3.5 8.5"
@@ -177,6 +228,9 @@ export function HoleDetail({
   onDelete,
   onSelectFeature,
   onStepHole,
+  onBack,
+  hiddenIds,
+  onToggleHidden,
 }: {
   course: Course;
   hole: Hole;
@@ -187,16 +241,22 @@ export function HoleDetail({
   holeCount: number;
   onOp: (op: Op) => void;
   onSelectPair: (pair: SelectedPair) => void;
-  onDrawFeature: (kind: 'tee' | 'target') => void;
+  onDrawFeature: (kind: FeatureKind) => void;
   onDelete: () => void;
   onSelectFeature: (id: string) => void;
   /** Move to the previous or next hole in playing order, wrapping. */
   onStepHole: (delta: 1 | -1) => void;
+  /** Close the hole and go back to the list of them. */
+  onBack: () => void;
+  /** Hidden on the map. Session state, not a document edit — see `FeatureList`. */
+  hiddenIds: ReadonlySet<string>;
+  onToggleHidden: (id: string) => void;
 }) {
   return (
     <>
       <DetailHeader
         parent={null}
+        back={{ label: 'Back to the holes', onSelect: onBack }}
         title={
           /*
            * The name is the heading, not a row beneath it. Every panel here used
@@ -205,6 +265,7 @@ export function HoleDetail({
            */
           <TextField
             label="Hole name"
+            align="left"
             variant="bare"
             size="sm"
             value={hole.name}
@@ -212,7 +273,7 @@ export function HoleDetail({
             onChange={(e) =>
               onOp({ type: 'updateHole', id: hole.id, changes: { name: e.target.value } })
             }
-            className="w-full font-semibold"
+            className="w-full text-sm font-semibold"
           />
         }
         {...(holeNumber === null ? {} : { subtitle: `${holeNumber} of ${holeCount}` })}
@@ -239,6 +300,8 @@ export function HoleDetail({
           onDrawFeature={onDrawFeature}
           onDelete={onDelete}
           onRevealFeature={onSelectFeature}
+          hiddenIds={hiddenIds}
+          onToggleHidden={onToggleHidden}
         />
       </div>
     </>
@@ -280,12 +343,13 @@ export function FeatureDetail({
         title={
           <TextField
             label="Feature name"
+            align="left"
             variant="bare"
             size="sm"
             value={feature.label}
             placeholder={KIND_DEFINITIONS[feature.kind].label}
             onChange={(e) => onOp({ type: 'setLabel', id: feature.id, label: e.target.value })}
-            className="w-full font-semibold"
+            className="w-full text-sm font-semibold"
           />
         }
         /*

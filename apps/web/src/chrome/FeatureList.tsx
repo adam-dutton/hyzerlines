@@ -184,18 +184,30 @@ export function FeatureRow({
   trailing?: ReactNode;
 }) {
   return (
-    <li className="flex items-center">
+    /*
+     * The row itself carries the selection, not the button inside it.
+     *
+     * The eye and the chevron are siblings of that button rather than children
+     * — a button inside a button is invalid, and the inner one's clicks are
+     * swallowed — so if the tint lived on the button, a selected row would be
+     * tinted up to the eye and bare after it. Putting it on the `li` tints all
+     * 27 pixels, which is what the design draws.
+     */
+    <li
+      className={cn(
+        'flex h-[27px] items-center gap-2 rounded-sm px-1.5',
+        'transition-colors duration-fast',
+        selected ? 'bg-accent-soft' : 'hover:bg-surface-hover',
+      )}
+    >
       {leading}
       <button
         type="button"
         onClick={onSelect}
         aria-label={`Select ${featureName(feature)}`}
         className={cn(
-          'flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md pl-2 pr-1 text-left',
-          'transition-colors duration-fast',
+          'flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-sm text-left',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
-          selected ? 'bg-accent-soft' : 'hover:bg-surface-hover',
-          dimmed && 'opacity-50',
         )}
       >
         <span
@@ -205,9 +217,23 @@ export function FeatureRow({
             selected ? 'text-text-accent' : 'text-text-muted',
           )}
         >
+          {/*
+            16 rather than the design's 14. The design's rows carry a typed
+            glyph, which has no natural size; ours carry drawings hand-hinted on
+            a 16px grid — see `iconArt`. Scaling those to 14 softens every edge
+            that was placed on a pixel, to buy two pixels back in a 236px column.
+          */}
           <FeatureIcon kind={feature.kind} size={16} />
         </span>
-        <span className="min-w-0 flex-1 truncate text-xs text-text-primary">
+        <span
+          className={cn(
+            'min-w-0 flex-1 truncate text-xs',
+            // Hidden rows step back rather than fading out. `opacity` would have
+            // taken the row's tint and its icon with it, so a hidden *selected*
+            // row would have lost the one thing marking it as selected.
+            dimmed ? 'text-text-muted' : 'text-text-secondary',
+          )}
+        >
           {featureName(feature)}
         </span>
         <span className="shrink-0 whitespace-nowrap text-2xs tabular-nums text-text-muted">
@@ -215,6 +241,24 @@ export function FeatureRow({
         </span>
       </button>
       {trailing}
+      {/*
+        The chevron is the promise that this row goes somewhere.
+
+        Every one of these opens a panel of its own, and without a mark saying
+        so the list reads as a set of radio buttons — something you pick from
+        rather than something you go into. Eight pixels wide, which is enough
+        to be a direction and not enough to be a target: the whole row is the
+        target.
+      */}
+      <span
+        aria-hidden="true"
+        className={cn(
+          'w-2 shrink-0 text-center text-xs leading-none',
+          selected ? 'text-text-accent' : 'text-text-disabled',
+        )}
+      >
+        ›
+      </span>
     </li>
   );
 }
@@ -228,6 +272,7 @@ export function FeatureList({
   onSelect,
   onToggleHidden,
   empty,
+  placement = 'rail',
 }: {
   features: readonly Feature[];
   /** Which kinds to show, and in what order the groups appear. */
@@ -239,6 +284,13 @@ export function FeatureList({
   onToggleHidden: (id: string) => void;
   /** Shown instead of the list when the scope holds nothing. */
   empty: string;
+  /**
+   * `rail` is the list as a column's whole body: it scrolls, and it insets
+   * itself from the column's edge. `section` is the list as one block inside a
+   * panel that has already spent its padding — it neither scrolls nor insets,
+   * because the section around it does both.
+   */
+  placement?: 'rail' | 'section';
 }) {
   const groups = useMemo(() => {
     const byKind = new Map<FeatureKind, Feature[]>();
@@ -253,14 +305,45 @@ export function FeatureList({
   }, [features, order]);
 
   if (groups.length === 0) {
-    return <p className="px-2.5 pb-2.5 text-2xs leading-4 text-text-muted">{empty}</p>;
+    return (
+      <p
+        className={cn(
+          'text-2xs leading-4 text-text-muted',
+          placement === 'rail' ? 'px-2.5 pb-2.5' : '',
+        )}
+      >
+        {empty}
+      </p>
+    );
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2.5">
+    <div className={placement === 'rail' ? 'min-h-0 flex-1 overflow-y-auto px-1.5 pb-2.5' : ''}>
       {groups.map(({ kind, features: group }) => (
-        <section key={kind} className="mt-2 first:mt-0">
-          <h3 className="px-2 pb-0.5 pt-1 text-[10px] text-text-muted">{groupLabel(kind)}</h3>
+        /*
+          The heading sits *in* the gap above the group rather than taking a row
+          of its own.
+
+          A rail holding eighteen holes' features spends a real fraction of its
+          height on headings if each one is a line in the flow. Lifted out of
+          flow into the 18px that already separates two groups, the same word
+          costs nothing — and it lands closer to the rows it names, which is
+          where it was pointing anyway.
+        */
+        <section
+          key={kind}
+          className={cn(
+            'relative mt-[18px]',
+            // At the head of a column there is nothing above to clear, so the
+            // first group starts flush. Inside a section there *is* — the
+            // section's own heading — and the label needs the same 18px it gets
+            // between groups or it lands on top of it.
+            placement === 'rail' && 'first:mt-0',
+          )}
+        >
+          <h3 className="absolute -top-[13px] left-1.5 text-[10px] text-text-muted">
+            {groupLabel(kind)}
+          </h3>
           <ul>
             {group.map((feature) => {
               const selected = feature.id === selectedId;
@@ -282,8 +365,8 @@ export function FeatureList({
                       aria-label={`${hidden ? 'Show' : 'Hide'} ${featureName(feature)}`}
                       title={hidden ? 'Hidden on the map' : 'Visible on the map'}
                       className={cn(
-                        'grid h-7 w-6 shrink-0 place-items-center rounded-md',
-                        'transition-colors duration-fast hover:bg-surface-hover',
+                        'grid h-[22px] w-[22px] shrink-0 place-items-center rounded-sm',
+                        'transition-colors duration-fast hover:bg-surface-active',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
                         hidden
                           ? 'text-text-disabled'

@@ -151,14 +151,16 @@ function RailTabs({
        */
       aria-label={label}
       className={cn(
-        'flex items-baseline gap-1.5 rounded px-0.5',
+        'flex items-baseline gap-[5px] rounded-sm px-0.5',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
       )}
     >
       <span
         className={cn(
-          'text-xs',
-          tab === id ? 'font-semibold text-text-primary' : 'text-text-muted',
+          // 13px, the size the panel titles are set at. A tab is a heading you
+          // can click, so it is the same size as the heading it replaces.
+          'text-sm',
+          tab === id ? 'font-semibold text-text-primary' : 'font-medium text-text-muted',
         )}
       >
         {label}
@@ -258,6 +260,22 @@ export function Rail({
     () => viewHoles(course, holes, elevations, choices),
     [course, holes, elevations, choices],
   );
+
+  /**
+   * The longest hole on the course, which is what the tiles' elevation sparks
+   * are drawn against. See the note by `spark` in `HoleTile`.
+   *
+   * Null while nothing is measured — a course with no pairs has no longest
+   * hole, and a spark scaled against zero would be every tile at full width.
+   */
+  const longestHole = useMemo(() => {
+    let longest = 0;
+    for (const view of views.values()) {
+      const length = view?.measurement.effective;
+      if (length != null && length > longest) longest = length;
+    }
+    return longest > 0 ? longest : null;
+  }, [views]);
 
   /*
    * The card, which the tiles give way to only when there is more than one tee.
@@ -421,7 +439,7 @@ export function Rail({
                 features={courseFeatures.length}
               />
             ) : (
-              <h2 className="text-xs font-semibold text-text-primary">
+              <h2 className="text-sm font-semibold text-text-primary">
                 {focus === 'style' ? 'Style' : focus === 'play' ? 'Holes' : definition.label}
               </h2>
             )}
@@ -492,7 +510,7 @@ export function Rail({
                 onOp={onOp}
               />
             ) : (
-              <ul className="flex flex-col gap-1 px-2 pb-3">
+              <ul className="flex flex-col gap-[5px] px-2 pb-3">
                 {holes.map((hole) => {
                   const view = views.get(hole.id) ?? null;
                   const key = view ? pairElevationKey(view.teeId, view.targetId) : null;
@@ -503,6 +521,7 @@ export function Rail({
                       view={view}
                       profile={(key && profiles.get(key)) || null}
                       route={(key && routes.get(key)) || null}
+                      maxLength={longestHole}
                       units={units}
                       selected={hole.id === selectedHoleId}
                       shrunk={shrunk}

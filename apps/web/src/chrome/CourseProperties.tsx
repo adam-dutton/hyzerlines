@@ -99,6 +99,7 @@ export function CourseProperties({
       <div className={sectionClass}>
         <TextField
           label="Course location"
+          align="left"
           variant="bare"
           size="sm"
           value={course.location}

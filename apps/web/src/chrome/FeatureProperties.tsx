@@ -1,4 +1,4 @@
-import { Switch, TextField, cn, shortcutFor } from '@hyzerlines/design';
+import { Button, Switch, TextField, cn, shortcutFor } from '@hyzerlines/design';
 import {
   KIND_DEFINITIONS,
   assignToHole,
@@ -700,14 +700,10 @@ export function FeatureProperties({
       {mando && <MandoSection course={course} feature={feature} onOp={onOp} />}
 
       <div className={sectionClass}>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="w-full rounded-md px-2 py-1 text-left text-xs text-status-danger transition-colors duration-fast hover:bg-status-danger-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-        >
+        <Button variant="destructive" block onClick={onDelete}>
           Delete
-          <span className={`ml-1.5 ${rowLabelClass}`}>{shortcutFor('edit.delete')}</span>
-        </button>
+          <span className={rowLabelClass}>{shortcutFor('edit.delete')}</span>
+        </Button>
       </div>
     </>
   );

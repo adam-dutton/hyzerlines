@@ -23,11 +23,25 @@ export const space = {
   16: '4rem', // 64
 } as const;
 
+/**
+ * The radius ladder, and what each rung is for.
+ *
+ * The design names them by role rather than by size — 5 inputs and rows, 6
+ * buttons and tiles, 8 tool buttons, 12 floating panels — which is why these
+ * are not a geometric series. `sm` is 5 rather than the usual 4 because a 26px
+ * field with a 4px radius reads squarer than the buttons beside it, and the
+ * whole ladder is tuned so a row and the button in it look like the same
+ * family.
+ */
 export const radius = {
   none: '0',
-  sm: '0.25rem',
+  /** Inputs and list rows. */
+  sm: '0.3125rem',
+  /** Buttons and tiles. */
   md: '0.375rem',
+  /** Tool buttons. */
   lg: '0.5rem',
+  /** Floating panels. */
   xl: '0.75rem',
   '2xl': '1rem',
   full: '9999px',

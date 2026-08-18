@@ -146,6 +146,7 @@ export function LocationSearch({ onDismiss }: { onDismiss: () => void }) {
           <TextField
             ref={inputRef}
             label="Search for a location"
+            align="left"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {

@@ -161,11 +161,7 @@ function BasemapIcon({ id }: { id: string }) {
 }
 
 function GroupTitle({ children }: { children: string }) {
-  return (
-    <p className="pb-2 pt-1 text-2xs font-semibold uppercase tracking-wider text-text-muted">
-      {children}
-    </p>
-  );
+  return <p className="pb-2 pt-1 text-xs font-semibold text-text-primary">{children}</p>;
 }
 
 export function LayersDrawer({

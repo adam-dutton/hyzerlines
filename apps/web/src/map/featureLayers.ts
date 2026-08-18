@@ -308,17 +308,14 @@ function corridorLayers(style: ResolvedStyle): LayerSpecification[] {
 /**
  * The fairway line: the shot in play, and the shots the hole also offers.
  *
- * **Selection does not recolour a fairway**, here or in the corridors above,
- * and that is the one place in this file where selection is silent. Picking a
- * hole selects every feature on it, so the corridor and its centreline used to
- * flood with the selection colour — which is most of the ink on screen, on the
- * single act you perform most often. It read as the map changing rather than
- * as a hole being chosen, and it hid the thing you selected the hole to look
- * at: how the shot sits on the ground it actually runs over.
+ * **Selection is the centreline, and only the centreline.** It goes accent and
+ * drops its casing; the corridors underneath never change colour at all.
  *
- * The selection still shows. The camera moves to the hole, the panel opens on
- * it, the tee and basket take the accent, and a directly selected fairway grows
- * its vertex handles. None of that repaints the shot corridor.
+ * The corridor is the wrong surface for it. It is the largest thing on screen
+ * by far, so recolouring it reads as the map changing rather than as a hole
+ * being chosen — and it shades the ground the shot runs over, which is the
+ * thing a designer selected the hole to look at. The line is a mark rather than
+ * a field: it can carry the accent without hiding anything.
  *
  * Always dashed. A fairway is a drawing aid the app worked out, not a thing on
  * the ground, and it should say so whether or not anybody has bent it. It used
@@ -360,8 +357,16 @@ function fairwayLineLayers(style: ResolvedStyle): LayerSpecification[] {
       filter: isCentreline,
       layout: { 'line-join': 'round', 'line-cap': 'butt' },
       paint: {
-        'line-color': casingColor(fairway.casing),
-        'line-opacity': fairway.casingOn ? fairway.casingOpacity : 0,
+        'line-color': fairway.casing,
+        /*
+         * Gone entirely while selected, rather than recoloured.
+         *
+         * The accent line is the selected state, and a casing under it is a
+         * contrast floor for a colour that no longer needs one — it only
+         * thickens the line, which is the one thing selection must not do on a
+         * map that gets measured off.
+         */
+        'line-opacity': ['case', selected, 0, fairway.casingOn ? fairway.casingOpacity : 0],
         'line-width': fairway.strokeWidth * CASING_RATIO,
         ...dashPaint(casingDash(fairway.dash)),
       },
@@ -373,7 +378,7 @@ function fairwayLineLayers(style: ResolvedStyle): LayerSpecification[] {
       filter: isCentreline,
       layout: { 'line-join': 'round', 'line-cap': 'butt' },
       paint: {
-        'line-color': fairway.stroke,
+        'line-color': selectable(fairway.stroke, 'stroke'),
         'line-opacity': fairway.strokeOpacity,
         'line-width': fairway.strokeWidth,
         ...dashPaint(DASH_PATTERNS[fairway.dash]),
@@ -587,7 +592,11 @@ function padLayers(style: ResolvedStyle, kind: 'tee' | 'dropzone'): LayerSpecifi
       filter,
       minzoom: PAD_LEGIBLE_ZOOM,
       paint: {
-        'fill-color': selectable(drawn.stroke, 'fill'),
+        /*
+         * The pad keeps its own colour when selected; the casing above carries
+         * the state. See `addMarkerIcons` for the same rule on the glyphs.
+         */
+        'fill-color': drawn.stroke,
         'fill-opacity': drawn.strokeOpacity,
       },
     },
@@ -1131,10 +1140,17 @@ export function vertexLayers(): LayerSpecification[] {
  * the pad becomes legible at — so their order relative to each other does not
  * matter.
  *
- * `derived-centreline` and `derived-mando-line` are not here. A fairway with no
- * stored feature has no id to select, and a mandatory line is a consequence of
- * the mandatory rather than a thing in its own right — clicking either should
- * reach whatever is under it.
+ * `derived-mando-line` is not here: a mandatory line is a consequence of the
+ * mandatory rather than a thing in its own right, so clicking it should reach
+ * whatever is under it.
+ *
+ * `derived-centreline` **is** here, and has to be. Handles only appear on the
+ * line once the line itself is selected — editing is one level deeper than
+ * selecting — so if the line could not be clicked, an unrouted fairway could
+ * never be bent, which is the act that creates it. It was excluded on the
+ * grounds that a fairway with no stored feature has no id to select; that is no
+ * longer true, because the centreline carries `fairwayId ?? pair` and
+ * `editableShape` accepts the pair key.
  */
 export const INTERACTIVE_LAYERS: readonly string[] = [
   'hole-label-disc',
@@ -1165,6 +1181,13 @@ export const INTERACTIVE_LAYERS: readonly string[] = [
    * could not click.
    */
   ...areaKinds().map((kind) => `features-${kind}-casing`),
+  /*
+   * Above the corridor, below everything solid.
+   *
+   * The line is the narrower target inside the band, so it wins over it; a tee
+   * or a basket standing on the line still wins over both.
+   */
+  'derived-centreline',
   'derived-marker-mando-left',
   'derived-marker-mando-right',
   'derived-marker-tee',
@@ -1187,14 +1210,16 @@ export const INTERACTIVE_LAYERS: readonly string[] = [
 /**
  * Layers that stand for something too large to drag by.
  *
- * The two drawn-area layers, plus the fairway corridor — which is not draggable
- * for a second reason as well: it is derived, so there is nothing there to
- * move. Dragging it would have to mean dragging the hole.
+ * The two drawn-area layers, plus the two derived fairway layers — which are
+ * not draggable for a second reason as well: they are derived, so there is
+ * nothing there to move. Dragging the corridor would have to mean dragging the
+ * hole, and the line is reshaped by its handles, one vertex at a time.
  */
 const AREA_LAYERS: readonly string[] = [
   ...areaKinds().map(areaFillLayer),
   ...areaKinds().map((kind) => `features-${kind}-casing`),
   'derived-corridor',
+  'derived-centreline',
 ];
 
 /**

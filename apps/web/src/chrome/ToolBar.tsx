@@ -251,7 +251,7 @@ export function ToolBar({
       <Panel
         elevation="solid"
         padding="none"
-        className="flex max-w-full items-center gap-3 px-2.5 py-1.5"
+        className="flex max-w-full items-center gap-2 px-[9px] py-[7px]"
         role="toolbar"
         aria-label="Tools"
       >

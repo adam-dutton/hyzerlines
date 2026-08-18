@@ -1,28 +1,30 @@
-import { TextField, cn } from '@hyzerlines/design';
+import { useMemo } from 'react';
+import { Button, IconButton, Menu, MenuItem, TextField, cn } from '@hyzerlines/design';
 import {
+  KIND_DEFINITIONS,
   activeLayout,
-  assignToHole,
   featureName,
-  holeOf,
+  holeOfFeature,
   layoutName,
   pairView,
   setPairPar,
   type Course,
-  type Feature,
+  type FeatureKind,
   type Hole,
   type Op,
 } from '@hyzerlines/core';
 
 import { formatDistance, type UnitSystem } from '../units';
-import { FeatureRow } from './FeatureList';
+import { FeatureList } from './FeatureList';
+import { FeatureIcon } from './featureIcons';
 import { useHoleProfile, useProfiles } from '../survey/useProfiles';
 import { ElevationProfileChart } from './ElevationProfile';
 import {
+  ReadOnlyValue,
   Row,
   SectionTitle,
   ToggleRow,
   fieldWidth,
-  rowLabelClass,
   sectionClass,
   selectClass,
 } from './propertyRow';
@@ -53,202 +55,43 @@ export interface SelectedPair {
   targetId: string;
 }
 
-function RevealButton({ feature, onReveal }: { feature: Feature; onReveal: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onReveal}
-      /*
-       * Named for the action, not just the feature. An unnamed tee reads as
-       * "Tee pad", which is also the name of the rail button that draws one —
-       * two controls with the same accessible name doing very different
-       * things, which is exactly the ambiguity a screen reader cannot resolve.
-       */
-      aria-label={`Select ${featureName(feature)}`}
-      className="max-w-[9rem] truncate text-right text-xs text-text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-    >
-      {featureName(feature)}
-    </button>
-  );
-}
+/**
+ * The group order a hole's features are listed in.
+ *
+ * Outside-in along the shot rather than alphabetical or by when they were
+ * drawn: where you throw from, where you throw to, the line between them, then
+ * the things that constrain it. It is the order a designer builds a hole in,
+ * which makes it the order they look for one of its parts in.
+ */
+const HOLE_FEATURE_ORDER = [
+  'tee',
+  'target',
+  'fairway',
+  'mando',
+  'dropzone',
+  'ob',
+  'hazard',
+  'casualArea',
+  'requiredRelief',
+  'notedArea',
+  'notedPoint',
+] as const satisfies readonly FeatureKind[];
 
 /**
- * Every tee, or every basket, as a list rather than a dropdown.
+ * What the `+` offers, which is not everything a hole can hold.
  *
- * A dropdown showed one end at a time, which is what let a hole hold three tees
- * while the interface presented a course of one. Listed, the hole's shape is
- * the panel's shape: three rows means three tees, and the marked one is the
- * shot every number on this panel was measured for.
- *
- * The mark is a radio, and it is the picker. Choosing a tee here is choosing
- * which shot the panel, the card and the map are all showing — the same edit
- * the dropdown made, with the alternatives visible instead of hidden behind it.
- *
- * ## Order is meaningful, so removal is not deletion
- *
- * The first tee and the first target are the hole's representative pair until a
- * layout routes it. Removing one takes it *out of the hole* and leaves it on
- * the ground: the feature is still drawn, still selectable, still somewhere a
- * designer put it deliberately. Deleting it is a different action, and it lives
- * on the feature itself.
+ * A hole can *contain* a noted area or a stretch of water — anything drawn
+ * inside it resolves to it — but nobody sets out to add water to hole 4. These
+ * are the kinds you draw deliberately as part of a hole, and a menu of eleven
+ * options to find the two anybody wants is a worse menu.
  */
-function EndList({
-  label,
-  kind,
-  hole,
-  ids,
-  value,
-  course,
-  units,
-  onChange,
-  onReveal,
-  onOp,
-  onDraw,
-}: {
-  label: string;
-  kind: 'tee' | 'target';
-  hole: Hole;
-  ids: readonly string[];
-  value: string | null;
-  course: Course;
-  units: UnitSystem;
-  onChange: (id: string) => void;
-  onReveal: (id: string) => void;
-  onOp: (op: Op) => void;
-  onDraw: () => void;
-}) {
-  const features = ids
-    .map((id) => course.features.find((f) => f.id === id))
-    .filter((f): f is Feature => f !== undefined);
-
-  const free = course.features.filter(
-    (f) => f.kind === kind && holeOf(course, f.id) === undefined,
-  );
-
-  const one = kind === 'tee' ? 'tee' : 'basket';
-  // "Measure from" a tee and "Measure to" a basket: the control picks an end of
-  // the shot, and which end it is is the whole meaning of the row.
-  const verb = kind === 'tee' ? 'Measure from' : 'Measure to';
-
-  return (
-    <div className="py-1.5">
-      <div className="flex items-center justify-between gap-3">
-        <span className={rowLabelClass}>{label}</span>
-        {/*
-          The button arms the tool with this hole selected, which is what makes
-          the next click on the map land in this hole. Before it, adding a tee
-          meant knowing that drawing one while a hole happened to be selected
-          joined it — true, and discoverable by nobody.
-        */}
-        <button
-          type="button"
-          onClick={onDraw}
-          className="shrink-0 text-2xs text-text-muted underline-offset-2 hover:text-text-secondary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-        >
-          Draw a {one}
-        </button>
-      </div>
-
-      {features.length === 0 ? (
-        <p className="py-1 text-xs text-text-disabled">None</p>
-      ) : (
-        /*
-          A radiogroup rather than a list, and named. Two unnamed baskets are
-          two rows reading "Target"; the group is what tells a screen reader
-          which set of ends they are, and it is the only name they have.
-        */
-        <ul role="radiogroup" aria-label={label} className="mt-1">
-          {features.map((feature) => {
-            const chosen = feature.id === value;
-            return (
-              <FeatureRow
-                key={feature.id}
-                feature={feature}
-                units={units}
-                selected={chosen}
-                onSelect={() => onReveal(feature.id)}
-                /*
-                  The radio leads the row because it answers a different
-                  question from the row itself. Clicking the row *opens* the
-                  tee; clicking the radio says "measure the hole from this one".
-                  Two verbs, so two controls — and a radio even when there is
-                  one of them, because a row that loses its mark when a hole
-                  drops to a single tee reads as the panel having stopped
-                  tracking anything.
-                */
-                leading={
-                  <input
-                    type="radio"
-                    name={`${hole.id}-${kind}`}
-                    // Carried so the choice is identifiable from the DOM: two
-                    // unnamed baskets are two identical rows otherwise.
-                    value={feature.id}
-                    checked={chosen}
-                    onChange={() => onChange(feature.id)}
-                    aria-label={`${verb} ${featureName(feature)}`}
-                    /*
-                     * `--hz-accent-solid`, not `--hz-color-accent-solid`. The
-                     * generator emits semantic roles as `--hz-<role>` and only
-                     * registers the `--color-*` aliases inside `@theme inline`,
-                     * so the longer name silently falls back to the browser's
-                     * own accent — blue, where ours is teal.
-                     */
-                    className="mr-1.5 size-3 shrink-0 accent-[var(--hz-accent-solid)]"
-                  />
-                }
-                trailing={
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const op = assignToHole(course, feature.id, null);
-                      if (op) onOp(op);
-                    }}
-                    aria-label={`Remove ${featureName(feature)} from this hole`}
-                    title="Remove from this hole — the feature stays on the map"
-                    className="grid h-7 w-6 shrink-0 place-items-center rounded-md text-text-muted transition-colors duration-fast hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-                  >
-                    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-                      <path
-                        d="M1 1l8 8M9 1l-8 8"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </button>
-                }
-              />
-            );
-          })}
-        </ul>
-      )}
-
-      {/*
-        Only unassigned features are offered. Stealing a tee from another hole is
-        possible, but it is rarer and more destructive, so it lives in the
-        feature panel where the hole you are taking it from is on screen.
-      */}
-      {free.length > 0 && (
-        <select
-          aria-label={kind === 'tee' ? 'Add a tee' : 'Add a basket'}
-          value=""
-          onChange={(e) => {
-            const op = assignToHole(course, e.target.value, hole.id);
-            if (op) onOp(op);
-          }}
-          className={cn(selectClass, 'mt-1 w-full truncate')}
-        >
-          <option value="">Add one already drawn…</option>
-          {free.map((feature) => (
-            <option key={feature.id} value={feature.id}>
-              {featureName(feature)}
-            </option>
-          ))}
-        </select>
-      )}
-    </div>
-  );
-}
+const ADDABLE_KINDS = [
+  'tee',
+  'target',
+  'mando',
+  'dropzone',
+  'ob',
+] as const satisfies readonly FeatureKind[];
 
 export function HoleProperties({
   course,
@@ -260,6 +103,8 @@ export function HoleProperties({
   onDelete,
   onRevealFeature,
   onDrawFeature,
+  hiddenIds,
+  onToggleHidden,
 }: {
   course: Course;
   hole: Hole;
@@ -276,7 +121,10 @@ export function HoleProperties({
    * The editor owns tool state — it is next to the map that uses it — so the
    * panel asks rather than reaches.
    */
-  onDrawFeature: (kind: 'tee' | 'target') => void;
+  onDrawFeature: (kind: FeatureKind) => void;
+  /** Hidden on the map. Session state, not a document edit — see `FeatureList`. */
+  hiddenIds: ReadonlySet<string>;
+  onToggleHidden: (id: string) => void;
 }) {
   /*
    * The par is priced with elevation when — and only when — an imported survey
@@ -298,6 +146,43 @@ export function HoleProperties({
   const fairway = view?.pair?.fairwayId
     ? course.features.find((f) => f.id === view.pair!.fairwayId)
     : undefined;
+
+  /*
+   * Everything that resolves to this hole, membership or scope.
+   *
+   * `holeOfFeature` rather than reading `teeIds` and `targetIds`: those two
+   * lists are the hole's *ends*, and a hole is more than its ends. A mando
+   * drawn while the hole was selected is scoped to it and belongs in this list;
+   * reading only the id arrays is why the panel used to show two tees and a
+   * basket and nothing else, whatever else had been drawn inside it.
+   */
+  const holeFeatures = useMemo(
+    () =>
+      course.features.filter((feature) => holeOfFeature(course, feature.id)?.id === hole.id),
+    [course, hole.id],
+  );
+
+  /*
+   * Every shot this hole can play: each tee against each basket.
+   *
+   * The picker is one control rather than two lists with a radio each, because
+   * the answer is one pair. Two controls made you set an end at a time, and
+   * between the two clicks the panel showed a shot nobody had asked for.
+   */
+  const shots = useMemo(() => {
+    const named = (id: string) => {
+      const feature = course.features.find((f) => f.id === id);
+      return feature ? featureName(feature) : id;
+    };
+    return hole.teeIds.flatMap((teeId) =>
+      hole.targetIds.map((targetId) => ({
+        teeId,
+        targetId,
+        key: `${teeId}::${targetId}`,
+        label: `${named(teeId)} · ${named(targetId)}`,
+      })),
+    );
+  }, [course.features, hole.teeIds, hole.targetIds]);
 
   /*
    * Whether the routing plays this exact shot.
@@ -383,6 +268,35 @@ export function HoleProperties({
           </span>
         </Row>
 
+        {/*
+          Which shot every number on this panel was measured for.
+
+          A hole with three tees and two pins is six different throws with six
+          lengths and possibly six pars, and until the panel says which one it
+          is describing, every figure under it is unattributed. It sits with the
+          number and the par because it is a fact about the hole, not about any
+          one tee.
+        */}
+        {shots.length > 1 && (
+          <Row label="Playing from">
+            <select
+              aria-label="Which shot this hole is measured as"
+              value={pair ? `${pair.teeId}::${pair.targetId}` : ''}
+              onChange={(e) => {
+                const next = shots.find((shot) => shot.key === e.target.value);
+                if (next) onSelectPair({ teeId: next.teeId, targetId: next.targetId });
+              }}
+              className={cn(selectClass, fieldWidth, 'truncate')}
+            >
+              {shots.map((shot) => (
+                <option key={shot.key} value={shot.key}>
+                  {shot.label}
+                </option>
+              ))}
+            </select>
+          </Row>
+        )}
+
         {suggestion ? (
           <div className="mt-1 space-y-0.5">
             {suggestion.factors.map((factor) => (
@@ -428,17 +342,15 @@ export function HoleProperties({
       */}
       <div className={sectionClass}>
         <Row label="Tee to basket">
-          <span className="text-xs tabular-nums text-text-primary">
+          <ReadOnlyValue>
             {measurement?.straight == null ? '—' : formatDistance(measurement.straight, units)}
-          </span>
+          </ReadOnlyValue>
         </Row>
         {/* Only shown when a fairway exists: a routed length identical to the
             straight one would imply a route that isn't there. */}
         {measurement?.routed != null && (
           <Row label="Along the fairway">
-            <span className="text-xs tabular-nums text-text-primary">
-              {formatDistance(measurement.routed, units)}
-            </span>
+            <ReadOnlyValue>{formatDistance(measurement.routed, units)}</ReadOnlyValue>
           </Row>
         )}
       </div>
@@ -473,69 +385,87 @@ export function HoleProperties({
       )}
 
       {/*
-        "Features", not "Shot" — it is the list of things the hole is made of,
-        and it grows a real one when a hole can hold several tees, several pins
-        and a fairway per pairing. The single-shot picker below is what that
-        replaces.
+        Everything the hole is made of, grouped by what it is.
+
+        The same list the course tab draws, over a different scope — which is
+        the point. A tee looked at from the hole panel and the same tee looked
+        at from the course list were two different rows before this: one had a
+        radio and a remove cross, the other had an icon, a measurement and an
+        eye. They are one row now, and drilling into it goes to the same panel
+        either way.
+
+        What the radio used to do lives in the "Playing from" row above. Which
+        shot the panel is describing is a question about the *hole*, not about
+        any one tee, and asking it once at the top beats asking it twice — once
+        in a column of tees and again in a column of baskets — for an answer
+        that is a single pair.
       */}
       <div className={sectionClass}>
-        <SectionTitle>Features</SectionTitle>
-        <EndList
-          label="Tees"
-          kind="tee"
-          hole={hole}
-          ids={hole.teeIds}
-          value={pair?.teeId ?? null}
-          course={course}
-          /*
-           * A hole with no basket has no pair yet, and picking a tee still has
-           * to mean something — otherwise the first tee on a half-built hole is
-           * unselectable until the basket arrives. The target falls back to the
-           * hole's first, which is what `chosenPair` would resolve to anyway.
-           */
-          onChange={(teeId) => {
-            const targetId = pair?.targetId ?? hole.targetIds[0];
-            if (targetId) onSelectPair({ teeId, targetId });
-          }}
+        <SectionTitle
+          count={holeFeatures.length}
+          action={
+            <Menu
+              label="Add to this hole"
+              align="end"
+              trigger={
+                <IconButton label="Add to this hole" size="sm" tooltipSide="left">
+                  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                    <path
+                      d="M6 1.5v9M1.5 6h9"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </IconButton>
+              }
+            >
+              {/*
+                Arms the tool with this hole selected, which is what makes the
+                next click on the map land in this hole. Before it, adding a tee
+                meant knowing that drawing one while a hole happened to be
+                selected joined it — true, and discoverable by nobody.
+              */}
+              {ADDABLE_KINDS.map((kind) => (
+                <MenuItem
+                  key={kind}
+                  onSelect={() => onDrawFeature(kind)}
+                  icon={<FeatureIcon kind={kind} size={16} />}
+                >
+                  {KIND_DEFINITIONS[kind].label}
+                </MenuItem>
+              ))}
+            </Menu>
+          }
+        >
+          Features
+        </SectionTitle>
+
+        <FeatureList
+          features={holeFeatures}
+          order={HOLE_FEATURE_ORDER}
           units={units}
-          onReveal={onRevealFeature}
-          onOp={onOp}
-          onDraw={() => onDrawFeature('tee')}
+          selectedId={null}
+          hiddenIds={hiddenIds}
+          onSelect={onRevealFeature}
+          onToggleHidden={onToggleHidden}
+          placement="section"
+          empty="Nothing here yet. Draw a tee and a basket — anything you place while this hole is selected joins it."
         />
-        <EndList
-          label="Baskets"
-          kind="target"
-          hole={hole}
-          ids={hole.targetIds}
-          value={pair?.targetId ?? null}
-          course={course}
-          units={units}
-          onChange={(targetId) => {
-            const teeId = pair?.teeId ?? hole.teeIds[0];
-            if (teeId) onSelectPair({ teeId, targetId });
-          }}
-          onReveal={onRevealFeature}
-          onOp={onOp}
-          onDraw={() => onDrawFeature('target')}
-        />
+
         {/*
-          The fairway is no longer something you find or draw — it is the line
-          between the two ends above, from the moment both exist. What is worth
-          saying is whether the designer has shaped it, because a straight line
-          and a routed one mean different things to every measurement below.
+          The fairway's own controls, under the list rather than in a section of
+          their own.
+
+          The fairway is not something you find or draw — it is the line between
+          the two ends, from the moment both exist — so it appears in the list
+          above only once somebody has bent it and it became a feature. Which is
+          why these two say the rest: whether the line is straight, and whether
+          it is drawn at all.
         */}
-        <Row label="Fairway">
-          {fairway ? (
-            <RevealButton feature={fairway} onReveal={() => onRevealFeature(fairway.id)} />
-          ) : (
-            <span className="text-xs text-text-secondary">
-              {pair ? 'Straight' : <span className="text-text-disabled">—</span>}
-            </span>
-          )}
-        </Row>
         {pair && !fairway && hole.showFairway && (
-          <p className="mt-1 text-2xs leading-4 text-text-muted">
-            Drag a point on the line to route it around something.
+          <p className="mt-3 text-2xs leading-4 text-text-muted">
+            The fairway runs straight. Drag a point on the line to route it around something.
           </p>
         )}
         {/*
@@ -565,17 +495,13 @@ export function HoleProperties({
       </div>
 
       <div className={sectionClass}>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="w-full rounded-md px-2 py-1 text-left text-xs text-status-danger transition-colors duration-fast hover:bg-status-danger-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-        >
+        <Button variant="destructive" block onClick={onDelete}>
           Delete hole
           {/* Says so explicitly, because the features are drawn land and
               deleting the hole that references them must not feel like it
               might take them with it. */}
-          <span className="ml-1.5 text-2xs text-text-muted">Keeps the drawn features</span>
-        </button>
+          <span className="text-2xs text-text-muted">Keeps the drawn features</span>
+        </Button>
       </div>
     </>
   );
