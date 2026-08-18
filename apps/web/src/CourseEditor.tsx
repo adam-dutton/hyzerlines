@@ -140,8 +140,9 @@ export function CourseEditor({
   /**
    * Arm a drawing tool, moving to the focus that offers it.
    *
-   * Buttons elsewhere in the interface arm tools — "Draw a tee" in the hole
-   * panel, "Draw a property boundary" in Analysis — and they cannot assume the
+   * Controls elsewhere in the interface arm tools — the `+` on a hole's
+   * Features heading, "Draw a property boundary" in Analysis — and they cannot
+   * assume the
    * rail is currently showing that tool. Setting the tool alone would leave the
    * map armed with something the palette has stopped admitting to, which is
    * precisely the hidden state a focus exists to remove.
@@ -1036,6 +1037,9 @@ export function CourseEditor({
                   onDelete={deleteSelectedHole}
                   onSelectFeature={selectFeature}
                   onStepHole={stepHole}
+                  onBack={() => selectHoleFromList(null)}
+                  hiddenIds={hiddenIds}
+                  onToggleHidden={toggleHidden}
                 />
               )
             }

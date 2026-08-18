@@ -272,6 +272,7 @@ export function FeatureList({
   onSelect,
   onToggleHidden,
   empty,
+  placement = 'rail',
 }: {
   features: readonly Feature[];
   /** Which kinds to show, and in what order the groups appear. */
@@ -283,6 +284,13 @@ export function FeatureList({
   onToggleHidden: (id: string) => void;
   /** Shown instead of the list when the scope holds nothing. */
   empty: string;
+  /**
+   * `rail` is the list as a column's whole body: it scrolls, and it insets
+   * itself from the column's edge. `section` is the list as one block inside a
+   * panel that has already spent its padding — it neither scrolls nor insets,
+   * because the section around it does both.
+   */
+  placement?: 'rail' | 'section';
 }) {
   const groups = useMemo(() => {
     const byKind = new Map<FeatureKind, Feature[]>();
@@ -297,11 +305,20 @@ export function FeatureList({
   }, [features, order]);
 
   if (groups.length === 0) {
-    return <p className="px-2.5 pb-2.5 text-2xs leading-4 text-text-muted">{empty}</p>;
+    return (
+      <p
+        className={cn(
+          'text-2xs leading-4 text-text-muted',
+          placement === 'rail' ? 'px-2.5 pb-2.5' : '',
+        )}
+      >
+        {empty}
+      </p>
+    );
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2.5">
+    <div className={placement === 'rail' ? 'min-h-0 flex-1 overflow-y-auto px-1.5 pb-2.5' : ''}>
       {groups.map(({ kind, features: group }) => (
         /*
           The heading sits *in* the gap above the group rather than taking a row
@@ -313,7 +330,17 @@ export function FeatureList({
           costs nothing — and it lands closer to the rows it names, which is
           where it was pointing anyway.
         */
-        <section key={kind} className="relative mt-[18px] first:mt-0">
+        <section
+          key={kind}
+          className={cn(
+            'relative mt-[18px]',
+            // At the head of a column there is nothing above to clear, so the
+            // first group starts flush. Inside a section there *is* — the
+            // section's own heading — and the label needs the same 18px it gets
+            // between groups or it lands on top of it.
+            placement === 'rail' && 'first:mt-0',
+          )}
+        >
           <h3 className="absolute -top-[13px] left-1.5 text-[10px] text-text-muted">
             {groupLabel(kind)}
           </h3>

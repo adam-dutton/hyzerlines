@@ -91,14 +91,55 @@ async function setupHole(page: Page): Promise<void> {
 }
 
 /**
- * The radio that says which end of the shot a hole is measured from or to.
+ * The one control that says which shot a hole is measured as.
  *
- * Scoped to its group and keyed by the feature's id, because two unnamed
- * baskets render as two rows both reading "Target" — the id is the only thing
- * that tells them apart, which is why the control carries it.
+ * It replaced a radio per tee and a radio per basket. Two controls meant
+ * setting an end at a time, and between the two clicks the panel described a
+ * shot nobody had asked for — so the value here is the pair, keyed by both ids.
  */
-const endChoice = (page: Page, group: 'Tees' | 'Baskets', id: string) =>
-  page.getByRole('radiogroup', { name: group }).locator(`input[value="${id}"]`);
+const shotPicker = (page: Page) =>
+  page.getByRole('combobox', { name: 'Which shot this hole is measured as' });
+
+const chooseShot = async (page: Page, teeId: string, targetId: string): Promise<void> => {
+  await shotPicker(page).selectOption(`${teeId}::${targetId}`);
+};
+
+/**
+ * Draw a feature straight into the open hole, through the `+` on its Features
+ * heading. The tool is armed with the hole still selected, which is what makes
+ * the next click on the map land inside it.
+ */
+async function addToHole(page: Page, kind: string): Promise<void> {
+  await page.getByRole('button', { name: 'Add to this hole' }).click();
+  await page.getByRole('menuitem', { name: kind, exact: true }).click();
+}
+
+/**
+ * Open hole 1 and give it a second basket, so it has two shots to choose
+ * between. Drawn straight into the hole rather than placed loose and claimed —
+ * fewer steps, and it is how anybody adding an alternate pin would do it.
+ */
+async function twoPinHole(page: Page): Promise<[string, string]> {
+  await page.getByRole('button', { name: 'Hole 1' }).first().click();
+  await addToHole(page, 'Target');
+  await clickCanvas(page, 950, 500);
+  await expect.poll(async () => (await course(page)).holes[0]!.targetIds.length).toBe(2);
+  const [pinA, pinB] = (await course(page)).holes[0]!.targetIds;
+  return [pinA!, pinB!];
+}
+
+/**
+ * Put a loose feature into a hole, or take it out, from the feature's own panel.
+ *
+ * Which is where the relationship is edited now, in both directions. The hole
+ * panel used to carry a claim dropdown and a remove cross of its own; they said
+ * the same thing as this select, one level up, and only for tees and baskets.
+ */
+async function setBelongsTo(page: Page, hole: string): Promise<void> {
+  await page
+    .getByRole('combobox', { name: 'Hole this belongs to' })
+    .selectOption({ label: hole });
+}
 
 /**
  * Wait until a vertex handle is actually hit-testable at a point.
@@ -380,35 +421,29 @@ test.describe('assigning features to holes', () => {
     await place(page, 'Target', 950, 500);
     const looseId = (await course(page)).features.at(-1)!.id;
 
-    // The loose basket shows up as a finding, and as something to claim.
-    // Note this flies the camera to the hole, so canvas pixels from before it
-    // no longer point at what they did.
-    await holeChip(page, 1).click();
-    const claim = page.getByRole('combobox', { name: 'Add a basket' });
-    await expect(claim).toBeVisible();
-
-    const value = await claim.locator('option').nth(1).getAttribute('value');
-    await claim.selectOption(value);
-
-    await expect.poll(async () => (await course(page)).holes[0]!.targetIds.length).toBe(2);
-    // Claiming it makes the hole a two-pin hole, and the panel lists both.
-    await expect(
-      page.getByRole('radiogroup', { name: 'Baskets' }).getByRole('radio'),
-    ).toHaveCount(2);
-
     /*
-     * And the reverse, from the feature's own panel. Both directions matter:
-     * naming a basket you just placed is feature-first, filling out hole 5 is
-     * hole-first, and forcing either through the other is friction.
-     *
-     * Selected by clicking the basket on the map rather than through the hole
-     * panel's reveal link — that link shares its accessible name with the tee's,
-     * and picking the wrong one silently unassigns the tee instead, which is a
-     * test that fails for a reason unrelated to what it is checking.
+     * Claimed from the basket's own panel, which is where the relationship is
+     * edited in both directions now. Selected by clicking it on the map, so the
+     * click lands on the basket this test placed and not on one of the hole's.
      */
     await clickFeature(page, looseId);
     await expect(page.getByRole('textbox', { name: 'Feature name' })).toBeVisible();
+    await setBelongsTo(page, 'Hole 1');
 
+    await expect.poll(async () => (await course(page)).holes[0]!.targetIds.length).toBe(2);
+
+    // Claiming it makes the hole a two-pin hole, and the hole panel lists both.
+    await holeChip(page, 1).click();
+    await expect(page.getByRole('button', { name: /^Select .*Target/ })).toHaveCount(2);
+    // Two baskets and one tee is two shots, so the picker appears.
+    await expect(shotPicker(page)).toBeVisible();
+
+    /*
+     * And back out again. Both directions matter: naming a basket you just
+     * placed is feature-first, filling out hole 5 is hole-first, and forcing
+     * either through the other is friction.
+     */
+    await clickFeature(page, looseId);
     const holePicker = page.getByRole('combobox', { name: 'Hole this belongs to' });
     await expect(holePicker).toHaveValue((await course(page)).holes[0]!.id);
     await holePicker.selectOption('');
@@ -425,9 +460,10 @@ test.describe('assigning features to holes', () => {
     await page.keyboard.press('Escape');
     await place(page, 'Target', 950, 500);
 
-    await page.getByRole('button', { name: 'Hole 1' }).first().click();
-    const claim = page.getByRole('combobox', { name: 'Add a basket' });
-    await claim.selectOption(await claim.locator('option').nth(1).getAttribute('value'));
+    const loose = (await course(page)).features.at(-1)!.id;
+    await clickFeature(page, loose);
+    await expect(page.getByRole('textbox', { name: 'Feature name' })).toBeVisible();
+    await setBelongsTo(page, 'Hole 1');
     await expect.poll(async () => (await course(page)).holes[0]!.targetIds.length).toBe(2);
 
     await page.getByRole('button', { name: 'Undo' }).click();
@@ -445,11 +481,11 @@ test.describe('assigning features to holes', () => {
  * the same relationship.
  */
 test.describe('building a hole from its panel', () => {
-  test('Draw a tee arms the tool, and the next click joins this hole', async ({ page }) => {
+  test('the Features + arms the tool, and the next click joins this hole', async ({ page }) => {
     await openEditor(page, { zoom: 16 });
     await setupHole(page);
 
-    await page.getByRole('button', { name: 'Draw a tee' }).click();
+    await addToHole(page, 'Tee pad');
     await clickCanvas(page, 520, 520);
 
     await expect.poll(async () => (await course(page)).holes[0]!.teeIds.length).toBe(2);
@@ -460,7 +496,7 @@ test.describe('building a hole from its panel', () => {
     );
 
     // And the same for a basket, so the hole is built without leaving it.
-    await page.getByRole('button', { name: 'Draw a basket' }).click();
+    await addToHole(page, 'Target');
     await clickCanvas(page, 900, 480);
     await expect.poll(async () => (await course(page)).holes[0]!.targetIds.length).toBe(2);
   });
@@ -473,15 +509,15 @@ test.describe('building a hole from its panel', () => {
   test('removing a tee from the hole leaves the tee on the map', async ({ page }) => {
     await openEditor(page, { zoom: 16 });
     await setupHole(page);
-    await page.getByRole('button', { name: 'Draw a tee' }).click();
+    await addToHole(page, 'Tee pad');
     await clickCanvas(page, 520, 520);
     await expect.poll(async () => (await course(page)).holes[0]!.teeIds.length).toBe(2);
 
     const spare = (await course(page)).holes[0]!.teeIds[1]!;
-    await page
-      .getByRole('button', { name: /^Remove .* from this hole$/ })
-      .nth(1)
-      .click();
+    // From the tee's own panel — the row's chevron is what says it goes there.
+    await clickFeature(page, spare);
+    await expect(page.getByRole('textbox', { name: 'Feature name' })).toBeVisible();
+    await setBelongsTo(page, 'Not assigned');
 
     await expect
       .poll(async () => (await course(page)).holes[0]!.teeIds)
@@ -504,18 +540,8 @@ test.describe('the pair picker', () => {
   }) => {
     await openEditor(page, { zoom: 16 });
     await setupHole(page);
-    // Loose, so the hole has something to claim — see the test above.
-    await page.keyboard.press('Escape');
-    await place(page, 'Target', 950, 500);
-
-    await page.getByRole('button', { name: 'Hole 1' }).first().click();
-    const claim = page.getByRole('combobox', { name: 'Add a basket' });
-    await claim.selectOption(await claim.locator('option').nth(1).getAttribute('value'));
-
-    const pins = (await course(page)).holes[0]!.targetIds;
-    await expect(
-      page.getByRole('radiogroup', { name: 'Baskets' }).getByRole('radio'),
-    ).toHaveCount(2);
+    const [tee] = (await course(page)).holes[0]!.teeIds;
+    const pins = await twoPinHole(page);
 
     const readLength = () =>
       page
@@ -524,7 +550,7 @@ test.describe('the pair picker', () => {
         .then((text) => Number(text.replace(/[^\d]/g, '')));
 
     const first = await readLength();
-    await endChoice(page, 'Baskets', pins[1]!).check();
+    await chooseShot(page, tee!, pins[1]);
 
     // The length changes — that is the entire point of measuring a pair rather
     // than a hole — and so does where the fairway runs.
@@ -570,19 +596,13 @@ test.describe('the pair picker', () => {
   test('the chosen pin survives deselecting the hole', async ({ page }) => {
     await openEditor(page, { zoom: 16 });
     await setupHole(page);
-    await page.keyboard.press('Escape');
-    await place(page, 'Target', 950, 500);
-
-    await page.getByRole('button', { name: 'Hole 1' }).first().click();
-    const claim = page.getByRole('combobox', { name: 'Add a basket' });
-    await claim.selectOption(await claim.locator('option').nth(1).getAttribute('value'));
-
-    const pinB = (await course(page)).holes[0]!.targetIds[1]!;
-    await endChoice(page, 'Baskets', pinB).check();
+    const [tee] = (await course(page)).holes[0]!.teeIds;
+    const [, pinB] = await twoPinHole(page);
+    await chooseShot(page, tee!, pinB);
 
     // Let go of the hole entirely.
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('radiogroup', { name: 'Baskets' })).toHaveCount(0);
+    await expect(shotPicker(page)).toHaveCount(0);
 
     // The corridor still runs to the pin that was picked, rather than snapping
     // back to the first target the moment nothing was selected.
@@ -603,7 +623,7 @@ test.describe('the pair picker', () => {
 
     // And coming back to the hole reopens on it.
     await page.getByRole('button', { name: 'Hole 1' }).first().click();
-    await expect(endChoice(page, 'Baskets', pinB)).toBeChecked();
+    await expect(shotPicker(page)).toHaveValue(`${tee!}::${pinB}`);
   });
 
   /*
@@ -618,12 +638,8 @@ test.describe('the pair picker', () => {
   test('the shots not in play draw as faint lines', async ({ page }) => {
     await openEditor(page, { zoom: 16 });
     await setupHole(page);
-    await page.keyboard.press('Escape');
-    await place(page, 'Target', 950, 500);
-
-    await page.getByRole('button', { name: 'Hole 1' }).first().click();
-    const claim = page.getByRole('combobox', { name: 'Add a basket' });
-    await claim.selectOption(await claim.locator('option').nth(1).getAttribute('value'));
+    const [tee] = (await course(page)).holes[0]!.teeIds;
+    const [pinA, pinB] = await twoPinHole(page);
 
     const drawn = (kind: string) =>
       page.evaluate((derived) => {
@@ -637,17 +653,15 @@ test.describe('the pair picker', () => {
         ];
       }, kind);
 
-    const [pinA, pinB] = (await course(page)).holes[0]!.targetIds;
-
     // One corridor, for the shot in play; one faint line, for the one that is
     // not. Not two corridors down the same strip of land.
-    await expect.poll(() => drawn('centreline')).toEqual([expect.stringContaining(pinA!)]);
-    await expect.poll(() => drawn('alternative')).toEqual([expect.stringContaining(pinB!)]);
+    await expect.poll(() => drawn('centreline')).toEqual([expect.stringContaining(pinA)]);
+    await expect.poll(() => drawn('alternative')).toEqual([expect.stringContaining(pinB)]);
 
     // Picking the other pin swaps which is which.
-    await endChoice(page, 'Baskets', pinB!).check();
-    await expect.poll(() => drawn('centreline')).toEqual([expect.stringContaining(pinB!)]);
-    await expect.poll(() => drawn('alternative')).toEqual([expect.stringContaining(pinA!)]);
+    await chooseShot(page, tee!, pinB);
+    await expect.poll(() => drawn('centreline')).toEqual([expect.stringContaining(pinB)]);
+    await expect.poll(() => drawn('alternative')).toEqual([expect.stringContaining(pinA)]);
 
     // And they are fairway lines: turning those off takes the alternatives too,
     // rather than leaving a thinner copy of an aid that was switched off.

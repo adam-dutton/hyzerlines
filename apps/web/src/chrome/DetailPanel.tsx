@@ -6,6 +6,7 @@ import {
   holeOfFeature,
   type Course,
   type Feature,
+  type FeatureKind,
   type Hole,
   type Op,
 } from '@hyzerlines/core';
@@ -40,6 +41,7 @@ import { FeatureIcon } from './featureIcons';
  */
 function DetailHeader({
   parent,
+  back,
   title,
   subtitle,
   icon,
@@ -47,6 +49,17 @@ function DetailHeader({
   children,
 }: {
   parent: { label: string; onSelect: () => void } | null;
+  /**
+   * A bare arrow at the head of the title line, for a level whose parent needs
+   * no naming.
+   *
+   * The hole's parent is the list of holes, which is the column immediately to
+   * the left and already on screen — spelling out "Back to Holes" on a row of
+   * its own would spend 40 pixels saying what the arrow and the column beside
+   * it both already say. A feature's parent is a *specific* hole, and which one
+   * is worth a word, so that keeps `parent` and its own row.
+   */
+  back?: { label: string; onSelect: () => void };
   title: ReactNode;
   subtitle?: string;
   icon?: ReactNode;
@@ -115,6 +128,26 @@ function DetailHeader({
         them shifts the whole form.
       */}
       <div className="flex min-h-10 items-center gap-2">
+        {back && (
+          <IconButton
+            label={back.label}
+            size="sm"
+            tooltipSide="bottom"
+            className="-ml-1"
+            onClick={back.onSelect}
+          >
+            <svg width="12" height="12" viewBox="0 0 10 10" aria-hidden="true">
+              <path
+                d="M6.5 1.5 3 5l3.5 3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </IconButton>
+        )}
         {icon && (
           <span
             aria-hidden="true"
@@ -195,6 +228,9 @@ export function HoleDetail({
   onDelete,
   onSelectFeature,
   onStepHole,
+  onBack,
+  hiddenIds,
+  onToggleHidden,
 }: {
   course: Course;
   hole: Hole;
@@ -205,16 +241,22 @@ export function HoleDetail({
   holeCount: number;
   onOp: (op: Op) => void;
   onSelectPair: (pair: SelectedPair) => void;
-  onDrawFeature: (kind: 'tee' | 'target') => void;
+  onDrawFeature: (kind: FeatureKind) => void;
   onDelete: () => void;
   onSelectFeature: (id: string) => void;
   /** Move to the previous or next hole in playing order, wrapping. */
   onStepHole: (delta: 1 | -1) => void;
+  /** Close the hole and go back to the list of them. */
+  onBack: () => void;
+  /** Hidden on the map. Session state, not a document edit — see `FeatureList`. */
+  hiddenIds: ReadonlySet<string>;
+  onToggleHidden: (id: string) => void;
 }) {
   return (
     <>
       <DetailHeader
         parent={null}
+        back={{ label: 'Back to the holes', onSelect: onBack }}
         title={
           /*
            * The name is the heading, not a row beneath it. Every panel here used
@@ -258,6 +300,8 @@ export function HoleDetail({
           onDrawFeature={onDrawFeature}
           onDelete={onDelete}
           onRevealFeature={onSelectFeature}
+          hiddenIds={hiddenIds}
+          onToggleHidden={onToggleHidden}
         />
       </div>
     </>
