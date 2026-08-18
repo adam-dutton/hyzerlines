@@ -1140,10 +1140,17 @@ export function vertexLayers(): LayerSpecification[] {
  * the pad becomes legible at — so their order relative to each other does not
  * matter.
  *
- * `derived-centreline` and `derived-mando-line` are not here. A fairway with no
- * stored feature has no id to select, and a mandatory line is a consequence of
- * the mandatory rather than a thing in its own right — clicking either should
- * reach whatever is under it.
+ * `derived-mando-line` is not here: a mandatory line is a consequence of the
+ * mandatory rather than a thing in its own right, so clicking it should reach
+ * whatever is under it.
+ *
+ * `derived-centreline` **is** here, and has to be. Handles only appear on the
+ * line once the line itself is selected — editing is one level deeper than
+ * selecting — so if the line could not be clicked, an unrouted fairway could
+ * never be bent, which is the act that creates it. It was excluded on the
+ * grounds that a fairway with no stored feature has no id to select; that is no
+ * longer true, because the centreline carries `fairwayId ?? pair` and
+ * `editableShape` accepts the pair key.
  */
 export const INTERACTIVE_LAYERS: readonly string[] = [
   'hole-label-disc',
@@ -1174,6 +1181,13 @@ export const INTERACTIVE_LAYERS: readonly string[] = [
    * could not click.
    */
   ...areaKinds().map((kind) => `features-${kind}-casing`),
+  /*
+   * Above the corridor, below everything solid.
+   *
+   * The line is the narrower target inside the band, so it wins over it; a tee
+   * or a basket standing on the line still wins over both.
+   */
+  'derived-centreline',
   'derived-marker-mando-left',
   'derived-marker-mando-right',
   'derived-marker-tee',
@@ -1196,14 +1210,16 @@ export const INTERACTIVE_LAYERS: readonly string[] = [
 /**
  * Layers that stand for something too large to drag by.
  *
- * The two drawn-area layers, plus the fairway corridor — which is not draggable
- * for a second reason as well: it is derived, so there is nothing there to
- * move. Dragging it would have to mean dragging the hole.
+ * The two drawn-area layers, plus the two derived fairway layers — which are
+ * not draggable for a second reason as well: they are derived, so there is
+ * nothing there to move. Dragging the corridor would have to mean dragging the
+ * hole, and the line is reshaped by its handles, one vertex at a time.
  */
 const AREA_LAYERS: readonly string[] = [
   ...areaKinds().map(areaFillLayer),
   ...areaKinds().map((kind) => `features-${kind}-casing`),
   'derived-corridor',
+  'derived-centreline',
 ];
 
 /**
