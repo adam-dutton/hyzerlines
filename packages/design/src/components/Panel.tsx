@@ -39,7 +39,15 @@ type PanelProps<T extends ElementType> = {
 const elevations = {
   float: 'bg-surface-overlay backdrop-blur-md shadow-float border-border-default',
   raised: 'bg-surface-overlay backdrop-blur-md shadow-lg border-border-default',
-  solid: 'bg-surface-inset shadow-lifted border-transparent',
+  /*
+   * The tool bar's own grey, one step below the popovers.
+   *
+   * `surface.raised`, not `surface.inset`. The design names two opaque
+   * surfaces — `#1A2223` for anything resting flat, `#242C2E` for the things
+   * that float highest — and the tool bar is the flat one: it is a slab the
+   * map runs under, not a menu that appeared over it.
+   */
+  solid: 'bg-surface-raised shadow-lifted border-transparent',
 } as const;
 
 const paddings = {
@@ -61,7 +69,9 @@ export function Panel<T extends ElementType = 'div'>({
   return (
     <Component
       className={cn(
-        'pointer-events-auto rounded-lg border',
+        // 12px, the design's corner for anything floating over the map. The
+        // smaller rungs belong to things *inside* a panel — see `radius`.
+        'pointer-events-auto rounded-xl border',
         elevations[elevation],
         paddings[padding],
         className,

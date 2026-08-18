@@ -50,9 +50,7 @@ export function SurveySection({
 
   return (
     <div className="border-t border-border-subtle px-3 pb-2 pt-2">
-      <p className="pb-1 text-2xs font-semibold uppercase tracking-wider text-text-muted">
-        Site survey
-      </p>
+      <p className="pb-1 text-xs font-semibold text-text-primary">Site survey</p>
 
       {/* Hidden and driven by a button: a bare file input cannot be styled to
           match anything, and its "No file chosen" is a caption nobody asked

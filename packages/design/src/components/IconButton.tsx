@@ -19,17 +19,24 @@ interface IconButtonProps extends Omit<ComponentPropsWithoutRef<'button'>, 'titl
 }
 
 /**
- * `lg` is for the tool rail and nothing else, so far.
+ * Three sizes, each with its own corner.
  *
- * A tool is a target you hit dozens of times an hour without looking, which is
- * a different job from the incidental chrome `md` is sized for. 44px is also
- * the smallest thing most touch guidance will call a target, and the rail is
- * the one piece of this interface a tablet user would need to reach.
+ * The radius is not a constant across them, and that is the design's rule
+ * rather than an oversight: a 24px button with an 8px corner is nearly a
+ * lozenge, and a 38px one with a 5px corner is nearly a square. The corner
+ * grows with the box so all three read as the same shape.
+ *
+ * `lg` is for the tool rail and nothing else, so far. A tool is a target you
+ * hit dozens of times an hour without looking, which is a different job from
+ * the incidental chrome `md` is sized for.
  */
 const sizes = {
-  sm: 'h-7 w-7',
-  md: 'h-8 w-8',
-  lg: 'h-11 w-11',
+  /** Inline with a row of text — the eye on a feature, the caret on a group. */
+  sm: 'h-6 w-6 rounded-sm',
+  /** Chrome: the top bar, a panel header, a drawer's close button. */
+  md: 'h-7 w-7 rounded-md',
+  /** The tool bar. */
+  lg: 'h-[38px] w-[38px] rounded-lg',
 } as const;
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
@@ -44,15 +51,18 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
         aria-label={label}
         aria-pressed={active || undefined}
         className={cn(
-          'grid shrink-0 place-items-center rounded-md',
+          'grid shrink-0 place-items-center',
           'transition-colors duration-fast',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
           // Disabled controls stay visible but stop accepting hover and pointer
           // events, so a dimmed button never looks momentarily interactive.
           'disabled:pointer-events-none disabled:text-text-disabled',
           sizes[size],
+          // A held-down tool is filled, not tinted. It is the one control on
+          // screen whose state changes what a click on the map *does*, so it
+          // is the one that gets the full accent rather than a wash of it.
           active
-            ? 'bg-accent-soft text-text-accent'
+            ? 'bg-accent-solid text-accent-text-on-solid'
             : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary',
           className,
         )}

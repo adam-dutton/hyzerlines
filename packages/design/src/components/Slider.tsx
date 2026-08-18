@@ -55,7 +55,9 @@ export function Slider({
         disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
         className={cn(
-          'h-1 w-20 cursor-pointer appearance-none rounded-full bg-surface-inset',
+          // A 3px track with an 11px thumb, per the kit. The track is a hairline
+          // the value sits on rather than a groove the value fills.
+          'h-[3px] w-20 cursor-pointer appearance-none rounded-full bg-surface-active',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
           disabled && 'pointer-events-none opacity-40',
           /*
@@ -64,10 +66,10 @@ export function Slider({
            * a browser does not recognise is dropped whole — so `-webkit-` and
            * `-moz-` in the same block would leave Firefox with no thumb at all.
            */
-          '[&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3',
+          '[&::-webkit-slider-thumb]:h-[11px] [&::-webkit-slider-thumb]:w-[11px]',
           '[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full',
           '[&::-webkit-slider-thumb]:bg-accent-solid',
-          '[&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-3',
+          '[&::-moz-range-thumb]:h-[11px] [&::-moz-range-thumb]:w-[11px]',
           '[&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:rounded-full',
           '[&::-moz-range-thumb]:bg-accent-solid',
         )}

@@ -1,4 +1,11 @@
-import { IconButton, Segmented, TextField, cn, type ThemeName } from '@hyzerlines/design';
+import {
+  Button,
+  IconButton,
+  Segmented,
+  TextField,
+  cn,
+  type ThemeName,
+} from '@hyzerlines/design';
 import {
   FOCUSES,
   FOCUS_DEFINITIONS,
@@ -128,23 +135,6 @@ function SaveIndicator({ status }: { status: SaveStatus }) {
   return null;
 }
 
-/** A bare text action. Import and Export, which are words rather than glyphs. */
-function TextAction({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'h-7 shrink-0 rounded-md px-2.5 text-xs text-text-secondary',
-        'transition-colors duration-fast hover:bg-surface-hover hover:text-text-primary',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
-      )}
-    >
-      {label}
-    </button>
-  );
-}
-
 export function TopBar({
   course,
   units,
@@ -256,6 +246,7 @@ export function TopBar({
           */}
           <TextField
             label="Course name"
+            align="left"
             variant="bare"
             size="sm"
             value={course.name}
@@ -310,8 +301,12 @@ export function TopBar({
             <ArrowIcon name="redo" />
           </IconButton>
 
-          <TextAction label="Import" onClick={onImport} />
-          <TextAction label="Export" onClick={onExport} />
+          <Button variant="ghost" onClick={onImport}>
+            Import
+          </Button>
+          <Button variant="ghost" onClick={onExport}>
+            Export
+          </Button>
 
           {/*
             The overflow, holding what has nowhere better to be: the theme, the

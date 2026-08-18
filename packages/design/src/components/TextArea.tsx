@@ -44,25 +44,40 @@ interface TextAreaProps extends Omit<ComponentPropsWithoutRef<'textarea'>, 'size
 }
 
 /*
- * `focus-within` rather than `focus`: the ring belongs to the whole control,
+ * The same box a `TextField` draws, stretched to more than one line.
+ *
+ * A fill and no border, a 5px corner, and a one-pixel inset edge on focus —
+ * see the note on `focusRing` in `TextField` for why the edge is inside. This
+ * used to be an outlined box with a larger corner, which made a description
+ * field read as a different species from the fields above it in the same panel.
+ *
+ * `focus-within` rather than `focus`: the edge belongs to the whole control,
  * and the thing actually taking focus is the textarea inside it.
  */
 const variants = {
   bordered: cn(
-    'rounded-lg border border-border-default bg-surface-inset',
-    'focus-within:border-border-accent focus-within:ring-2 focus-within:ring-focus-ring/40',
+    'rounded-sm border border-transparent bg-surface-field',
+    'focus-within:shadow-[inset_0_0_0_1px_var(--color-focus-ring)]',
   ),
   bare: cn(
-    'rounded bg-transparent',
+    'rounded-sm bg-transparent',
     'transition-colors duration-fast',
     'hover:bg-surface-hover',
-    'focus-within:bg-surface-inset focus-within:ring-2 focus-within:ring-focus-ring',
+    'focus-within:bg-surface-field',
+    'focus-within:shadow-[inset_0_0_0_1px_var(--color-focus-ring)]',
   ),
 } as const;
 
+/*
+ * Vertical padding rather than a height, because the point of this control is
+ * that it has no height of its own. 6px top and bottom against the field's 8px
+ * on the sides is the design's figure: a single-line field centres its text in
+ * 26px, and a box that wraps needs the line to sit closer to the top edge than
+ * that or the first line looks lower than its neighbours.
+ */
 const sizes = {
-  sm: 'px-1.5 py-0.5 text-sm',
-  md: 'px-3.5 py-2.5 text-base',
+  sm: 'px-2 py-1.5 text-xs leading-normal',
+  md: 'px-2.5 py-2 text-sm leading-normal',
 } as const;
 
 export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(function TextArea(

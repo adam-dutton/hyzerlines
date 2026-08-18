@@ -155,3 +155,16 @@
 .hz-dialog[data-state='closed'] {
   animation: hz-dialog-out var(--duration-fast) var(--ease-exit);
 }
+
+/*
+ * The checkbox's tick.
+ *
+ * Here rather than in the component because a `background-image` on a data URI
+ * is one long unbreakable token, and Tailwind's arbitrary-value syntax cannot
+ * carry the commas and quotes in it. The stroke is `#12190a` — the ink colour,
+ * written out, because a data URI cannot read a custom property. It is only
+ * ever drawn on the accent fill, which is the pairing that colour exists for.
+ */
+:root {
+  --hz-check-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 4.8 8.5 9.5 3.8' fill='none' stroke='%2312190a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}

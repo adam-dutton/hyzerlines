@@ -121,7 +121,7 @@ export function ColorRow({
                 const parsed = Number(e.target.value);
                 if (!Number.isNaN(parsed)) onOpacity(Math.min(1, Math.max(0, parsed / 100)));
               }}
-              className="min-w-0 flex-1 text-right tabular-nums"
+              className="min-w-0 flex-1 tabular-nums"
             />
           )}
           <button
@@ -199,7 +199,7 @@ export function NumberRow({
             const parsed = Number(e.target.value);
             if (!Number.isNaN(parsed)) onChange(parsed);
           }}
-          className="min-w-0 flex-1 text-right tabular-nums"
+          className="min-w-0 flex-1 tabular-nums"
         />
         <Overridden show={!inherited} />
       </span>

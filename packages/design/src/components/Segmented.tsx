@@ -54,10 +54,14 @@ export function Segmented<T extends string>({
       role="radiogroup"
       aria-label={label}
       className={cn(
-        'flex items-center',
+        'flex items-center gap-0.5',
         // The track is what makes a solid group read as one control rather than
         // as a row of buttons that happen to be adjacent.
-        variant === 'solid' ? 'gap-0.5 rounded-lg bg-surface-hover p-0.5' : 'gap-0.5',
+        //
+        // 7px is not a rung on the radius ladder and is not meant to be: it is
+        // the button's 5px plus the 2px of padding around it, which is what
+        // keeps the track's inner corner concentric with the button it holds.
+        variant === 'solid' ? 'rounded-[7px] bg-surface-tile p-0.5' : '',
         className,
       )}
     >
@@ -92,12 +96,14 @@ export function Segmented<T extends string>({
               if (sibling instanceof HTMLElement) sibling.focus();
             }}
             className={cn(
-              'rounded-md transition-colors duration-fast',
+              'flex h-6 items-center justify-center rounded-sm transition-colors duration-fast',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
-              size === 'md' ? 'px-3 py-1 text-xs' : 'px-2.5 py-1 text-2xs',
+              // Fixed height rather than vertical padding, so a segment lines up
+              // with the 26px fields beside it whatever the label's font metrics.
+              size === 'md' ? 'px-3 text-xs' : 'px-2.5 text-2xs',
               // Weight carries the selection as well as colour does, so the
               // control still reads as chosen in a screenshot printed in grey.
-              selected ? 'font-semibold' : 'font-medium',
+              selected ? 'font-semibold' : 'font-normal',
               selected
                 ? variant === 'solid'
                   ? 'bg-accent-solid text-accent-text-on-solid'

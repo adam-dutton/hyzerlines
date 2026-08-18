@@ -22,18 +22,22 @@ export const rowLabelClass = 'text-xs text-text-muted';
  * and a single rule does the rest, which is the same trade the fields made when
  * they dropped their borders for a fill.
  */
-export const sectionClass = 'border-b border-border-subtle px-2.5 py-2.5 last:border-b-0';
+export const sectionClass = 'border-b border-border-subtle px-3 py-3.5 last:border-b-0';
 
 /**
  * The label column, fixed rather than fitted.
  *
  * Every row in every inspector shares it, so the controls line up down the
- * right-hand edge whether the label is "Par" or "Playing from". 78px is the
- * width the longest label in use needs without wrapping — it was measured, and
- * the rows were `justify-between` before it, which meant a column of controls
- * that stepped in and out as the labels changed length.
+ * right-hand edge whether the label is "Par" or "Playing from". The rows were
+ * `justify-between` before it, which meant a column of controls that stepped in
+ * and out as the labels changed length.
+ *
+ * 82px is the drawer's figure, and the drawer is where the longest labels are.
+ * The rail is narrower and could take less, but a label column that changes
+ * width between two panels showing the same kind of thing is worse than one
+ * that is four pixels generous in one of them.
  */
-export const labelWidth = 'w-[78px]';
+export const labelWidth = 'w-[82px]';
 
 /**
  * A native select, dressed to match `TextField`.
@@ -54,9 +58,18 @@ export const labelWidth = 'w-[78px]';
  */
 export const fieldWidth = 'min-w-0 flex-1';
 
+/**
+ * The same box a `TextField` draws, on a native `<select>`.
+ *
+ * Every metric here is the field's: 26px tall, 5px radius, 12px type, a fill
+ * instead of a border, and the one-pixel inset edge on focus. The only
+ * difference is the right-hand padding, which leaves room for the caret the
+ * platform draws — a select cannot right-align its value the way a field does,
+ * because the value would run under that caret.
+ */
 export const selectClass = [
-  'rounded-md border border-transparent bg-surface-field px-2 py-1 text-xs text-text-primary',
-  'focus:outline-none focus:ring-2 focus:ring-focus-ring/50',
+  'h-[26px] rounded-sm border border-transparent bg-surface-field pl-2 pr-6 text-xs text-text-primary',
+  'focus:outline-none focus:shadow-[inset_0_0_0_1px_var(--color-focus-ring)]',
   'disabled:border-dashed disabled:border-border-subtle disabled:bg-transparent disabled:text-text-disabled',
 ].join(' ');
 
@@ -72,7 +85,10 @@ export const selectClass = [
  */
 export function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-2 py-1">
+    // 3px of vertical padding, which puts 6px between two adjacent rows — the
+    // drawer's row gap. Padding rather than a gap on the parent, because these
+    // rows are dropped into sections that also hold headings and dividers.
+    <div className="flex items-center gap-2 py-[3px]">
       <span className={cn(rowLabelClass, labelWidth, 'shrink-0')}>{label}</span>
       {children}
     </div>
@@ -82,14 +98,16 @@ export function Row({ label, children }: { label: string; children: ReactNode })
 /**
  * A measured value, printed rather than typed.
  *
- * Right-aligned on the same grid a control would occupy, so a read-only row and
- * an editable one line up. Tabular figures without a monospace face: Inter has
+ * Right-aligned on the same grid a control would occupy, and the same height, so
+ * a read-only row and an editable one line up. It drops the fill and steps the
+ * text back one notch, which is the design's read-only field: the value is still
+ * the real one, it is simply not yours to change here. Tabular figures without a monospace face: Inter has
  * real tabular numerals, so a distance that updates while you drag holds its
  * width without switching typeface — which is what `font-mono` was doing here.
  */
 export function ReadOnlyValue({ children }: { children: ReactNode }) {
   return (
-    <span className="min-w-0 flex-1 truncate px-2 text-right text-xs tabular-nums text-text-primary">
+    <span className="flex h-[26px] min-w-0 flex-1 items-center justify-end truncate px-2 text-xs tabular-nums text-text-secondary">
       {children}
     </span>
   );
@@ -120,7 +138,7 @@ export function ToggleRow({
   onChange: (next: boolean) => void;
 }) {
   return (
-    <div className={cn('flex items-center gap-2 py-1', indent && 'pl-3')}>
+    <div className={cn('flex items-center gap-2 py-[3px]', indent && 'pl-3')}>
       <span
         className={cn(
           disabled ? 'text-xs text-text-disabled' : rowLabelClass,
@@ -183,16 +201,40 @@ export function DegreeField({
         // refusing the keystroke would look like the field was broken.
         else onChange(Number(digits) % 360);
       }}
-      className={cn('text-right tabular-nums', className)}
+      className={cn('tabular-nums', className)}
     />
   );
 }
 
-/** A section heading, for panels with more than one group of rows. */
-export function SectionTitle({ children }: { children: ReactNode }) {
+/**
+ * A section heading, for panels with more than one group of rows.
+ *
+ * A word at the panel's own size in a heavier weight, not a small-caps label.
+ * The uppercase treatment it used to have made a heading physically smaller
+ * than the rows under it and set it in the muted colour — so the one element
+ * whose job is to be findable while scrolling was the least visible thing in
+ * the panel. Weight and colour carry it now, at the size everything else is.
+ *
+ * `count` prints beside the word. It is for a heading over a list, where "how
+ * many" is a fact you want before you have read any of them.
+ */
+export function SectionTitle({
+  children,
+  count,
+  action,
+}: {
+  children: ReactNode;
+  count?: number;
+  /** A control belonging to the section — an add button, usually. Sits right. */
+  action?: ReactNode;
+}) {
   return (
-    <p className="mb-1 text-2xs font-semibold uppercase tracking-wider text-text-muted">
-      {children}
-    </p>
+    <div className="mb-1 flex items-center gap-2">
+      <h3 className="text-xs font-semibold text-text-primary">{children}</h3>
+      {count !== undefined && (
+        <span className="text-xs tabular-nums text-text-muted">{count}</span>
+      )}
+      {action && <span className="ml-auto flex items-center">{action}</span>}
+    </div>
   );
 }

@@ -1,4 +1,4 @@
-import { TextField, cn } from '@hyzerlines/design';
+import { Button, Radio, TextField, cn } from '@hyzerlines/design';
 import {
   activeLayout,
   assignToHole,
@@ -18,6 +18,7 @@ import { FeatureRow } from './FeatureList';
 import { useHoleProfile, useProfiles } from '../survey/useProfiles';
 import { ElevationProfileChart } from './ElevationProfile';
 import {
+  ReadOnlyValue,
   Row,
   SectionTitle,
   ToggleRow,
@@ -177,23 +178,14 @@ function EndList({
                   tracking anything.
                 */
                 leading={
-                  <input
-                    type="radio"
+                  <Radio
                     name={`${hole.id}-${kind}`}
                     // Carried so the choice is identifiable from the DOM: two
                     // unnamed baskets are two identical rows otherwise.
                     value={feature.id}
                     checked={chosen}
                     onChange={() => onChange(feature.id)}
-                    aria-label={`${verb} ${featureName(feature)}`}
-                    /*
-                     * `--hz-accent-solid`, not `--hz-color-accent-solid`. The
-                     * generator emits semantic roles as `--hz-<role>` and only
-                     * registers the `--color-*` aliases inside `@theme inline`,
-                     * so the longer name silently falls back to the browser's
-                     * own accent — blue, where ours is teal.
-                     */
-                    className="mr-1.5 size-3 shrink-0 accent-[var(--hz-accent-solid)]"
+                    label={`${verb} ${featureName(feature)}`}
                   />
                 }
                 trailing={
@@ -205,7 +197,7 @@ function EndList({
                     }}
                     aria-label={`Remove ${featureName(feature)} from this hole`}
                     title="Remove from this hole — the feature stays on the map"
-                    className="grid h-7 w-6 shrink-0 place-items-center rounded-md text-text-muted transition-colors duration-fast hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                    className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-sm text-text-muted transition-colors duration-fast hover:bg-surface-active hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
                   >
                     <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
                       <path
@@ -428,17 +420,15 @@ export function HoleProperties({
       */}
       <div className={sectionClass}>
         <Row label="Tee to basket">
-          <span className="text-xs tabular-nums text-text-primary">
+          <ReadOnlyValue>
             {measurement?.straight == null ? '—' : formatDistance(measurement.straight, units)}
-          </span>
+          </ReadOnlyValue>
         </Row>
         {/* Only shown when a fairway exists: a routed length identical to the
             straight one would imply a route that isn't there. */}
         {measurement?.routed != null && (
           <Row label="Along the fairway">
-            <span className="text-xs tabular-nums text-text-primary">
-              {formatDistance(measurement.routed, units)}
-            </span>
+            <ReadOnlyValue>{formatDistance(measurement.routed, units)}</ReadOnlyValue>
           </Row>
         )}
       </div>
@@ -479,7 +469,15 @@ export function HoleProperties({
         replaces.
       */}
       <div className={sectionClass}>
-        <SectionTitle>Features</SectionTitle>
+        {/*
+          The count is the tees and the baskets, plus the fairway if one has
+          been shaped. Not `hole.featureIds.length`, which a hole does not have
+          — a hole owns its ends and the shot between them, and everything else
+          on the land belongs to the course.
+        */}
+        <SectionTitle count={hole.teeIds.length + hole.targetIds.length + (fairway ? 1 : 0)}>
+          Features
+        </SectionTitle>
         <EndList
           label="Tees"
           kind="tee"
@@ -528,9 +526,9 @@ export function HoleProperties({
           {fairway ? (
             <RevealButton feature={fairway} onReveal={() => onRevealFeature(fairway.id)} />
           ) : (
-            <span className="text-xs text-text-secondary">
+            <ReadOnlyValue>
               {pair ? 'Straight' : <span className="text-text-disabled">—</span>}
-            </span>
+            </ReadOnlyValue>
           )}
         </Row>
         {pair && !fairway && hole.showFairway && (
@@ -565,17 +563,13 @@ export function HoleProperties({
       </div>
 
       <div className={sectionClass}>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="w-full rounded-md px-2 py-1 text-left text-xs text-status-danger transition-colors duration-fast hover:bg-status-danger-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-        >
+        <Button variant="destructive" block onClick={onDelete}>
           Delete hole
           {/* Says so explicitly, because the features are drawn land and
               deleting the hole that references them must not feel like it
               might take them with it. */}
-          <span className="ml-1.5 text-2xs text-text-muted">Keeps the drawn features</span>
-        </button>
+          <span className="text-2xs text-text-muted">Keeps the drawn features</span>
+        </Button>
       </div>
     </>
   );

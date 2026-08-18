@@ -55,9 +55,9 @@ function DetailHeader({
   children?: ReactNode;
 }) {
   return (
-    <header className="shrink-0 px-2.5 pb-1.5 pt-2">
+    <header className="shrink-0 px-2.5 pb-2">
       {(parent || onClose) && (
-        <div className="flex items-center gap-1">
+        <div className="flex h-10 items-center gap-1">
           {parent && (
             <button
               type="button"
@@ -72,7 +72,7 @@ function DetailHeader({
                * description of what the control does.
                */
               aria-label={`Back to ${parent.label}`}
-              className="flex min-w-0 items-center gap-0.5 rounded px-1 py-0.5 text-2xs text-text-muted transition-colors duration-fast hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+              className="flex h-[22px] min-w-0 items-center gap-0.5 rounded-sm px-1 text-xs text-text-muted transition-colors duration-fast hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             >
               <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
                 <path
@@ -108,7 +108,13 @@ function DetailHeader({
         </div>
       )}
 
-      <div className="flex items-center gap-2">
+      {/*
+        40px whether or not there is a row above it. A hole opens straight onto
+        its name and a feature opens onto a breadcrumb first, and the two panels
+        have to put their first field at the same height or switching between
+        them shifts the whole form.
+      */}
+      <div className="flex min-h-10 items-center gap-2">
         {icon && (
           <span
             aria-hidden="true"
@@ -124,7 +130,7 @@ function DetailHeader({
           would say something the title does not — see the call sites.
         */}
         {subtitle && (
-          <span className="shrink-0 text-2xs tabular-nums text-text-muted">{subtitle}</span>
+          <span className="shrink-0 text-xs tabular-nums text-text-muted">{subtitle}</span>
         )}
         {children}
       </div>
@@ -136,7 +142,13 @@ function DetailHeader({
 function HoleStepper({ onPrevious, onNext }: { onPrevious: () => void; onNext: () => void }) {
   return (
     <span className="flex shrink-0 items-center gap-0.5">
-      <IconButton label="Previous hole" size="sm" tooltipSide="bottom" onClick={onPrevious}>
+      <IconButton
+        label="Previous hole"
+        size="sm"
+        tooltipSide="bottom"
+        className="bg-surface-field hover:bg-surface-active"
+        onClick={onPrevious}
+      >
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
           <path
             d="M6.5 1.5 3 5l3.5 3.5"
@@ -148,7 +160,13 @@ function HoleStepper({ onPrevious, onNext }: { onPrevious: () => void; onNext: (
           />
         </svg>
       </IconButton>
-      <IconButton label="Next hole" size="sm" tooltipSide="bottom" onClick={onNext}>
+      <IconButton
+        label="Next hole"
+        size="sm"
+        tooltipSide="bottom"
+        className="bg-surface-field hover:bg-surface-active"
+        onClick={onNext}
+      >
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
           <path
             d="M3.5 1.5 7 5 3.5 8.5"
@@ -205,6 +223,7 @@ export function HoleDetail({
            */
           <TextField
             label="Hole name"
+            align="left"
             variant="bare"
             size="sm"
             value={hole.name}
@@ -212,7 +231,7 @@ export function HoleDetail({
             onChange={(e) =>
               onOp({ type: 'updateHole', id: hole.id, changes: { name: e.target.value } })
             }
-            className="w-full font-semibold"
+            className="w-full text-sm font-semibold"
           />
         }
         {...(holeNumber === null ? {} : { subtitle: `${holeNumber} of ${holeCount}` })}
@@ -280,12 +299,13 @@ export function FeatureDetail({
         title={
           <TextField
             label="Feature name"
+            align="left"
             variant="bare"
             size="sm"
             value={feature.label}
             placeholder={KIND_DEFINITIONS[feature.kind].label}
             onChange={(e) => onOp({ type: 'setLabel', id: feature.id, label: e.target.value })}
-            className="w-full font-semibold"
+            className="w-full text-sm font-semibold"
           />
         }
         /*

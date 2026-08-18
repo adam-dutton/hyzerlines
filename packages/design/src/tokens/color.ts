@@ -20,47 +20,87 @@
  * roughly a third of real basemaps.
  */
 
-/** Raw scales. Cool-neutral: reads as "instrument" rather than "document". */
+/**
+ * Raw scales.
+ *
+ * Two families, and the split is the whole character of the palette: the dark
+ * surfaces are a desaturated blue-green, and the light ones are warm sand. Most
+ * systems run one neutral and tint it; this one changes *hue* between themes,
+ * because the two are doing different jobs. Dark is an instrument housing —
+ * cool, so the map's greens and browns are the only warm thing on screen. Light
+ * is paper, and paper is warm.
+ *
+ * Every step below 300 is a surface the design names directly. They are not
+ * interpolated and should not be "regularised": 0D1516 and 1A2223 are a panel
+ * and a tool bar, measured off the artboards.
+ */
 export const primitive = {
   neutral: {
     0: '#ffffff',
-    50: '#f6f7f9',
-    100: '#eaedf1',
-    200: '#d3d8e0',
-    300: '#aeb6c2',
-    400: '#8a94a3',
-    500: '#666f7d',
-    600: '#4a525e',
-    700: '#343b45',
-    800: '#242a32',
-    900: '#191d23',
-    950: '#101318',
-    1000: '#08090b',
+    50: '#f5f1e8',
+    /** Light theme: a panel on the base below it. */
+    100: '#ebe5d8',
+    /** Light theme: the page itself. */
+    200: '#dcd4c2',
+    300: '#b9bdb2',
+    400: '#8e948b',
+    500: '#6b7270',
+    600: '#4a5254',
+    700: '#363e40',
+    /** Dark theme: popovers and dialogs, the things that float highest. */
+    800: '#242c2e',
+    /** Dark theme: the tool bar, and anything resting flat above a panel. */
+    900: '#1a2223',
+    /** Dark theme: panels — the rail, the drawer, the top bar. */
+    950: '#0d1516',
+    /** Dark theme: the canvas the map is drawn on. */
+    1000: '#080d0e',
   },
   /**
-   * Brand / interactive. Cyan-leaning: no collision with turf or dirt.
+   * Brand / interactive. Chartreuse.
    *
-   * Retuned from sky blue towards teal so that step 300 is `#7fd3e0` — the
-   * accent the shell design was drawn against. The hue moved about fifteen
-   * degrees; the reason for the family did not. Green was rejected here and
-   * still is, because a green accent over grass is an accent that disappears
-   * exactly where this app is used.
+   * It replaces a teal, and the reasoning that put teal there — "green over
+   * grass disappears" — was right about *green* and wrong about this. Grass
+   * photographs mid-dark and desaturated; this sits at the top of the value
+   * range and far enough toward yellow that nothing in an aerial competes with
+   * it. What does compete with a teal accent is water, which is on a great many
+   * of these sites.
+   *
+   * It is bright enough that text on it must be dark — see `INK`.
    */
   accent: {
-    100: '#dcf5f9',
-    200: '#b4e9f1',
-    300: '#7fd3e0',
-    400: '#4ab8ca',
-    500: '#2b9cb0',
-    600: '#1c7d90',
-    700: '#16626f',
-    800: '#124e59',
+    100: '#f2f7c0',
+    200: '#e4ee7e',
+    /** Link hover. */
+    300: '#dce84a',
+    /** Button hover. */
+    400: '#d3e12a',
+    /** The accent. */
+    500: '#c6d40e',
+    /** Pressed. */
+    600: '#afbc0a',
+    700: '#8c9808',
+    /** Light theme: accent lines and fills, which need to hold against sand. */
+    800: '#6e7a08',
   },
-  red: { 300: '#ff9b96', 400: '#ff6b64', 500: '#f5352b', 600: '#cf1d14' },
-  amber: { 300: '#ffd98a', 400: '#ffc046', 500: '#f0a010', 600: '#c47c04' },
-  green: { 300: '#8ce7b0', 400: '#43d67f', 500: '#1eb45f', 600: '#128a48' },
+  /**
+   * Status hues, kept warm and muted so they read as *information* beside a
+   * chartreuse accent rather than competing with it. A saturated signal red
+   * next to this accent is two shouts.
+   */
+  red: { 300: '#eba894', 400: '#e0866e', 500: '#c96a50', 600: '#a5462c' },
+  amber: { 300: '#ecca8f', 400: '#e0b25e', 500: '#c69640', 600: '#96702a' },
+  green: { 300: '#a8cf9a', 400: '#84b573', 500: '#639454', 600: '#476f3b' },
   violet: { 300: '#c9b6ff', 400: '#a78bfa', 500: '#8b5cf6', 600: '#7038e0' },
 } as const;
+
+/**
+ * What goes on top of the accent.
+ *
+ * Near-black with a green cast rather than the canvas colour, so a chartreuse
+ * button reads as one object rather than as a hole punched through to the page.
+ */
+const INK = '#12190a';
 
 /**
  * Semantic roles. These are what components reference, and the only tier that
@@ -72,7 +112,7 @@ export const semantic = {
     'surface.canvas': primitive.neutral[1000],
     'surface.base': primitive.neutral[950],
     'surface.raised': primitive.neutral[900],
-    'surface.overlay': 'rgb(25 29 35 / 0.92)',
+    'surface.overlay': 'rgb(13 21 22 / 0.92)',
     'surface.sunken': primitive.neutral[1000],
     'surface.inset': primitive.neutral[800],
     /**
@@ -83,7 +123,7 @@ export const semantic = {
      * punches a solid hole in the blur and reads as a separate surface floating
      * on top of the panel rather than as part of it.
      */
-    'surface.tile': 'rgb(255 255 255 / 0.05)',
+    'surface.tile': 'rgb(232 235 228 / 0.045)',
     /**
      * A filled control with no border: input, select, segmented track.
      *
@@ -96,22 +136,42 @@ export const semantic = {
      * the dark theme. A resting control styled from a hover token is a control
      * that changes meaning the first time somebody retunes hover.
      */
-    'surface.field': 'rgb(255 255 255 / 0.06)',
-    'surface.hover': 'rgb(255 255 255 / 0.06)',
-    'surface.active': 'rgb(255 255 255 / 0.10)',
-    'surface.selected': 'rgb(127 211 224 / 0.16)',
-    'surface.scrim': 'rgb(8 9 11 / 0.6)',
+    'surface.field': 'rgb(232 235 228 / 0.06)',
+    'surface.hover': 'rgb(232 235 228 / 0.06)',
+    'surface.active': 'rgb(232 235 228 / 0.12)',
+    /*
+     * The secondary button's own ladder: rest, hover, pressed.
+     *
+     * Separate from `hover`/`active`, which are what a *row* does under the
+     * pointer. A button is an object that is always there, so it starts from a
+     * visible fill and has to move further on each step to register at all — a
+     * row starts from nothing, so 6% is already a clear change. The design
+     * draws them as two ladders and this follows it.
+     */
+    'surface.control': 'rgb(232 235 228 / 0.08)',
+    'surface.control-hover': 'rgb(232 235 228 / 0.13)',
+    'surface.control-active': 'rgb(232 235 228 / 0.18)',
+    'surface.selected': 'rgb(198 212 14 / 0.15)',
+    'surface.scrim': 'rgb(8 13 14 / 0.6)',
 
-    'text.primary': primitive.neutral[50],
-    'text.secondary': primitive.neutral[300],
-    'text.muted': primitive.neutral[400],
-    'text.disabled': primitive.neutral[600],
-    'text.inverse': primitive.neutral[950],
-    'text.accent': primitive.accent[300],
+    /*
+     * Text is one colour at four opacities, not four colours.
+     *
+     * The design states it that way — `rgba(232,235,228, α)` throughout — and
+     * it matters over a translucent panel: an opaque grey step would sit on the
+     * imagery instead of dimming against it, so muted text would go *lighter*
+     * over dark canopy rather than quieter.
+     */
+    'text.primary': '#e8ebe4',
+    'text.secondary': 'rgb(232 235 228 / 0.85)',
+    'text.muted': 'rgb(232 235 228 / 0.5)',
+    'text.disabled': 'rgb(232 235 228 / 0.3)',
+    'text.inverse': INK,
+    'text.accent': primitive.accent[500],
 
-    'border.subtle': 'rgb(255 255 255 / 0.07)',
-    'border.default': 'rgb(255 255 255 / 0.12)',
-    'border.strong': 'rgb(255 255 255 / 0.22)',
+    'border.subtle': 'rgb(232 235 228 / 0.08)',
+    'border.default': 'rgb(232 235 228 / 0.14)',
+    'border.strong': 'rgb(232 235 228 / 0.22)',
     'border.accent': primitive.accent[500],
 
     /*
@@ -124,62 +184,92 @@ export const semantic = {
      * active focus are near-white teal with near-black text, which is the
      * highest-contrast pair the palette can produce.
      */
-    'accent.solid': primitive.accent[300],
-    'accent.solid-hover': primitive.accent[200],
-    'accent.text-on-solid': primitive.neutral[1000],
-    'accent.soft': 'rgb(127 211 224 / 0.15)',
+    'accent.solid': primitive.accent[500],
+    'accent.solid-hover': primitive.accent[400],
+    /** Pressed. Down the ramp, not up — a press reads as the surface receding. */
+    'accent.solid-active': primitive.accent[600],
+    'accent.text-on-solid': INK,
+    /*
+     * A disabled primary keeps its colour and loses its strength, rather than
+     * turning grey. Grey would make it a different button; this makes it the
+     * same button, unavailable.
+     */
+    'accent.disabled': 'rgb(198 212 14 / 0.25)',
+    'accent.text-disabled': 'rgb(18 25 10 / 0.5)',
+    'accent.soft': 'rgb(198 212 14 / 0.15)',
 
     'status.danger': primitive.red[400],
-    'status.danger-soft': 'rgb(245 53 43 / 0.15)',
+    'status.danger-soft': 'rgb(224 134 110 / 0.12)',
+    /** What goes on a filled danger button. Near-black with a red cast, as INK is to the accent. */
+    'text.on-danger': '#1b0f0b',
     'status.warning': primitive.amber[400],
-    'status.warning-soft': 'rgb(240 160 16 / 0.15)',
+    'status.warning-soft': 'rgb(224 178 94 / 0.14)',
     'status.success': primitive.green[400],
-    'status.success-soft': 'rgb(30 180 95 / 0.15)',
+    'status.success-soft': 'rgb(132 181 115 / 0.15)',
 
     /** Focus ring. Must clear both chrome and imagery, hence the double ring. */
-    'focus.ring': primitive.accent[400],
-    'focus.ring-offset': primitive.neutral[950],
+    'focus.ring': primitive.accent[500],
+    'focus.ring-offset': primitive.neutral[1000],
   },
   light: {
-    'surface.canvas': primitive.neutral[100],
-    'surface.base': primitive.neutral[50],
-    'surface.raised': primitive.neutral[0],
-    'surface.overlay': 'rgb(255 255 255 / 0.94)',
-    'surface.sunken': primitive.neutral[100],
-    'surface.inset': primitive.neutral[100],
-    'surface.tile': 'rgb(8 9 11 / 0.04)',
-    'surface.field': 'rgb(8 9 11 / 0.05)',
-    'surface.hover': 'rgb(8 9 11 / 0.05)',
-    'surface.active': 'rgb(8 9 11 / 0.09)',
-    'surface.selected': 'rgb(43 156 176 / 0.13)',
-    'surface.scrim': 'rgb(8 9 11 / 0.35)',
+    /*
+     * Sand, not white. The light theme is the same instrument in daylight, and
+     * a white panel beside a full-colour aerial is a hole in the screen.
+     */
+    'surface.canvas': primitive.neutral[200],
+    'surface.base': primitive.neutral[100],
+    'surface.raised': primitive.neutral[100],
+    'surface.overlay': 'rgb(235 229 216 / 0.94)',
+    'surface.sunken': primitive.neutral[200],
+    'surface.inset': primitive.neutral[200],
+    'surface.tile': 'rgb(18 25 26 / 0.04)',
+    'surface.field': 'rgb(18 25 26 / 0.06)',
+    'surface.hover': 'rgb(18 25 26 / 0.06)',
+    'surface.active': 'rgb(18 25 26 / 0.1)',
+    'surface.control': 'rgb(18 25 26 / 0.08)',
+    'surface.control-hover': 'rgb(18 25 26 / 0.13)',
+    'surface.control-active': 'rgb(18 25 26 / 0.18)',
+    'surface.selected': 'rgb(198 212 14 / 0.3)',
+    'surface.scrim': 'rgb(18 25 26 / 0.35)',
 
-    'text.primary': primitive.neutral[950],
-    'text.secondary': primitive.neutral[600],
-    'text.muted': primitive.neutral[500],
-    'text.disabled': primitive.neutral[300],
-    'text.inverse': primitive.neutral[0],
-    'text.accent': primitive.accent[700],
+    'text.primary': '#12191a',
+    'text.secondary': 'rgb(18 25 26 / 0.78)',
+    'text.muted': 'rgb(18 25 26 / 0.5)',
+    'text.disabled': 'rgb(18 25 26 / 0.32)',
+    'text.inverse': primitive.neutral[50],
+    'text.accent': primitive.accent[800],
 
-    'border.subtle': 'rgb(8 9 11 / 0.08)',
-    'border.default': 'rgb(8 9 11 / 0.14)',
-    'border.strong': 'rgb(8 9 11 / 0.28)',
-    'border.accent': primitive.accent[600],
+    'border.subtle': 'rgb(18 25 26 / 0.1)',
+    'border.default': 'rgb(18 25 26 / 0.16)',
+    'border.strong': 'rgb(18 25 26 / 0.3)',
+    'border.accent': primitive.accent[800],
 
-    'accent.solid': primitive.accent[600],
-    'accent.solid-hover': primitive.accent[700],
-    'accent.text-on-solid': primitive.neutral[0],
-    'accent.soft': 'rgb(43 156 176 / 0.12)',
+    /*
+     * The same chartreuse, still carrying dark text.
+     *
+     * The design keeps `#C6D40E` in both themes rather than darkening it for
+     * light, so the brand colour is one colour. What darkens is anything drawn
+     * *as a line* — see `accent[800]`, which is what a slider track and a
+     * selected row icon use against sand.
+     */
+    'accent.solid': primitive.accent[500],
+    'accent.solid-hover': primitive.accent[400],
+    'accent.solid-active': primitive.accent[600],
+    'accent.text-on-solid': INK,
+    'accent.disabled': 'rgb(198 212 14 / 0.35)',
+    'accent.text-disabled': 'rgb(18 25 10 / 0.5)',
+    'accent.soft': 'rgb(198 212 14 / 0.3)',
 
     'status.danger': primitive.red[600],
-    'status.danger-soft': 'rgb(245 53 43 / 0.12)',
+    'status.danger-soft': 'rgb(165 70 44 / 0.12)',
+    'text.on-danger': primitive.neutral[50],
     'status.warning': primitive.amber[600],
-    'status.warning-soft': 'rgb(240 160 16 / 0.14)',
+    'status.warning-soft': 'rgb(150 112 42 / 0.14)',
     'status.success': primitive.green[600],
-    'status.success-soft': 'rgb(30 180 95 / 0.12)',
+    'status.success-soft': 'rgb(71 111 59 / 0.12)',
 
-    'focus.ring': primitive.accent[600],
-    'focus.ring-offset': primitive.neutral[0],
+    'focus.ring': primitive.accent[800],
+    'focus.ring-offset': primitive.neutral[100],
   },
 } as const;
 
@@ -277,12 +367,18 @@ export const feature = {
    * would be no way to tell a selected feature from an unselected one, or a
    * vertex you can grab from the line it sits on.
    */
-  handle: { stroke: primitive.neutral[0], fill: primitive.accent[500], casing: CASING },
+  handle: { stroke: INK, fill: primitive.accent[500], casing: CASING },
   selected: {
-    stroke: primitive.accent[400],
-    fill: 'rgb(74 184 202 / 0.28)',
+    stroke: primitive.accent[500],
+    fill: 'rgb(198 212 14 / 0.28)',
     casing: primitive.accent[500],
   },
+  /*
+   * Snap stays cyan, and is the one place a second interface colour earns its
+   * keep. It fires for a fraction of a second while a drag is in flight, next
+   * to the accent-coloured handle doing the dragging — if both were chartreuse
+   * there would be nothing to tell "this vertex" from "it will land here".
+   */
   snap: { stroke: '#22d3ee', fill: 'rgb(34 211 238 / 0.40)', casing: CASING },
 
   /**

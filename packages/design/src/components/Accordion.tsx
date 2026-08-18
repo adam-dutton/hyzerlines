@@ -102,14 +102,17 @@ export function Accordion({
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring',
         )}
       >
-        <span className="text-2xs font-semibold uppercase tracking-wider text-text-muted">
-          {title}
-        </span>
+        {/*
+          A heading at the panel's own size, not a small-caps label. It matches
+          `SectionTitle` in the app, because an accordion's title and a plain
+          section's title are the same thing — one of them happens to fold.
+        */}
+        <span className="text-xs font-semibold text-text-primary">{title}</span>
 
         {!open && preview !== undefined && preview !== '' && (
           <span
             aria-hidden="true"
-            className="min-w-0 flex-1 truncate text-right text-2xs text-text-secondary"
+            className="min-w-0 flex-1 truncate text-right text-xs text-text-muted"
           >
             {preview}
           </span>
