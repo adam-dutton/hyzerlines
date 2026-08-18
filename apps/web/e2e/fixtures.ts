@@ -672,6 +672,29 @@ export async function waitForSave(page: Page): Promise<void> {
  * both where to click and what to grab.
  */
 export async function selectFairwayLine(page: Page): Promise<{ x: number; y: number }> {
+  /*
+   * Three waits, and all three earned a failure before they were added.
+   *
+   * The camera flies when a hole is selected, so a point projected mid-flight
+   * is not where the click lands. The derived source is pushed to the map
+   * asynchronously, so a click in the gap between "the hole exists" and "the
+   * line is painted" hits nothing at all. And the handles appear a frame or two
+   * after the selection does, so pressing straight away lands on empty canvas —
+   * a deselect rather than a grab.
+   */
+  await settleCamera(page);
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window.hyzerlinesMap?.querySourceFeatures('derived-geometry') ?? []).filter(
+            (f) => f.properties?.['derived'] === 'centreline',
+          ).length,
+      ),
+    )
+    .toBeGreaterThan(0);
+
   const at = await page.evaluate(() => {
     const snapshot = window.hyzerlinesStore!.getSnapshot().course;
     const hole = snapshot.holes[0]!;
@@ -686,16 +709,24 @@ export async function selectFairwayLine(page: Page): Promise<{ x: number; y: num
     return { x: Math.round(point.x), y: Math.round(point.y) };
   });
 
+  // Hit-testable, not merely painted: the click has to reach the line rather
+  // than whatever ends up on top of it.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (point) =>
+          window.hyzerlinesMap!.queryRenderedFeatures(point as [number, number], {
+            layers: ['derived-centreline'],
+          }).length,
+        [at.x, at.y] as [number, number],
+      ),
+    )
+    .toBeGreaterThan(0);
+
   await page.mouse.move(at.x, at.y);
   await page.mouse.down();
   await page.mouse.up();
 
-  /*
-   * Waited for, not assumed. The document updating and the handle appearing are
-   * two different things: selection lands synchronously, but MapLibre re-tiles
-   * the handle source a frame or two later, and pressing before then lands on
-   * empty canvas — a deselect rather than a grab.
-   */
   await expect
     .poll(() =>
       page.evaluate(
@@ -709,4 +740,44 @@ export async function selectFairwayLine(page: Page): Promise<{ x: number; y: num
     .toBeGreaterThan(0);
 
   return at;
+}
+
+/**
+ * A point on a hole's corridor but clear of its centreline.
+ *
+ * The line is a click target now, and it sits on top of the band, so a point
+ * interpolated between the tee and the basket selects the *line*. Which is
+ * right — the narrower target inside the band wins — and it means a test about
+ * clicking the ground a shot runs over has to step off the line to find that
+ * ground. Offset perpendicular to the shot, in screen pixels.
+ */
+export async function besideTheShot(
+  page: Page,
+  t: number,
+  offset = 14,
+): Promise<{ x: number; y: number }> {
+  return page.evaluate(
+    ([at, away]) => {
+      const snapshot = window.hyzerlinesStore!.getSnapshot().course;
+      const hole = snapshot.holes[0]!;
+      const coordsOf = (id: string) =>
+        snapshot.features.find((f) => f.id === id)!.geometry.coordinates as [number, number];
+      const map = window.hyzerlinesMap!;
+      const start = map.project(coordsOf(hole.teeIds[0]!));
+      const end = map.project(coordsOf(hole.targetIds[0]!));
+
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const length = Math.hypot(dx, dy) || 1;
+      // The unit normal, so the offset is the same however long the hole is.
+      const nx = -dy / length;
+      const ny = dx / length;
+
+      return {
+        x: Math.round(start.x + dx * (at as number) + nx * (away as number)),
+        y: Math.round(start.y + dy * (at as number) + ny * (away as number)),
+      };
+    },
+    [t, offset] as const,
+  );
 }

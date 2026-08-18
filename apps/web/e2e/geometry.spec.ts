@@ -7,6 +7,7 @@ import {
   holeChip,
   openEditor,
   place,
+  besideTheShot,
   project,
   selectFairwayLine,
   setAid,
@@ -213,21 +214,6 @@ async function bendFairway(page: Page): Promise<void> {
   const third = await selectFairwayLine(page);
   await dragHandle(page, third, { x: third.x - 140, y: third.y + 110 }, 'edit-vertex');
   await expect.poll(async () => (await storedFairway(page)).length).toBe(4);
-}
-
-/** A point a fraction of the way along the hole's shot, in screen pixels. */
-async function shotPoint(page: Page, t: number): Promise<{ x: number; y: number }> {
-  const [from, to] = await shotEnds(page);
-  return page.evaluate(
-    ([a, b, at]) => {
-      const map = window.hyzerlinesMap!;
-      const start = map.project(a as [number, number]);
-      const end = map.project(b as [number, number]);
-      const f = at as number;
-      return { x: start.x + (end.x - start.x) * f, y: start.y + (end.y - start.y) * f };
-    },
-    [from, to, t] as const,
-  );
 }
 
 /** Press and release at a point, without moving. */
@@ -692,8 +678,11 @@ test.describe('a hole you cannot see the fairway of', () => {
     await page.getByRole('button', { name: 'Add hole' }).click();
 
     /*
-     * Two thirds of the way down the shot: clear of the pad, the basket and the
-     * hole number, and out where the corridor has tapered wide enough to hit.
+     * Two thirds of the way down the shot and a little to one side: clear of
+     * the pad, the basket and the hole number, out where the corridor has
+     * tapered wide enough to hit — and off the centreline, which is a click
+     * target of its own and sits on top of the band. On the line the click
+     * selects the *line*, which is correct and is not what this test is about.
      *
      * Projected rather than guessed at. A corridor starts as narrow as the pad
      * — two metres, which is about one pixel at this zoom — so "beside the
@@ -703,7 +692,7 @@ test.describe('a hole you cannot see the fairway of', () => {
     // After the camera has arrived: adding a hole selects it, which flies the
     // map to it, and a point projected mid-flight is not where the click lands.
     await settleCamera(page);
-    const onCorridor = await shotPoint(page, 0.65);
+    const onCorridor = await besideTheShot(page, 0.65);
 
     /*
      * Corridor shapes on the map, hidden ones included.
