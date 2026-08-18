@@ -270,7 +270,7 @@ function corridorLayers(style: ResolvedStyle): LayerSpecification[] {
       source: DERIVED_SOURCE,
       filter: ['==', ['get', 'derived'], 'approach'],
       paint: {
-        'fill-color': selectable(fairway.secondFill, 'fill'),
+        'fill-color': fairway.secondFill,
         'fill-opacity': fairway.secondFillOpacity,
       },
     },
@@ -289,7 +289,7 @@ function corridorLayers(style: ResolvedStyle): LayerSpecification[] {
       source: DERIVED_SOURCE,
       filter: ['==', ['get', 'derived'], 'corridor'],
       paint: {
-        'fill-color': selectable(fairway.fill, 'fill'),
+        'fill-color': fairway.fill,
         // Zero when the designer has switched fairways off — see `derived.ts`.
         // The shape stays on the map so the ground a hole's shot runs over
         // still selects that hole; hiding the drawing must not take the target
@@ -308,16 +308,14 @@ function corridorLayers(style: ResolvedStyle): LayerSpecification[] {
 /**
  * The fairway line: the shot in play, and the shots the hole also offers.
  *
- * **Selection recolours the corridor's fill and nothing else.** The centreline
- * and its casing keep their colours, which is what stops a selected hole
- * reading as a hole drawn differently: the line you measure off looks the same
- * whether or not it is picked, and the ground it claims is what lights up.
+ * **Selection is the centreline, and only the centreline.** It goes accent and
+ * drops its casing; the corridors underneath never change colour at all.
  *
- * That is a narrowing of an earlier attempt, not a return to it. Selection once
- * repainted the corridor, both its fills, the centreline *and* the alternatives
- * together — most of the ink on screen changing on the single act performed
- * most often, which read as the map changing rather than as a hole being
- * chosen.
+ * The corridor is the wrong surface for it. It is the largest thing on screen
+ * by far, so recolouring it reads as the map changing rather than as a hole
+ * being chosen — and it shades the ground the shot runs over, which is the
+ * thing a designer selected the hole to look at. The line is a mark rather than
+ * a field: it can carry the accent without hiding anything.
  *
  * Always dashed. A fairway is a drawing aid the app worked out, not a thing on
  * the ground, and it should say so whether or not anybody has bent it. It used
@@ -359,8 +357,16 @@ function fairwayLineLayers(style: ResolvedStyle): LayerSpecification[] {
       filter: isCentreline,
       layout: { 'line-join': 'round', 'line-cap': 'butt' },
       paint: {
-        'line-color': casingColor(fairway.casing),
-        'line-opacity': fairway.casingOn ? fairway.casingOpacity : 0,
+        'line-color': fairway.casing,
+        /*
+         * Gone entirely while selected, rather than recoloured.
+         *
+         * The accent line is the selected state, and a casing under it is a
+         * contrast floor for a colour that no longer needs one — it only
+         * thickens the line, which is the one thing selection must not do on a
+         * map that gets measured off.
+         */
+        'line-opacity': ['case', selected, 0, fairway.casingOn ? fairway.casingOpacity : 0],
         'line-width': fairway.strokeWidth * CASING_RATIO,
         ...dashPaint(casingDash(fairway.dash)),
       },
@@ -372,7 +378,7 @@ function fairwayLineLayers(style: ResolvedStyle): LayerSpecification[] {
       filter: isCentreline,
       layout: { 'line-join': 'round', 'line-cap': 'butt' },
       paint: {
-        'line-color': fairway.stroke,
+        'line-color': selectable(fairway.stroke, 'stroke'),
         'line-opacity': fairway.strokeOpacity,
         'line-width': fairway.strokeWidth,
         ...dashPaint(DASH_PATTERNS[fairway.dash]),
