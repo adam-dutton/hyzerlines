@@ -656,3 +656,57 @@ export async function waitForSave(page: Page): Promise<void> {
     .poll(() => page.evaluate(() => window.hyzerlinesStore?.getSnapshot().dirty !== false))
     .toBe(false);
 }
+
+/**
+ * Click a hole's fairway line, which is what puts anchors on it.
+ *
+ * Editing is one level deeper than selecting: picking a hole shows its shot,
+ * picking the line is what arms it for reshaping. Tests used to go straight
+ * from "hole selected" to "drag a handle", which is a gesture the app no longer
+ * offers — a click meant to pan could bend a fairway, so the most common act in
+ * the app was arming an edit nobody asked for.
+ *
+ * A third of the way along rather than the middle: `holeLabelPosition` puts the
+ * hole's number at the midpoint, so a click there lands on the label. It is
+ * also where the line's first real vertex sits, so the point this returns is
+ * both where to click and what to grab.
+ */
+export async function selectFairwayLine(page: Page): Promise<{ x: number; y: number }> {
+  const at = await page.evaluate(() => {
+    const snapshot = window.hyzerlinesStore!.getSnapshot().course;
+    const hole = snapshot.holes[0]!;
+    const coordsOf = (id: string) =>
+      snapshot.features.find((f) => f.id === id)!.geometry.coordinates as [number, number];
+    const a = coordsOf(hole.teeIds[0]!);
+    const b = coordsOf(hole.targetIds[0]!);
+    const point = window.hyzerlinesMap!.project([
+      a[0] + (b[0] - a[0]) / 3,
+      a[1] + (b[1] - a[1]) / 3,
+    ]);
+    return { x: Math.round(point.x), y: Math.round(point.y) };
+  });
+
+  await page.mouse.move(at.x, at.y);
+  await page.mouse.down();
+  await page.mouse.up();
+
+  /*
+   * Waited for, not assumed. The document updating and the handle appearing are
+   * two different things: selection lands synchronously, but MapLibre re-tiles
+   * the handle source a frame or two later, and pressing before then lands on
+   * empty canvas — a deselect rather than a grab.
+   */
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (point) =>
+          window.hyzerlinesMap!.queryRenderedFeatures(point as [number, number], {
+            layers: ['edit-vertex'],
+          }).length,
+        [at.x, at.y] as [number, number],
+      ),
+    )
+    .toBeGreaterThan(0);
+
+  return at;
+}

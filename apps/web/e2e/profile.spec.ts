@@ -9,7 +9,7 @@ import {
   openHolesTab,
   openSection,
   place,
-  project,
+  selectFairwayLine,
 } from './fixtures';
 
 /**
@@ -248,18 +248,13 @@ test.describe('elevation profiles', () => {
     });
     expect(line).toBe(1);
 
-    const handle = await project(
-      page,
-      await page.evaluate(() => {
-        const c = window.hyzerlinesStore!.getSnapshot().course;
-        const tee = c.features.find((f) => f.kind === 'tee')!;
-        const target = c.features.find((f) => f.kind === 'target')!;
-        const a = tee.geometry.coordinates as [number, number];
-        const b = target.geometry.coordinates as [number, number];
-        // A third along: the first derived vertex handle.
-        return [a[0] + (b[0] - a[0]) / 3, a[1] + (b[1] - a[1]) / 3] as [number, number];
-      }),
-    );
+    /*
+     * Clicking the line is what puts the handle there. Editing is one level
+     * deeper than selecting, so drawing the hole is no longer enough — and the
+     * point this returns is the first derived vertex, a third along, which is
+     * exactly the one to grab.
+     */
+    const handle = await selectFairwayLine(page);
 
     await page.mouse.move(handle.x, handle.y);
     await page.mouse.down();

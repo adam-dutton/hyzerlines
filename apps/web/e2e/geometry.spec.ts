@@ -8,6 +8,7 @@ import {
   openEditor,
   place,
   project,
+  selectFairwayLine,
   setAid,
   setSwitch,
   settleCamera,
@@ -120,10 +121,21 @@ async function addToHole(page: Page, kind: string): Promise<void> {
  * fewer steps, and it is how anybody adding an alternate pin would do it.
  */
 async function twoPinHole(page: Page): Promise<[string, string]> {
-  await page.getByRole('button', { name: 'Hole 1' }).first().click();
+  // `setupHole` leaves its hole open, and the tile is a toggle — clicking it
+  // again would close the panel the `+` lives on.
+  await expect(page.getByRole('textbox', { name: 'Hole name' })).toBeVisible();
   await addToHole(page, 'Target');
   await clickCanvas(page, 950, 500);
   await expect.poll(async () => (await course(page)).holes[0]!.targetIds.length).toBe(2);
+  await page.keyboard.press('Escape');
+
+  // Placing a feature selects it, so the panel on screen may be the basket's.
+  // Come back to the hole, which is where the shot picker is.
+  if (!(await shotPicker(page).isVisible())) {
+    await page.getByRole('button', { name: 'Hole 1' }).first().click();
+  }
+  await expect(shotPicker(page)).toBeVisible();
+
   const [pinA, pinB] = (await course(page)).holes[0]!.targetIds;
   return [pinA!, pinB!];
 }
@@ -183,14 +195,6 @@ async function dragHandle(
   await page.mouse.up();
 }
 
-/** A fraction of the way along the hole's shot, in screen pixels. */
-async function shotAt(page: Page, t: number): Promise<{ x: number; y: number }> {
-  const [tee, target] = await shotEnds(page);
-  const a = await project(page, tee);
-  const b = await project(page, target);
-  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
-}
-
 /*
  * Bend the hole's fairway, which is what turns it into a stored feature.
  *
@@ -205,7 +209,8 @@ async function shotAt(page: Page, t: number): Promise<{ x: number; y: number }> 
  * still somewhere obvious to grab, which is what this uses.
  */
 async function bendFairway(page: Page): Promise<void> {
-  const third = await shotAt(page, 1 / 3);
+  // Selecting the line is what puts the anchors there — see `selectFairwayLine`.
+  const third = await selectFairwayLine(page);
   await dragHandle(page, third, { x: third.x - 140, y: third.y + 110 }, 'edit-vertex');
   await expect.poll(async () => (await storedFairway(page)).length).toBe(4);
 }

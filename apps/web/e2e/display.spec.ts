@@ -6,6 +6,7 @@ import {
   openEditor,
   openLayers,
   place,
+  selectFairwayLine,
   setSwitch,
   switchControl,
   waitForSave,
@@ -130,8 +131,16 @@ test.describe('drawing aids', () => {
       .first()
       .click();
     await expect(switchControl(page, 'Show fairway')).toBeChecked();
-    // `edit-vertex`, not `edit-midpoint`: a fairway has no midpoint handles —
-    // the middle one landed on the hole's number. See `vertexHandles`.
+
+    /*
+     * Armed by clicking the line, not by selecting the hole. Editing is one
+     * level deeper than selecting, so the anchors this test is about hiding
+     * have to be put there first.
+     *
+     * `edit-vertex`, not `edit-midpoint`: a fairway has no midpoint handles —
+     * the middle one landed on the hole's number. See `vertexHandles`.
+     */
+    await selectFairwayLine(page);
     await expectDrawn(page, 'edit-vertex').toBeGreaterThan(0);
 
     await setSwitch(page, 'Show fairway', false);
